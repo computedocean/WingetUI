@@ -13,7 +13,7 @@ namespace UniGetUI.PackageEngine.PackageLoader
         /// <summary>
         /// Checks if the loader is fetching new packages right now
         /// </summary>
-        public bool IsLoading { get; private set; }
+        public bool IsLoading { get; protected set; }
 
         /// <summary>
         /// The collection of currently available packages
@@ -42,7 +42,7 @@ namespace UniGetUI.PackageEngine.PackageLoader
         private int LoadOperationIdentifier;
         protected IEnumerable<IPackageManager> Managers { get; private set; }
 
-        public AbstractPackageLoader(IEnumerable<IPackageManager> managers, string identifier, bool AllowMultiplePackageVersions = false, bool DisableReload = false) 
+        public AbstractPackageLoader(IEnumerable<IPackageManager> managers, string identifier, bool AllowMultiplePackageVersions = false, bool DisableReload = false)
         {
             Managers = managers;
             PackageReference = new Dictionary<long, IPackage>();
@@ -62,12 +62,17 @@ namespace UniGetUI.PackageEngine.PackageLoader
             LoadOperationIdentifier = -1;
             IsLoaded = false;
             IsLoading = false;
-            InvokeFinishedLoadingEvent();
+            if(emitFinishSignal) InvokeFinishedLoadingEvent();
         }
 
         protected void InvokePackagesChangedEvent()
         {
             PackagesChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        protected void InvokeStartedLoadingEvent()
+        {
+            StartedLoading?.Invoke(this, EventArgs.Empty);
         }
 
         protected void InvokeFinishedLoadingEvent()

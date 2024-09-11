@@ -117,6 +117,11 @@ namespace UniGetUI.PackageEngine.Classes.Manager
             throw new NotImplementedException();
         }
 
+        public string? GetPackageInstallLocation(IPackage package)
+        {
+            throw new NotImplementedException();
+        }
+
         public Task<string[]> GetPackageVersions(IPackage package)
         {
             throw new NotImplementedException();
@@ -197,7 +202,7 @@ namespace UniGetUI.PackageEngine.Classes.Manager
             throw new NotImplementedException();
         }
 
-        public OperationVeredict GetOperationResult(IPackage package, IInstallationOptions options, OperationType operation, IEnumerable<string> processOutput, int returnCode)
+        public OperationVeredict GetOperationResult(IPackage package, OperationType operation, IEnumerable<string> processOutput, int returnCode)
         {
             throw new NotImplementedException();
         }

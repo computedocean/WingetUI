@@ -1,10 +1,11 @@
-using CommunityToolkit.WinUI.Helpers;
-using CommunityToolkit.WinUI.Notifications;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
+using Windows.ApplicationModel.Activation;
+using CommunityToolkit.WinUI.Helpers;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.IconEngine;
 using UniGetUI.Core.Logging;
@@ -14,7 +15,10 @@ using UniGetUI.Interface;
 using UniGetUI.PackageEngine;
 using UniGetUI.PackageEngine.Classes.Manager.Classes;
 using UniGetUI.PackageEngine.Operations;
-using Windows.Foundation.Collections;
+using Microsoft.Windows.AppLifecycle;
+using Microsoft.Windows.AppNotifications;
+using UniGetUI.PackageEngine.ManagerClasses.Manager;
+using LaunchActivatedEventArgs = Microsoft.UI.Xaml.LaunchActivatedEventArgs;
 
 namespace UniGetUI
 {
@@ -69,8 +73,7 @@ namespace UniGetUI
                 RegisterErrorHandling();
                 SetUpWebViewUserDataFolder();
                 InitializeMainWindow();
-                ClearNotificationHistory_Safe();
-                RegisterNotificationActivationEvent_Safe();
+                RegisterNotificationService();
 
                 LoadComponentsAsync().ConfigureAwait(false);
             }
@@ -171,8 +174,8 @@ namespace UniGetUI
             MainWindow.Closed += (sender, args) => DisposeAndQuit(0);
 
             nint hWnd = MainWindow.GetWindowHandle();
-            Microsoft.UI.WindowId windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hWnd);
-            Microsoft.UI.Windowing.AppWindow appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+            var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hWnd);
+            var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
 
             if (appWindow != null)
             {
@@ -181,37 +184,20 @@ namespace UniGetUI
         }
 
         /// <summary>
-        /// Clear the notification history, if possible
-        /// </summary>
-        private static void ClearNotificationHistory_Safe()
-        {
-            try
-            {
-                ToastNotificationManagerCompat.History.Clear();
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn(ex);
-            }
-        }
-
-        /// <summary>
         /// Register the notification activation event
         /// </summary>
-        private void RegisterNotificationActivationEvent_Safe()
+        private void RegisterNotificationService()
         {
             try
             {
-                ToastNotificationManagerCompat.OnActivated += toastArgs =>
+                AppNotificationManager.Default.NotificationInvoked += (_, args) =>
                 {
-                    ToastArguments args = ToastArguments.Parse(toastArgs.Argument);
-                    ValueSet userInput = toastArgs.UserInput;
-
                     MainWindow.DispatcherQueue.TryEnqueue(() =>
                     {
-                        MainWindow.HandleNotificationActivation(args, userInput);
+                        MainWindow.HandleNotificationActivation(args);
                     });
                 };
+                AppNotificationManager.Default.Register();
             }
             catch (Exception ex)
             {
@@ -285,17 +271,17 @@ namespace UniGetUI
                 // Load package managers
                 await PEInterface.Initialize();
 
+                Logger.Info("LoadComponentsAsync finished executing. All managers loaded. Proceeding to interface.");
                 MainWindow.SwitchToInterface();
                 RaiseExceptionAsFatal = false;
-                if (Environment.GetCommandLineArgs().Contains("--load-and-quit"))
+
+                MainWindow.ProcessCommandLineParameters();
+                MainWindow.ParametersToProcess.ItemEnqueued += (s, e) =>
                 {
-                    DisposeAndQuit(0);
-                }
+                    MainWindow.DispatcherQueue.TryEnqueue(MainWindow.ProcessCommandLineParameters);
+                };
 
                 await CheckForMissingDependencies();
-
-                Logger.Info("LoadComponentsAsync finished executing. All managers loaded. Proceeding to interface.");
-
             }
             catch (Exception e)
             {
@@ -307,7 +293,7 @@ namespace UniGetUI
         {
             // Check for missing dependencies on package managers
             List<ManagerDependency> missing_deps = [];
-            foreach (PackageEngine.ManagerClasses.Manager.PackageManager manager in PEInterface.Managers)
+            foreach (PackageManager manager in PEInterface.Managers)
             {
                 if (!manager.IsReady())
                 {
@@ -353,27 +339,58 @@ namespace UniGetUI
         {
             if (!CoreData.IsDaemon)
             {
-                await ShowMainWindowFromRedirectAsync();
+                await ShowMainWindowFromLaunchAsync();
             }
 
             CoreData.IsDaemon = false;
         }
 
-        public async Task ShowMainWindowFromRedirectAsync()
+        public async Task ShowMainWindowFromRedirectAsync(AppActivationArguments rawArgs)
         {
             while (MainWindow == null)
-            {
                 await Task.Delay(100);
+
+            ExtendedActivationKind kind = rawArgs.Kind;
+            if (kind is ExtendedActivationKind.Launch)
+            {
+                if (rawArgs.Data is ILaunchActivatedEventArgs launchArguments)
+                {
+                    // If the app redirection event comes from a launch, extract
+                    // the CLI arguments and redirect them to the ParameterProcessor
+                    foreach (Match argument in Regex.Matches(launchArguments.Arguments,
+                                 "([^ \"']+|\"[^\"]+\"|'[^']+')"))
+                    {
+                        MainWindow.ParametersToProcess.Enqueue(argument.Value);
+                    }
+                }
+                else
+                {
+                    Logger.Error("REDIRECTOR ACTIVATOR: args.Data was null when casted to ILaunchActivatedEventArgs");
+                }
+            }
+            else
+            {
+                Logger.Warn("REDIRECTOR ACTIVATOR: args.Kind is not Launch but rather " + kind);
             }
 
             MainWindow.DispatcherQueue.TryEnqueue(MainWindow.Activate);
         }
 
-        public void DisposeAndQuit(int outputCode = 0)
+        public async Task ShowMainWindowFromLaunchAsync()
+        {
+            while (MainWindow == null)
+                await Task.Delay(100);
+
+            MainWindow.DispatcherQueue.TryEnqueue(MainWindow.Activate);
+        }
+
+        public async void DisposeAndQuit(int outputCode = 0)
         {
             Logger.Warn("Quitting...");
             MainWindow?.Close();
             BackgroundApi?.Stop();
+            Exit();
+            await Task.Delay(100);
             Environment.Exit(outputCode);
         }
 
@@ -520,7 +537,8 @@ namespace UniGetUI
         public void KillAndRestart()
         {
             Process.Start(CoreData.UniGetUIExecutableFile);
-            DisposeAndQuit(0);
+            MainApp.Instance.MainWindow?.Close();
+            Environment.Exit(0);
         }
     }
 }

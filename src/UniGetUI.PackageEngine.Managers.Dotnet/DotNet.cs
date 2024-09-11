@@ -2,22 +2,22 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using UniGetUI.Core.Tools;
-using UniGetUI.PackageEngine.Classes.Manager;
 using UniGetUI.Interface.Enums;
+using UniGetUI.PackageEngine.Classes.Manager;
 using UniGetUI.PackageEngine.Classes.Manager.Classes;
 using UniGetUI.PackageEngine.Classes.Manager.ManagerHelpers;
 using UniGetUI.PackageEngine.Enums;
-using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.ManagerClasses.Classes;
 using UniGetUI.PackageEngine.ManagerClasses.Manager;
+using UniGetUI.PackageEngine.Managers.Chocolatey;
 using UniGetUI.PackageEngine.Managers.PowerShellManager;
 using UniGetUI.PackageEngine.PackageClasses;
-using UniGetUI.PackageEngine.ManagerClasses.Classes;
+using UniGetUI.PackageEngine.Structs;
 
 namespace UniGetUI.PackageEngine.Managers.DotNetManager
 {
     public class DotNet : BaseNuGet
     {
-        public static new string[] FALSE_PACKAGE_NAMES = [""];
         public static new string[] FALSE_PACKAGE_IDS = [""];
         public static new string[] FALSE_PACKAGE_VERSIONS = [""];
 
@@ -59,6 +59,7 @@ namespace UniGetUI.PackageEngine.Managers.DotNetManager
                 KnownSources = [new ManagerSource(this, "nuget.org", new Uri("https://www.nuget.org/api/v2"))],
             };
 
+            PackageDetailsProvider = new DotNetDetailsProvider(this);
             OperationProvider = new DotNetOperationProvider(this);
         }
 
@@ -106,6 +107,7 @@ namespace UniGetUI.PackageEngine.Managers.DotNetManager
                 }
             };
 
+            p.StartInfo = CoreTools.UpdateEnvironmentVariables(p.StartInfo);
             IProcessTaskLogger logger = TaskLogger.CreateNew(LoggableTaskType.ListUpdates, p);
             p.Start();
 
@@ -140,7 +142,15 @@ namespace UniGetUI.PackageEngine.Managers.DotNetManager
                         continue;
                     }
 
-                    Packages.Add(new Package(CoreTools.FormatAsName(elements[0]), elements[0], elements[1], elements[2], DefaultSource, this, PackageScope.Global));
+                    Packages.Add(new Package(
+                        CoreTools.FormatAsName(elements[0]),
+                        elements[0],
+                        elements[1],
+                        elements[2],
+                        DefaultSource,
+                        this,
+                        new(PackageScope.Global)
+                    ));
                 }
             }
             logger.AddToStdErr(await p.StandardError.ReadToEndAsync());
@@ -153,14 +163,14 @@ namespace UniGetUI.PackageEngine.Managers.DotNetManager
         protected override async Task<Package[]> GetInstalledPackages_UnSafe()
         {
             List<Package> Packages = [];
-            foreach (PackageScope scope in new PackageScope[] { PackageScope.Local, PackageScope.Global })
+            foreach (var options in new OverridenInstallationOptions[] { new(PackageScope.Local), new(PackageScope.Global) })
             {
                 Process p = new()
                 {
                     StartInfo = new ProcessStartInfo
                     {
                         FileName = Status.ExecutablePath,
-                        Arguments = Properties.ExecutableCallArgs + " list" + (scope == PackageScope.Global ? " --global" : ""),
+                        Arguments = Properties.ExecutableCallArgs + " list" + (options.Scope == PackageScope.Global ? " --global" : ""),
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
                         UseShellExecute = false,
@@ -202,7 +212,14 @@ namespace UniGetUI.PackageEngine.Managers.DotNetManager
                             continue;
                         }
 
-                        Packages.Add(new Package(CoreTools.FormatAsName(elements[0]), elements[0], elements[1], DefaultSource, this, scope));
+                        Packages.Add(new Package(
+                            CoreTools.FormatAsName(elements[0]),
+                            elements[0],
+                            elements[1],
+                            DefaultSource,
+                            this,
+                            options
+                        ));
                     }
                 }
                 logger.AddToStdErr(await p.StandardError.ReadToEndAsync());

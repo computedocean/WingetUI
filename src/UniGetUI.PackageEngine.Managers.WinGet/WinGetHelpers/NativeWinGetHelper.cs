@@ -8,6 +8,7 @@ using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.PackageEngine.ManagerClasses.Classes;
 using UniGetUI.PackageEngine.PackageClasses;
+using UniGetUI.PackageEngine.Structs;
 using WindowsPackageManager.Interop;
 
 namespace UniGetUI.PackageEngine.Managers.WingetManager;
@@ -38,7 +39,7 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
         List<Package> Packages = [];
         INativeTaskLogger logger = Manager.TaskLogger.CreateNew(LoggableTaskType.FindPackages);
         Dictionary<(PackageCatalogReference, PackageMatchField), Task<FindPackagesResult>> FindPackageTasks = [];
-        
+
         // Load catalogs
         logger.Log("Loading available catalogs...");
         IReadOnlyList<PackageCatalogReference> AvailableCatalogs = WinGetManager.GetPackageCatalogs();
@@ -109,12 +110,26 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
                     // Create the Package item and add it to the list
                     logger.Log(
                         $"Found package: {catPkg.Name}|{catPkg.Id}|{catPkg.DefaultInstallVersion.Version} on catalog {source.Name}");
+
+                    var overriden_options = new OverridenInstallationOptions();
+
+                    var installOptions = Factory.CreateInstallOptions();
+                    if (catPkg.DefaultInstallVersion.HasApplicableInstaller(installOptions))
+                    {
+                        var options = catPkg.DefaultInstallVersion.GetApplicableInstaller(installOptions);
+                        if (options.ElevationRequirement is ElevationRequirement.ElevationRequired or ElevationRequirement.ElevatesSelf)
+                            overriden_options.RunAsAdministrator = true;
+                        else if (options.ElevationRequirement is ElevationRequirement.ElevationProhibited)
+                            overriden_options.RunAsAdministrator = false;
+                    }
+
                     Packages.Add(new Package(
                         catPkg.Name,
                         catPkg.Id,
                         catPkg.DefaultInstallVersion.Version,
                         source,
-                        Manager
+                        Manager,
+                        overriden_options
                     ));
                 }
             }
@@ -266,10 +281,9 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
         filters.Option = PackageFieldMatchOption.Equals;
         packageMatchFilter.Filters.Add(filters);
         packageMatchFilter.ResultLimit = 1;
-        Task<FindPackagesResult> SearchResult =
-            Task.Run(() => ConnectResult.PackageCatalog.FindPackages(packageMatchFilter));
+        var SearchResult = Task.Run(() => ConnectResult.PackageCatalog.FindPackages(packageMatchFilter));
 
-        if (SearchResult.Result == null || SearchResult.Result.Matches == null ||
+        if (SearchResult?.Result?.Matches == null ||
             SearchResult.Result.Matches.Count == 0)
         {
             logger.Error("Failed to find package " + package.Id + " in catalog " + package.Source.Name);
