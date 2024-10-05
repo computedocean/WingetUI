@@ -1,7 +1,4 @@
-using System.Diagnostics;
-using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
-using UniGetUI.PackageEngine.ManagerClasses.Classes;
 using UniGetUI.PackageEngine.Managers.PowerShellManager;
 
 namespace UniGetUI.PackageEngine.Managers.Chocolatey
@@ -12,7 +9,7 @@ namespace UniGetUI.PackageEngine.Managers.Chocolatey
         {
         }
 
-        protected override string? GetPackageInstallLocation_Unsafe(IPackage package)
+        protected override string? GetInstallLocation_UnSafe(IPackage package)
         {
             var user_path = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                 "PowerShell", "Modules", package.Id);

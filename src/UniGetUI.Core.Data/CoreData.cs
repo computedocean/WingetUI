@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Net;
-using System.Runtime.InteropServices.JavaScript;
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using UniGetUI.Core.Logging;
 
 namespace UniGetUI.Core.Data
@@ -45,8 +46,8 @@ namespace UniGetUI.Core.Data
             }
         }
 
-        public const string VersionName =  "3.1.2-beta1"; // Do not modify this line, use file scripts/apply_versions.py
-        public const double VersionNumber =  3.1191; // Do not modify this line, use file scripts/apply_versions.py
+        public const string VersionName =  "3.1.2-beta3"; // Do not modify this line, use file scripts/apply_versions.py
+        public const double VersionNumber =  3.1193; // Do not modify this line, use file scripts/apply_versions.py
 
         public const string UserAgentString = $"UniGetUI/{VersionName} (https://marticliment.com/unigetui/; contact@marticliment.com)";
 
@@ -178,14 +179,14 @@ namespace UniGetUI.Core.Data
             get
             {
                 string? dir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
-                if (dir != null)
+                if (dir is not null)
                 {
                     return dir;
                 }
 
                 Logger.Error("System.Reflection.Assembly.GetExecutingAssembly().Location returned an empty path");
 
-                return Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "UiGetUI");
+                return Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "UniGetUI");
             }
         }
 
@@ -197,7 +198,7 @@ namespace UniGetUI.Core.Data
             get
             {
                 string? filename = Process.GetCurrentProcess().MainModule?.FileName;
-                if (filename != null)
+                if (filename is not null)
                 {
                     return filename.Replace(".dll", ".exe");
                 }
@@ -312,5 +313,11 @@ namespace UniGetUI.Core.Data
                 return new_path;
             }
         }
+
+        public static JsonSerializerOptions SerializingOptions = new()
+        {
+            TypeInfoResolverChain = { new DefaultJsonTypeInfoResolver() },
+            WriteIndented = true,
+        };
     }
 }

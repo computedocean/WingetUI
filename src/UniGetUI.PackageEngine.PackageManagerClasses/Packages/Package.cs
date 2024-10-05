@@ -1,12 +1,11 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Text.Json.Nodes;
-using UniGetUI.Core.Data;
 using UniGetUI.Core.IconEngine;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.Tools;
 using UniGetUI.Interface.Enums;
 using UniGetUI.PackageEngine.Classes.Packages;
+using UniGetUI.PackageEngine.Classes.Packages.Classes;
 using UniGetUI.PackageEngine.Classes.Serializable;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.PackageEngine.Structs;
@@ -22,6 +21,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
 
         private readonly long __hash;
         private readonly long __versioned_hash;
+        private readonly string ignoredId;
 
         private IPackageDetails? __details;
         public IPackageDetails Details
@@ -81,7 +81,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
             Source = source;
             Manager = manager;
 
-            if (options != null)
+            if (options is not null)
             {
                 _overriden_options = (OverridenInstallationOptions)options;
             }
@@ -92,8 +92,10 @@ namespace UniGetUI.PackageEngine.PackageClasses
                 new Dictionary<string, object?> { { "name", Name }, { "manager", Source.AsString_DisplayName } });
 
             __hash = CoreTools.HashStringAsLong(Manager.Name + "\\" + Source.Name + "\\" + Id);
-            __versioned_hash = CoreTools.HashStringAsLong(Manager.Name + "\\" + Source.Name + "\\" + Id + "\\" + Version);
+            __versioned_hash = CoreTools.HashStringAsLong(Manager.Name + "\\" + Source.Name + "\\" + Id + "\\" + (this as Package).Version);
             IsUpgradable = false;
+
+            ignoredId = IgnoredUpdatesDatabase.GetIgnoredIdForPackage(this);
         }
 
         /// <summary>
@@ -167,27 +169,20 @@ namespace UniGetUI.PackageEngine.PackageClasses
                 iconId = iconId.Replace(".app", "");
             }
 
+            Logger.Debug($"Icon id for package={Id} is {iconId}");
             return iconId;
         }
 
-        public virtual async Task<Uri> GetIconUrl()
+        public virtual Uri GetIconUrl()
         {
             try
             {
-                string iconId = GetIconId();
-
-                CacheableIcon? icon = await Manager.GetPackageIconUrl(this);
-                string path = await IconCacheEngine.DownloadIconOrCache(icon, Manager.Name, Id);
+                CacheableIcon? icon = Manager.GetPackageIconUrl(this);
+                string? path = IconCacheEngine.GetCacheOrDownloadIcon(icon, Manager.Name, Id).GetAwaiter().GetResult();
 
                 Uri Icon;
-                if (path == "")
-                {
-                    Icon = new Uri("ms-appx:///Assets/Images/package_color.png");
-                }
-                else
-                {
-                    Icon = new Uri("file:///" + path);
-                }
+                if (path is null) Icon = new Uri("ms-appx:///Assets/Images/package_color.png");
+                else              Icon = new Uri("file:///" + path);
 
                 Logger.Debug($"Icon for package {Id} was loaded from {Icon}");
                 return Icon;
@@ -200,29 +195,16 @@ namespace UniGetUI.PackageEngine.PackageClasses
             }
         }
 
-        public virtual async Task<Uri[]> GetPackageScreenshots()
+        public virtual IEnumerable<Uri> GetScreenshots()
         {
-            return await Manager.GetPackageScreenshotsUrl(this);
+            return Manager.GetPackageScreenshotsUrl(this);
         }
 
         public virtual async Task AddToIgnoredUpdatesAsync(string version = "*")
         {
             try
             {
-                string IgnoredId = $"{Manager.Properties.Name.ToLower()}\\{Id}";
-
-                if (JsonNode.Parse(await File.ReadAllTextAsync(CoreData.IgnoredUpdatesDatabaseFile)) is not JsonObject IgnoredUpdatesJson)
-                {
-                    throw new InvalidOperationException("The IgnoredUpdates database seems to be invalid!");
-                }
-
-                if (IgnoredUpdatesJson.ContainsKey(IgnoredId))
-                {
-                    IgnoredUpdatesJson.Remove(IgnoredId);
-                }
-
-                IgnoredUpdatesJson.Add(IgnoredId, version);
-                await File.WriteAllTextAsync(CoreData.IgnoredUpdatesDatabaseFile, IgnoredUpdatesJson.ToString());
+                await Task.Run(() => IgnoredUpdatesDatabase.Add(ignoredId, version));
                 GetInstalledPackage()?.SetTag(PackageTag.Pinned);
             }
             catch (Exception ex)
@@ -236,19 +218,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
         {
             try
             {
-                string IgnoredId = $"{Manager.Properties.Name.ToLower()}\\{Id}";
-
-                if (JsonNode.Parse(await File.ReadAllTextAsync(CoreData.IgnoredUpdatesDatabaseFile)) is not JsonObject IgnoredUpdatesJson)
-                {
-                    throw new InvalidOperationException("The IgnoredUpdates database seems to be invalid!");
-                }
-
-                if (IgnoredUpdatesJson.ContainsKey(IgnoredId))
-                {
-                    IgnoredUpdatesJson.Remove(IgnoredId);
-                    await File.WriteAllTextAsync(CoreData.IgnoredUpdatesDatabaseFile, IgnoredUpdatesJson.ToString());
-                }
-
+                await Task.Run(() => IgnoredUpdatesDatabase.Remove(ignoredId));
                 GetInstalledPackage()?.SetTag(PackageTag.Default);
             }
             catch (Exception ex)
@@ -264,23 +234,11 @@ namespace UniGetUI.PackageEngine.PackageClasses
         /// all updates are ignored, calling this method with a specific version will
         /// still return true, although the passed version is not explicitly ignored.
         /// </summary>
-        public async Task<bool> HasUpdatesIgnoredAsync(string Version = "*")
+        public virtual async Task<bool> HasUpdatesIgnoredAsync(string version = "*")
         {
             try
             {
-                string IgnoredId = $"{Manager.Properties.Name.ToLower()}\\{Id}";
-
-                if (JsonNode.Parse(await File.ReadAllTextAsync(CoreData.IgnoredUpdatesDatabaseFile)) is not JsonObject IgnoredUpdatesJson)
-                {
-                    throw new InvalidOperationException("The IgnoredUpdates database seems to be invalid!");
-                }
-
-                if (IgnoredUpdatesJson.ContainsKey(IgnoredId) && (IgnoredUpdatesJson[IgnoredId]?.ToString() == "*" || IgnoredUpdatesJson[IgnoredId]?.ToString() == Version))
-                {
-                    return true;
-                }
-
-                return false;
+                return await Task.Run(() => IgnoredUpdatesDatabase.HasUpdatesIgnored(ignoredId, version));
             }
             catch (Exception ex)
             {
@@ -296,23 +254,11 @@ namespace UniGetUI.PackageEngine.PackageClasses
         /// are ignored, an empty string will be returned; and when all versions are ignored an asterisk
         /// will be returned.
         /// </summary>
-        public async Task<string> GetIgnoredUpdatesVersionAsync()
+        public virtual async Task<string> GetIgnoredUpdatesVersionAsync()
         {
             try
             {
-                string IgnoredId = $"{Manager.Properties.Name.ToLower()}\\{Id}";
-
-                if (JsonNode.Parse(await File.ReadAllTextAsync(CoreData.IgnoredUpdatesDatabaseFile)) is not JsonObject IgnoredUpdatesJson)
-                {
-                    throw new InvalidOperationException("The IgnoredUpdates database seems to be invalid!");
-                }
-
-                if (IgnoredUpdatesJson.ContainsKey(IgnoredId))
-                {
-                    return IgnoredUpdatesJson[IgnoredId]?.ToString() ?? "";
-                }
-
-                return "";
+                return await Task.Run(() => IgnoredUpdatesDatabase.GetIgnoredVersion(ignoredId)) ?? "";
             }
             catch (Exception ex)
             {
@@ -357,7 +303,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
             return PackageCacher.NewerVersionIsInstalled(this);
         }
 
-        public virtual async Task<SerializablePackage_v1> AsSerializable()
+        public virtual SerializablePackage_v1 AsSerializable()
         {
             return new SerializablePackage_v1
             {
@@ -366,11 +312,11 @@ namespace UniGetUI.PackageEngine.PackageClasses
                 Version = Version,
                 Source = Source.Name,
                 ManagerName = Manager.Name,
-                InstallationOptions = (await InstallationOptions.FromPackageAsync(this)).AsSerializable(),
+                InstallationOptions = InstallationOptions.FromPackage(this).AsSerializable(),
                 Updates = new SerializableUpdatesOptions_v1
                 {
-                    IgnoredVersion = await GetIgnoredUpdatesVersionAsync(),
-                    UpdatesIgnored = await HasUpdatesIgnoredAsync(),
+                    IgnoredVersion = GetIgnoredUpdatesVersionAsync().GetAwaiter().GetResult(),
+                    UpdatesIgnored = HasUpdatesIgnoredAsync().GetAwaiter().GetResult(),
                 }
             };
         }

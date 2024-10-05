@@ -24,7 +24,7 @@ namespace UniGetUI.Core.IconEngine
         {
             get
             {
-                if (__instance == null)
+                if (__instance is null)
                 {
                     Logger.Error("IconStore.Instance was not initialized, creating an empty instance.");
                     InitializeInstance();
@@ -88,8 +88,11 @@ namespace UniGetUI.Core.IconEngine
 
             try
             {
-                IconScreenshotDatabase_v2 JsonData = JsonSerializer.Deserialize<IconScreenshotDatabase_v2>(await File.ReadAllTextAsync(IconsAndScreenshotsFile));
-                if (JsonData.icons_and_screenshots != null)
+                IconScreenshotDatabase_v2 JsonData = JsonSerializer.Deserialize<IconScreenshotDatabase_v2>(
+                    await File.ReadAllTextAsync(IconsAndScreenshotsFile),
+                    CoreData.SerializingOptions
+                    );
+                if (JsonData.icons_and_screenshots is not null)
                 {
                     IconDatabaseData = JsonData.icons_and_screenshots;
                 }

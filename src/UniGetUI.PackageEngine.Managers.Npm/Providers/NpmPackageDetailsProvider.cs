@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Text.Json.Nodes;
 using UniGetUI.Core.IconEngine;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.Tools;
@@ -7,6 +9,7 @@ using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.PackageEngine.ManagerClasses.Classes;
 using UniGetUI.PackageEngine.ManagerClasses.Manager;
+using UniGetUI.PackageEngine.PackageClasses;
 
 namespace UniGetUI.PackageEngine.Managers.NpmManager
 {
@@ -14,7 +17,7 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
     {
         public NpmPackageDetailsProvider(Npm manager) : base(manager) { }
 
-        protected override async Task GetPackageDetails_Unsafe(IPackageDetails details)
+        protected override void GetDetails_UnSafe(IPackageDetails details)
         {
             try
             {
@@ -26,7 +29,7 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
                 p.StartInfo = new ProcessStartInfo
                 {
                     FileName = Manager.Status.ExecutablePath,
-                    Arguments = Manager.Properties.ExecutableCallArgs + " info " + details.Package.Id,
+                    Arguments = Manager.Properties.ExecutableCallArgs + " show " + details.Package.Id + " --json",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -36,61 +39,33 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
                     StandardOutputEncoding = System.Text.Encoding.UTF8
                 };
 
-                IProcessTaskLogger logger = Manager.TaskLogger.CreateNew(Enums.LoggableTaskType.LoadPackageDetails, p);
+                IProcessTaskLogger logger = Manager.TaskLogger.CreateNew(LoggableTaskType.LoadPackageDetails, p);
                 p.Start();
 
-                string? outLine;
-                int lineNo = 0;
-                bool ReadingMaintainer = false;
-                while ((outLine = await p.StandardOutput.ReadLineAsync()) != null)
-                {
-                    try
-                    {
-                        lineNo++;
-                        if (lineNo == 2)
-                        {
-                            details.License = outLine.Split("|")[1];
-                        }
-                        else if (lineNo == 3)
-                        {
-                            details.Description = outLine.Trim();
-                        }
-                        else if (lineNo == 4)
-                        {
-                            details.HomepageUrl = new Uri(outLine.Trim());
-                        }
-                        else if (outLine.StartsWith(".tarball"))
-                        {
-                            details.InstallerUrl = new Uri(outLine.Replace(".tarball: ", "").Trim());
-                            details.InstallerSize = await CoreTools.GetFileSizeAsync(details.InstallerUrl);
-                        }
-                        else if (outLine.StartsWith(".integrity"))
-                        {
-                            details.InstallerHash = outLine.Replace(".integrity: sha512-", "").Replace("==", "").Trim();
-                        }
-                        else if (outLine.StartsWith("maintainers:"))
-                        {
-                            ReadingMaintainer = true;
-                        }
-                        else if (ReadingMaintainer)
-                        {
-                            ReadingMaintainer = false;
-                            details.Author = outLine.Replace("-", "").Split('<')[0].Trim();
-                        }
-                        else if (outLine.StartsWith("published"))
-                        {
-                            details.Publisher = outLine.Split("by").Last().Split('<')[0].Trim();
-                            details.UpdateDate = outLine.Replace("published", "").Split("by")[0].Trim();
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        logger.AddToStdErr(e.ToString());
-                    }
-                }
+                string strContents = p.StandardOutput.ReadToEnd();
+                logger.AddToStdOut(strContents);
+                JsonObject? contents = JsonNode.Parse(strContents) as JsonObject;
 
-                logger.AddToStdErr(await p.StandardError.ReadToEndAsync());
-                await p.WaitForExitAsync();
+                details.License = contents?["license"]?.ToString();
+                details.Description = contents?["description"]?.ToString();
+
+                if (Uri.TryCreate(contents?["homepage"]?.ToString() ?? "", UriKind.RelativeOrAbsolute, out var homepageUrl))
+                    details.HomepageUrl = homepageUrl;
+
+                details.Publisher = (contents?["maintainers"] as JsonArray)?[0]?.ToString();
+                details.Author = contents?["author"]?.ToString();
+                details.UpdateDate = contents?["time"]?[contents?["dist-tags"]?["latest"]?.ToString() ?? details.Package.Version]?.ToString();
+
+                if (Uri.TryCreate(contents?["dist"]?["tarball"]?.ToString() ?? "", UriKind.RelativeOrAbsolute, out var installerUrl))
+                    details.InstallerUrl = installerUrl;
+
+                if(int.TryParse(contents?["dist"]?["unpackedSize"]?.ToString() ?? "", NumberStyles.Any, CultureInfo.InvariantCulture, out int installerSize))
+                    details.InstallerSize = installerSize / 1048576d;
+
+                details.InstallerHash = contents?["dist"]?["integrity"]?.ToString();
+
+                logger.AddToStdErr(p.StandardError.ReadToEnd());
+                p.WaitForExit();
                 logger.Close(p.ExitCode);
             }
             catch (Exception e)
@@ -101,17 +76,17 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
             return;
         }
 
-        protected override Task<CacheableIcon?> GetPackageIcon_Unsafe(IPackage package)
+        protected override CacheableIcon? GetIcon_UnSafe(IPackage package)
         {
             throw new NotImplementedException();
         }
 
-        protected override Task<Uri[]> GetPackageScreenshots_Unsafe(IPackage package)
+        protected override IEnumerable<Uri> GetScreenshots_UnSafe(IPackage package)
         {
             throw new NotImplementedException();
         }
 
-        protected override string? GetPackageInstallLocation_Unsafe(IPackage package)
+        protected override string? GetInstallLocation_UnSafe(IPackage package)
         {
             if (package.OverridenOptions.Scope is PackageScope.Local)
                 return Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "node_modules", package.Id);
@@ -120,14 +95,15 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
                     "node_modules", package.Id);
         }
 
-        protected override async Task<string[]> GetPackageVersions_Unsafe(IPackage package)
+        protected override IEnumerable<string> GetInstallableVersions_UnSafe(IPackage package)
         {
             Process p = new()
             {
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = Manager.Status.ExecutablePath,
-                    Arguments = Manager.Properties.ExecutableCallArgs + " show " + package.Id + " versions --json",
+                    Arguments =
+                        Manager.Properties.ExecutableCallArgs + " show " + package.Id + " versions --json",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -138,26 +114,23 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
                 }
             };
 
-            IProcessTaskLogger logger = Manager.TaskLogger.CreateNew(Enums.LoggableTaskType.LoadPackageVersions, p);
+            IProcessTaskLogger logger = Manager.TaskLogger.CreateNew(LoggableTaskType.LoadPackageVersions, p);
             p.Start();
 
-            string? line;
-            List<string> versions = [];
+            string strContents = p.StandardOutput.ReadToEnd();
+            logger.AddToStdOut(strContents);
+            JsonArray? rawVersions = JsonNode.Parse(strContents) as JsonArray;
 
-            while ((line = await p.StandardOutput.ReadLineAsync()) != null)
-            {
-                logger.AddToStdOut(line);
-                if (line.Contains('"'))
-                {
-                    versions.Add(line.Trim().TrimStart('"').TrimEnd(',').TrimEnd('"'));
-                }
-            }
+            List<string> versions = new();
+            foreach(JsonNode? raw_ver in rawVersions ?? [])
+                if(raw_ver is not null)
+                    versions.Add(raw_ver.ToString());
 
-            logger.AddToStdErr(await p.StandardError.ReadToEndAsync());
-            await p.WaitForExitAsync();
+            logger.AddToStdErr(p.StandardError.ReadToEnd());
+            p.WaitForExit();
             logger.Close(p.ExitCode);
 
-            return versions.ToArray();
+            return versions;
         }
     }
 }

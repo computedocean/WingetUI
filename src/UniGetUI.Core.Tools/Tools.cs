@@ -43,6 +43,7 @@ namespace UniGetUI.Core.Tools
             {
                 dict.Add(index.ToString(), item);
             }
+
             return Translate(text, dict);
         }
 
@@ -75,7 +76,12 @@ namespace UniGetUI.Core.Tools
         /// </summary>
         /// <param name="command">The executable alias to find</param>
         /// <returns>A tuple containing: a boolean hat represents whether the path was found or not; the path to the file if found.</returns>
-        public static async Task<Tuple<bool, string>> Which(string command)
+        public static async Task<Tuple<bool, string>> WhichAsync(string command)
+        {
+            return await Task.Run(() => Which(command));
+        }
+
+        public static Tuple<bool, string> Which(string command, bool updateEnv = true)
         {
             command = command.Replace(";", "").Replace("&", "").Trim();
             Logger.Debug($"Begin \"which\" search for command {command}");
@@ -93,28 +99,38 @@ namespace UniGetUI.Core.Tools
                     StandardErrorEncoding = CodePagesEncodingProvider.Instance.GetEncoding(CoreData.CODE_PAGE),
                 }
             };
-            process.StartInfo = UpdateEnvironmentVariables(process.StartInfo);
-            process.Start();
-            string? line = await process.StandardOutput.ReadLineAsync();
-            string output;
-            if (line == null)
+            if (updateEnv)
             {
-                output = "";
-            }
-            else
-            {
-                output = line.Trim();
+                process.StartInfo = UpdateEnvironmentVariables(process.StartInfo);
             }
 
-            await process.WaitForExitAsync();
-            if (process.ExitCode != 0 || output == "")
+            try
             {
-                Logger.ImportantInfo($"Command {command} was not found on the system");
-                return new Tuple<bool, string>(false, "");
-            }
 
-            Logger.Debug($"Command {command} was found on {output}");
-            return new Tuple<bool, string>(File.Exists(output), output);
+
+                process.Start();
+                string? line = process.StandardOutput.ReadLine();
+                string output;
+
+                if (line is null) output = "";
+                else output = line.Trim();
+
+                process.WaitForExit();
+
+                if (process.ExitCode != 0 || output == "")
+                {
+                    Logger.ImportantInfo($"Command {command} was not found on the system");
+                    return new Tuple<bool, string>(false, "");
+                }
+
+                Logger.Debug($"Command {command} was found on {output}");
+                return new Tuple<bool, string>(File.Exists(output), output);
+            }
+            catch
+            {
+                if (updateEnv) return Which(command, false);
+                throw;
+            }
         }
 
         /// <summary>
@@ -150,7 +166,7 @@ namespace UniGetUI.Core.Tools
             Random random = new();
             const string pool = "abcdefghijklmnopqrstuvwxyz0123456789";
             IEnumerable<char> chars = Enumerable.Range(0, length)
-                .Select(x => pool[random.Next(0, pool.Length)]);
+                .Select(_ => pool[random.Next(0, pool.Length)]);
             return new string(chars.ToArray());
         }
 
@@ -161,7 +177,10 @@ namespace UniGetUI.Core.Tools
             {
                 LangName = LanguageEngine.Locale;
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
 
             string Error_String = $@"
                         OS: {Environment.OSVersion.Platform}
@@ -243,9 +262,19 @@ Crash Traceback:
             return await GetFileSizeAsyncAsLong(url) / 1048576d;
         }
 
+        /// <summary>
+        /// Returns the size (in MB) of the file at the given URL
+        /// </summary>
+        /// <param name="url">a valid Uri object containing a URL to a file</param>
+        /// <returns>a double representing the size in MBs, 0 if the process fails</returns>
+        public static double GetFileSize(Uri? url)
+        {
+            return GetFileSizeAsyncAsLong(url).GetAwaiter().GetResult() / 1048576d;
+        }
+
         public static async Task<long> GetFileSizeAsyncAsLong(Uri? url)
         {
-            if (url == null)
+            if (url is null)
             {
                 return 0;
             }
@@ -305,7 +334,10 @@ Crash Traceback:
                         double val = double.Parse(_ver, CultureInfo.InvariantCulture);
                         return val;
                     }
-                    catch { }
+                    catch
+                    {
+                        // ignored
+                    }
                 }
 
                 return res;
@@ -434,7 +466,7 @@ Crash Traceback:
         /// </summary>
         /// <param name="linkPath">The location of the link to be created</param>
         /// <param name="targetPath">The location of the real folder where to point</param>
-        public static async Task CreateSymbolicLinkDir(string linkPath, string targetPath)
+        public static void CreateSymbolicLinkDir(string linkPath, string targetPath)
         {
             var startInfo = new ProcessStartInfo
             {
@@ -449,7 +481,7 @@ Crash Traceback:
             Process? p = Process.Start(startInfo);
             if (p is not null)
             {
-                await p.WaitForExitAsync();
+                p.WaitForExit();
             }
 
             if (p is null || p.ExitCode != 0)
@@ -493,7 +525,7 @@ Crash Traceback:
         {
             foreach (DictionaryEntry env in Environment.GetEnvironmentVariables(EnvironmentVariableTarget.Machine))
             {
-                info.Environment[env.Key.ToString()] = env.Value?.ToString();
+                info.Environment[env.Key?.ToString() ?? "UNKNOWN"] = env.Value?.ToString();
             }
             foreach (DictionaryEntry env in Environment.GetEnvironmentVariables(EnvironmentVariableTarget.User))
             {

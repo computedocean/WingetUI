@@ -12,7 +12,7 @@ namespace UniGetUI.PackageEngine.PackageLoader
         public UpgradablePackagesLoader(IEnumerable<IPackageManager> managers)
         : base(managers, "DISCOVERABLE_PACKAGES", AllowMultiplePackageVersions: false)
         {
-            FinishedLoading += (s, e) => StartAutoCheckTimeout();
+            FinishedLoading += (_, _) => StartAutoCheckTimeout();
         }
 
         protected override async Task<bool> IsPackageValid(IPackage package)
@@ -30,17 +30,17 @@ namespace UniGetUI.PackageEngine.PackageLoader
             return true;
         }
 
-        protected override Task<IPackage[]> LoadPackagesFromManager(IPackageManager manager)
+        protected override IEnumerable<IPackage> LoadPackagesFromManager(IPackageManager manager)
         {
             return manager.GetAvailableUpdates();
         }
-#pragma warning disable 
-        protected override async Task WhenAddingPackage(IPackage package)
+        protected override Task WhenAddingPackage(IPackage package)
         {
             package.GetAvailablePackage()?.SetTag(PackageTag.IsUpgradable);
             package.GetInstalledPackage()?.SetTag(PackageTag.IsUpgradable);
+
+            return Task.CompletedTask;
         }
-#pragma warning restore
 
         protected void StartAutoCheckTimeout()
         {
@@ -57,7 +57,7 @@ namespace UniGetUI.PackageEngine.PackageLoader
                     Logger.Debug("Invalid value for UpdatesCheckInterval, using default value of 3600 seconds");
                 }
 
-                if (UpdatesTimer != null)
+                if (UpdatesTimer is not null)
                 {
                     UpdatesTimer.Stop();
                     UpdatesTimer.Dispose();

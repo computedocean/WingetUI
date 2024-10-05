@@ -73,12 +73,12 @@ namespace UniGetUI.PackageEngine.Interfaces
         /// After calling this method, the returned URL points to a location on the local machine
         /// </summary>
         /// <returns>An always-valid URI object, pointing to a file:// or to a ms-appx:// URL</returns>
-        public Task<Uri> GetIconUrl();
+        public Uri GetIconUrl();
 
         /// <summary>
         /// Retrieves a list og URIs representing the available screenshots for this package.
         /// </summary>
-        public Task<Uri[]> GetPackageScreenshots();
+        public IEnumerable<Uri> GetScreenshots();
 
 
         /// <summary>
@@ -98,7 +98,7 @@ namespace UniGetUI.PackageEngine.Interfaces
         /// all updates are ignored, calling this method with a specific version will
         /// still return true, although the passed version is not explicitly ignored.
         /// </summary>
-        public Task<bool> HasUpdatesIgnoredAsync(string Version = "*");
+        public Task<bool> HasUpdatesIgnoredAsync(string version = "*");
 
         /// <summary>
         /// Returns (as a string) the version for which a package has been ignored. When no versions
@@ -136,7 +136,7 @@ namespace UniGetUI.PackageEngine.Interfaces
         /// </summary>
         public bool NewerVersionIsInstalled();
 
-        public Task<SerializablePackage_v1> AsSerializable();
+        public SerializablePackage_v1 AsSerializable();
 
         public SerializableIncompatiblePackage_v1 AsSerializable_Incompatible();
     }

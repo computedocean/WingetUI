@@ -11,13 +11,12 @@ namespace UniGetUI.PackageEngine.Managers.Chocolatey
         public ChocolateyDetailsProvider(BaseNuGet manager) : base(manager)
         { }
 
-        protected override async Task<string[]> GetPackageVersions_Unsafe(IPackage package)
+        protected override IEnumerable<string> GetInstallableVersions_UnSafe(IPackage package)
         {
             Process p = new()
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    // choco search php --exact --all-versions
                     FileName = Manager.Status.ExecutablePath,
                     Arguments = Manager.Properties.ExecutableCallArgs + $" search {package.Id} --exact --all-versions",
                     UseShellExecute = false,
@@ -35,7 +34,7 @@ namespace UniGetUI.PackageEngine.Managers.Chocolatey
 
             string? line;
             List<string> versions = [];
-            while ((line = await p.StandardOutput.ReadLineAsync()) != null)
+            while ((line = p.StandardOutput.ReadLine()) is not null)
             {
                 logger.AddToStdOut(line);
                 if (line.Contains("[Approved]"))
@@ -43,14 +42,14 @@ namespace UniGetUI.PackageEngine.Managers.Chocolatey
                     versions.Add(line.Split(' ')[1].Trim());
                 }
             }
-            logger.AddToStdErr(await p.StandardError.ReadToEndAsync());
-            await p.WaitForExitAsync();
+            logger.AddToStdErr(p.StandardError.ReadToEnd());
+            p.WaitForExit();
             logger.Close(p.ExitCode);
 
-            return versions.ToArray();
+            return versions;
         }
 
-        protected override string? GetPackageInstallLocation_Unsafe(IPackage package)
+        protected override string? GetInstallLocation_UnSafe(IPackage package)
         {
             string portable_path = Manager.Status.ExecutablePath.Replace("choco.exe", $"bin\\{package.Id}.exe");
             if (File.Exists(portable_path))

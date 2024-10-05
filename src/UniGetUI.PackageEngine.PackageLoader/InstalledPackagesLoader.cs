@@ -1,7 +1,6 @@
 using UniGetUI.Core.Logging;
 using UniGetUI.Interface.Enums;
 using UniGetUI.PackageEngine.Interfaces;
-using UniGetUI.PackageEngine.PackageClasses;
 
 namespace UniGetUI.PackageEngine.PackageLoader
 {
@@ -12,25 +11,23 @@ namespace UniGetUI.PackageEngine.PackageLoader
         {
         }
 
-#pragma warning disable
-        protected override async Task<bool> IsPackageValid(IPackage package)
+        protected override Task<bool> IsPackageValid(IPackage package)
         {
-            return true;
+            return Task.FromResult(true);
         }
-#pragma warning restore
 
-        protected override Task<IPackage[]> LoadPackagesFromManager(IPackageManager manager)
+        protected override IEnumerable<IPackage> LoadPackagesFromManager(IPackageManager manager)
         {
             return manager.GetInstalledPackages();
         }
 
         protected override async Task WhenAddingPackage(IPackage package)
         {
-            if (await package.HasUpdatesIgnoredAsync(Version: "*"))
+            if (await package.HasUpdatesIgnoredAsync(version: "*"))
             {
                 package.Tag = PackageTag.Pinned;
             }
-            else if (package.GetUpgradablePackage() != null)
+            else if (package.GetUpgradablePackage() is not null)
             {
                 package.Tag = PackageTag.IsUpgradable;
             }
@@ -43,20 +40,20 @@ namespace UniGetUI.PackageEngine.PackageLoader
             IsLoading = true;
             InvokeStartedLoadingEvent();
 
-            List<Task<IPackage[]>> tasks = new();
+            List<Task<IEnumerable<IPackage>>> tasks = new();
 
             foreach (IPackageManager manager in Managers)
             {
                 if (manager.IsEnabled() && manager.Status.Found)
                 {
-                    Task<IPackage[]> task = LoadPackagesFromManager(manager);
+                    Task<IEnumerable<IPackage>> task = Task.Run(() => LoadPackagesFromManager(manager));
                     tasks.Add(task);
                 }
             }
 
             while (tasks.Count > 0)
             {
-                foreach (Task<IPackage[]> task in tasks.ToArray())
+                foreach (Task<IEnumerable<IPackage>> task in tasks.ToArray())
                 {
                     if (!task.IsCompleted)
                     {

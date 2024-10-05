@@ -76,3 +76,9 @@ src/UniGetUI/choco-cli/extensions/chocolatey-visualstudio/
 src/UniGetUI/choco-cli/extensions/chocolatey-dotnetfx/
 
 *.user
+/src/UniGetUI/Generated Files
+/InstallerExtras/MsiCreator/.vs/MsiInstallerWrapper/CopilotIndices
+/InstallerExtras/MsiCreator/.vs
+InstallerExtras/MsiCreator/setup.exe
+InstallerExtras/MsiCreator/UniGetUI Installer.msi
+InstallerExtras/MsiCreator/UniGetUISetup.msi

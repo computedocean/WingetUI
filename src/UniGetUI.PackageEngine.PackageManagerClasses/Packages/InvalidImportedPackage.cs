@@ -70,13 +70,12 @@ namespace UniGetUI.PackageEngine.PackageClasses
             __hash = CoreTools.HashStringAsLong(data.Name + data.Id);
             __extended_hash = CoreTools.HashStringAsLong(data.Name + data.Id + data.Version);
         }
-#pragma warning disable CS1998
-        public async Task AddToIgnoredUpdatesAsync(string version = "*")
+        public Task AddToIgnoredUpdatesAsync(string version = "*")
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        public Task<SerializablePackage_v1> AsSerializable()
+        public SerializablePackage_v1 AsSerializable()
         {
             throw new NotImplementedException();
         }
@@ -112,7 +111,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
             throw new NotImplementedException();
         }
 
-        public async Task<Uri> GetIconUrl()
+        public Uri GetIconUrl()
         {
             return new Uri("ms-appx:///Assets/Images/package_color.png");
         }
@@ -127,7 +126,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
             return null;
         }
 
-        public async Task<Uri[]> GetPackageScreenshots()
+        public IEnumerable<Uri> GetScreenshots()
         {
             return [];
         }
@@ -142,7 +141,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
             return __extended_hash;
         }
 
-        public async Task<bool> HasUpdatesIgnoredAsync(string Version = "*")
+        public async Task<bool> HasUpdatesIgnoredAsync(string version = "*")
         {
             return false;
         }

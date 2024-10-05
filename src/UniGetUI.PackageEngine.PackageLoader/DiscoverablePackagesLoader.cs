@@ -28,37 +28,34 @@ namespace UniGetUI.PackageEngine.PackageLoader
             await base.ReloadPackages();
         }
 
-#pragma warning disable
         protected override async Task<bool> IsPackageValid(IPackage package)
         {
-            return true;
+            return await Task.FromResult(true);
         }
-#pragma warning restore
 
-        protected override Task<IPackage[]> LoadPackagesFromManager(IPackageManager manager)
+        protected override IEnumerable<IPackage> LoadPackagesFromManager(IPackageManager manager)
         {
             string text = QUERY_TEXT;
             text = CoreTools.EnsureSafeQueryString(text);
             if (text == string.Empty)
             {
-                return new Task<IPackage[]>(() => { return []; });
+                return [];
             }
 
-            return manager.FindPackages(text);
+            return  manager.FindPackages(text);
         }
 
-#pragma warning disable
-        protected override async Task WhenAddingPackage(IPackage package)
+        protected override Task WhenAddingPackage(IPackage package)
         {
-            if (package.GetUpgradablePackage() != null)
+            if (package.GetUpgradablePackage() is not null)
             {
                 package.SetTag(PackageTag.IsUpgradable);
             }
-            else if (package.GetInstalledPackage() != null)
+            else if (package.GetInstalledPackage() is not null)
             {
                 package.SetTag(PackageTag.AlreadyInstalled);
             }
+            return Task.CompletedTask;
         }
-#pragma warning restore
     }
 }

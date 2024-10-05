@@ -1,0 +1,12 @@
+﻿using Microsoft.UI.Xaml.Controls;
+using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.PackageClasses;
+
+namespace UniGetUI.Interface.Widgets
+{
+    public class PackageItemContainer : ItemContainer
+    {
+        public IPackage? Package { get; set; }
+        public PackageWrapper Wrapper { get; set; } = null!;
+    }
+}
