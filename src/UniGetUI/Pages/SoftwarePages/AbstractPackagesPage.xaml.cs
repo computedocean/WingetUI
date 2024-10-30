@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Diagnostics;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
@@ -74,9 +76,9 @@ namespace UniGetUI.Interface
         protected AbstractPackageLoader Loader;
         public ObservablePackageCollection FilteredPackages = [];
         protected List<IPackageManager> UsedManagers = [];
-        protected Dictionary<IPackageManager, List<IManagerSource>> UsedSourcesForManager = [];
-        protected Dictionary<IPackageManager, TreeViewNode> RootNodeForManager = [];
-        protected Dictionary<IManagerSource, TreeViewNode> NodesForSources = [];
+        protected ConcurrentDictionary<IPackageManager, List<IManagerSource>> UsedSourcesForManager = [];
+        protected ConcurrentDictionary<IPackageManager, TreeViewNode> RootNodeForManager = [];
+        protected ConcurrentDictionary<IManagerSource, TreeViewNode> NodesForSources = [];
         private readonly TreeViewNode LocalPackagesNode;
         public InfoBadge? ExternalCountBadge;
 
@@ -106,7 +108,7 @@ namespace UniGetUI.Interface
         }
         protected string NoMatches_SubtitleText
         {
-            get => FoundPackages_SubtitleText_Base(Loader.Packages.Count(), FilteredPackages.Count) +
+            get => FoundPackages_SubtitleText_Base(Loader.Count(), FilteredPackages.Count) +
                (SHOW_LAST_CHECKED_TIME ? " " + CoreTools.Translate("(Last checked: {0})", LastPackageLoadTime.ToString()) : "");
         }
         protected string FoundPackages_SubtitleText { get => NoMatches_SubtitleText; }
@@ -323,12 +325,14 @@ namespace UniGetUI.Interface
             }
             else
             {
-                foreach (IPackage package in Loader.Packages.ToArray())
+                foreach (IPackage package in Loader.Packages)
                 {
                     AddPackageToSourcesList(package);
                 }
             }
             FilterPackages();
+            if (!Settings.Get("DisableIconsOnPackageLists"))
+                _ = LoadIconsForNewPackages();
         }
 
         private void Loader_FinishedLoading(object? sender, EventArgs e)
@@ -357,14 +361,17 @@ namespace UniGetUI.Interface
             LoadingProgressBar.Visibility = Visibility.Visible;
             UpdatePackageCount();
         }
+
         public void SearchTriggered()
         {
             QueryBlock.Focus(FocusState.Pointer);
         }
+
         public void ReloadTriggered()
         {
             _ = LoadPackages(ReloadReason.Manual);
         }
+
         public void SelectAllTriggered()
         {
             if (QueryBlock.FocusState == FocusState.Unfocused)
@@ -381,6 +388,7 @@ namespace UniGetUI.Interface
                 }
             }
         }
+
         protected void AddPackageToSourcesList(IPackage package)
         {
             IManagerSource source = package.Source;
@@ -402,8 +410,8 @@ namespace UniGetUI.Interface
                     SourcesTreeView.SelectedNodes.Add(node);
                 }
 
-                RootNodeForManager.Add(source.Manager, node);
-                UsedSourcesForManager.Add(source.Manager, []);
+                RootNodeForManager.TryAdd(source.Manager, node);
+                UsedSourcesForManager.TryAdd(source.Manager, []);
                 SourcesPlaceholderText.Visibility = Visibility.Collapsed;
                 SourcesTreeViewGrid.Visibility = Visibility.Visible;
             }
@@ -412,7 +420,7 @@ namespace UniGetUI.Interface
             {
                 UsedSourcesForManager[source.Manager].Add(source);
                 TreeViewNode item = new() { Content = source.Name + "                                                                                    ." };
-                NodesForSources.Add(source, item);
+                NodesForSources.TryAdd(source, item);
 
                 if (source.IsVirtualManager)
                 {
@@ -489,11 +497,11 @@ namespace UniGetUI.Interface
             {
                 foreach (TreeViewNode node in SourcesTreeView.SelectedNodes)
                 {
-                    if (NodesForSources.ContainsValue(node))
+                    if (NodesForSources.Values.Contains(node))
                     {
                         VisibleSources.Add(NodesForSources.First(x => x.Value == node).Key);
                     }
-                    else if (RootNodeForManager.ContainsValue(node))
+                    else if (RootNodeForManager.Values.Contains(node))
                     {
                         IPackageManager manager = RootNodeForManager.First(x => x.Value == node).Key;
                         VisibleManagers.Add(manager);
@@ -572,6 +580,7 @@ namespace UniGetUI.Interface
             }
 
             FilteredPackages.BlockSorting = true;
+
             foreach (IPackage match in MatchingList)
             {
                 if (VisibleSources.Contains(match.Source) || (!match.Manager.Capabilities.SupportsCustomSources && VisibleManagers.Contains(match.Manager)))
@@ -615,7 +624,7 @@ namespace UniGetUI.Interface
             {
                 if (LoadingProgressBar.Visibility == Visibility.Collapsed)
                 {
-                    if (!Loader.Packages.Any())
+                    if (!Loader.Any())
                     {
                         BackgroundText.Text = NoPackages_BackgroundText;
                         SourcesPlaceholderText.Text = NoPackages_SourcesText;
@@ -632,9 +641,9 @@ namespace UniGetUI.Interface
                 }
                 else
                 {
-                    BackgroundText.Visibility = Loader.Packages.Any() ? Visibility.Collapsed : Visibility.Visible;
+                    BackgroundText.Visibility = Loader.Any() ? Visibility.Collapsed : Visibility.Visible;
                     BackgroundText.Text = MainSubtitle_StillLoading;
-                    SourcesPlaceholderText.Visibility = Loader.Packages.Any() ? Visibility.Collapsed : Visibility.Visible;
+                    SourcesPlaceholderText.Visibility = Loader.Any() ? Visibility.Collapsed : Visibility.Visible;
                     SourcesPlaceholderText.Text = MainSubtitle_StillLoading;
                     MainSubtitle.Text = MainSubtitle_StillLoading;
                 }
@@ -642,13 +651,13 @@ namespace UniGetUI.Interface
             else
             {
                 BackgroundText.Text = NoPackages_BackgroundText;
-                BackgroundText.Visibility = Loader.Packages.Any() ? Visibility.Collapsed : Visibility.Visible;
+                BackgroundText.Visibility = Loader.Any() ? Visibility.Collapsed : Visibility.Visible;
                 MainSubtitle.Text = FoundPackages_SubtitleText;
             }
 
             if (ExternalCountBadge is not null)
             {
-                ExternalCountBadge.Visibility = !Loader.Packages.Any() ? Visibility.Collapsed : Visibility.Visible;
+                ExternalCountBadge.Visibility = !Loader.Any() ? Visibility.Collapsed : Visibility.Visible;
                 ExternalCountBadge.Value = Loader.Count();
             }
 
@@ -684,12 +693,11 @@ namespace UniGetUI.Interface
 
         protected void ShowDetailsForPackage(IPackage? package)
         {
-            if (package is null)
+            if (package is null || package.Source.IsVirtualManager || package is InvalidImportedPackage)
             {
                 return;
             }
 
-            Logger.Warn(PAGE_ROLE.ToString());
             DialogHelper.ShowPackageDetails(package, PAGE_ROLE);
         }
 
@@ -719,7 +727,7 @@ namespace UniGetUI.Interface
 
         protected async void ShowInstallationOptionsForPackage(IPackage? package)
         {
-            if (package is null)
+            if (package is null || package.Source.IsVirtualManager || package is InvalidImportedPackage)
             {
                 return;
             }
@@ -778,16 +786,16 @@ namespace UniGetUI.Interface
 
         private void PackageItemContainer_RightTapped(object sender, RightTappedRoutedEventArgs e)
         {
-            if (sender is PackageItemContainer container && container.Package is IPackage package)
+            if (sender is PackageItemContainer container && container.Package is not null)
             {
                 PackageList.Select(container.Wrapper.Index);
-                WhenShowingContextMenu(package);
+                WhenShowingContextMenu(container.Package);
             }
         }
 
         private void PackageItemContainer_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
         {
-            if (sender is PackageItemContainer container)
+            if (sender is PackageItemContainer container && container.Package is not null)
             {
                 PackageList.Select(container.Wrapper.Index);
                 ShowDetailsForPackage(container.Package);
@@ -843,9 +851,9 @@ namespace UniGetUI.Interface
         {
             if (PackageList is not null)
             {
-                PackageList.ScrollView?.ScrollTo(0, 1);
+                PackageList.ScrollView?.ScrollBy(0, 1);
                 await Task.Delay(10);
-                PackageList.ScrollView?.ScrollTo(0, 0);
+                PackageList.ScrollView?.ScrollBy(0, -1);
             }
         }
 
@@ -920,6 +928,25 @@ namespace UniGetUI.Interface
 
             BodyGrid.ColumnDefinitions[0].Width = new GridLength(final_width);
             PaneIsAnimated = false;
+        }
+
+        private async Task LoadIconsForNewPackages()
+        {
+            var PackagesWithoutIcon = new List<PackageWrapper>();
+            // Get the packages to be updated.
+            foreach (var wrapper in FilteredPackages)
+            {
+                if (wrapper.IconWasLoaded) continue;
+                wrapper.IconWasLoaded = true;
+                PackagesWithoutIcon.Add(wrapper);
+            }
+
+            // Load their icons, one at a time.
+            foreach (var wrapper in PackagesWithoutIcon)
+            {
+                var icon = await Task.Run(wrapper.Package.GetIconUrlIfAny);
+                if(icon is not null) wrapper.PackageIcon = icon;
+            }
         }
     }
 }

@@ -21,6 +21,7 @@ using Windows.ApplicationModel.DataTransfer;
 using Microsoft.Windows.AppNotifications;
 using UniGetUI.Core.Classes;
 using UniGetUI.Interface.Enums;
+using UniGetUI.PackageEngine.PackageClasses;
 using UniGetUI.Pages.DialogPages;
 
 namespace UniGetUI.Interface
@@ -38,6 +39,7 @@ namespace UniGetUI.Interface
 
         public MainView NavigationPage = null!;
         public bool BlockLoading;
+        public readonly TextBlock LoadingSthDalogText;
         public readonly ContentDialog LoadingSthDalog;
 
         public int LoadingDialogCount;
@@ -55,7 +57,14 @@ namespace UniGetUI.Interface
             InitializeComponent();
 
             ExtendsContentIntoTitleBar = true;
-            SetTitleBar(ContentRoot);
+            try
+            {
+                SetTitleBar(ContentRoot);
+            } catch
+            {
+                Logger.Warn("Could not set the title bar to the content root");
+                MainApp.Instance.DisposeAndQuit(-1);
+            }
 
             SizeChanged += (_, _) => { SaveGeometry(); };
             AppWindow.SetIcon(Path.Join(CoreData.UniGetUIExecutableDirectory, "Assets", "Images", "icon.ico"));
@@ -73,13 +82,29 @@ namespace UniGetUI.Interface
             Title = Title + " - DEBUG BUILD";
             AppTitle.Text = Title;
 #endif
+            var panel = new StackPanel()
+            {
+                Width = 400,
+                Orientation = Orientation.Vertical,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Spacing = 20
+            };
+
+            LoadingSthDalogText = new()
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch, TextWrapping = TextWrapping.Wrap
+            };
 
             LoadingSthDalog = new ContentDialog
             {
                 Style = Application.Current.Resources["DefaultContentDialogStyle"] as Style,
                 Title = CoreTools.Translate("Please wait"),
-                Content = new ProgressBar { IsIndeterminate = true, Width = 300 }
+                Content = panel
             };
+
+            panel.Children.Add(LoadingSthDalogText);
+            panel.Children.Add(new ProgressBar { IsIndeterminate = true, HorizontalAlignment = HorizontalAlignment.Stretch});
 
             foreach (var arg in Environment.GetCommandLineArgs())
             {
@@ -126,6 +151,7 @@ namespace UniGetUI.Interface
                 try
                 {
                     this.Hide(enableEfficiencyMode: true);
+                    AppWindow.Hide();
                 }
                 catch (Exception ex)
                 {
@@ -133,6 +159,7 @@ namespace UniGetUI.Interface
                     Logger.Debug("Windows efficiency mode API crashed, but this was expected");
                     Logger.Debug(ex);
                     this.Hide(enableEfficiencyMode: false);
+                    AppWindow.Hide();
                 }
             }
             else
@@ -310,17 +337,17 @@ namespace UniGetUI.Interface
 
             Dictionary<XamlUICommand, string> Labels = new()
             {
-                { DiscoverPackages, "Discover Packages" },
-                { AvailableUpdates, "Available Updates" },
-                { InstalledPackages, "Installed Packages" },
-                { AboutUniGetUI, "WingetUI Version {0}" },
-                { ShowUniGetUI, "Show WingetUI" },
-                { QuitUniGetUI, "Quit" },
+                { DiscoverPackages, CoreTools.Translate("Discover Packages") },
+                { AvailableUpdates, CoreTools.Translate("Available Updates") },
+                { InstalledPackages, CoreTools.Translate("Installed Packages") },
+                { AboutUniGetUI, CoreTools.Translate("WingetUI Version {0}", CoreData.VersionName) },
+                { ShowUniGetUI, CoreTools.Translate("Show WingetUI") },
+                { QuitUniGetUI, CoreTools.Translate("Quit") },
             };
 
             foreach (KeyValuePair<XamlUICommand, string> item in Labels)
             {
-                item.Key.Label = CoreTools.Translate(item.Value);
+                item.Key.Label = item.Value;
             }
 
             Dictionary<XamlUICommand, string> Icons = new()
@@ -472,10 +499,9 @@ namespace UniGetUI.Interface
         public void SwitchToInterface()
         {
             SetTitleBar(__app_titlebar);
-            ContentRoot = ContentRoot;
 
             NavigationPage = new MainView();
-            Grid.SetRow(NavigationPage, 3);
+            Grid.SetRow(NavigationPage, 4);
             Grid.SetColumn(NavigationPage, 0);
             MainContentGrid.Children.Add(NavigationPage);
 
@@ -532,7 +558,7 @@ namespace UniGetUI.Interface
 
         public void SharePackage(IPackage? package)
         {
-            if (package is null)
+            if (package is null || package.Source.IsVirtualManager || package is InvalidImportedPackage)
             {
                 return;
             }
