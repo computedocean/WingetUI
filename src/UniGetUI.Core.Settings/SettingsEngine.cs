@@ -4,10 +4,10 @@ using UniGetUI.Core.Logging;
 
 namespace UniGetUI.Core.SettingsEngine
 {
-    public static class Settings
+    public static partial class Settings
     {
-        private static ConcurrentDictionary<string, bool> booleanSettings = new();
-        private static ConcurrentDictionary<string, string> valueSettings = new();
+        private static readonly ConcurrentDictionary<string, bool> booleanSettings = new();
+        private static readonly ConcurrentDictionary<string, string> valueSettings = new();
 
         public static bool Get(string setting, bool invert = false)
         {
@@ -109,6 +109,11 @@ namespace UniGetUI.Core.SettingsEngine
         {
             return AreNotificationsDisabled() || Get("DisableUpdatesNotifications");
         }
+
+        /*public static bool AreShortcutsNotificationsDisabled()
+        {
+            return AreNotificationsDisabled() || Get("DisableShortcutNotifications");
+        }*/
 
         public static bool AreErrorNotificationsDisabled()
         {

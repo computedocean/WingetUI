@@ -110,6 +110,47 @@ namespace UniGetUI.Interface
             {
                 ParametersToProcess.Enqueue(arg);
             }
+
+            _ = AutoUpdater.UpdateCheckLoop(this, UpdatesBanner);
+
+            if (!Settings.Get("TransferredOldSettings"))
+                TransferOldSettingsFormats();
+        }
+
+        private static void TransferOldSettingsFormats()
+        {
+            foreach (IPackageManager Manager in PEInterface.Managers)
+            {
+                string SettingName = "Disable" + Manager.Name;
+                if (Settings.Get(SettingName))
+                {
+                    Settings.SetDictionaryItem("DisabledManagers", Manager.Name, true);
+                    Settings.Set(SettingName, false);
+                }
+            }
+
+            // Dependency checks don't need to be transferred, because the worst case scenario is the user has to click the "don't show again" again
+
+            foreach (string Page in new[]{ "Discover", "Installed", "Bundles", "Updates"})
+            {
+                if (Settings.Get($"HideToggleFilters{Page}Page"))
+                {
+                    Settings.SetDictionaryItem("HideToggleFilters", Page, true);
+                    Settings.Set($"HideToggleFilters{Page}Page", false);
+                }
+
+                if (Settings.Get($"DisableInstantSearch{Page}Tab"))
+                {
+                    Settings.SetDictionaryItem("DisableInstantSearch", Page, true);
+                    Settings.Set($"DisableInstantSearch{Page}Tab", false);
+                }
+
+                if (!int.TryParse(Settings.GetValue($"SidepanelWidth{Page}Page"), out int sidepanelWidth)) sidepanelWidth = 250;
+                Settings.SetDictionaryItem("SidepanelWidths", Page, sidepanelWidth);
+                Settings.Set($"SidepanelWidth{Page}Page", false);
+            }
+
+            Settings.Set("TransferredOldSettings", true);
         }
 
         public void HandleNotificationActivation(AppNotificationActivatedEventArgs args)
@@ -123,17 +164,21 @@ namespace UniGetUI.Interface
             }
             else if (action == NotificationArguments.ShowOnUpdatesTab)
             {
-                NavigationPage.UpdatesNavButton.ForceClick();
+                NavigationPage.NavigateTo(PageType.Updates);
                 Activate();
             }
             else if (action == NotificationArguments.Show)
             {
                 Activate();
             }
+            else if (action == NotificationArguments.ReleaseSelfUpdateLock)
+            {
+                AutoUpdater.ReleaseLockForAutoupdate_Notification = true;
+            }
             else
             {
                 throw new ArgumentException(
-                    "args.Argument was not set to a value present in Enums.NotificationArguments");
+                    $"args.Argument was not set to a value present in Enums.NotificationArguments (value is {action})");
             }
 
             Logger.Debug("Notification activated: " + args.Arguments);
@@ -144,8 +189,9 @@ namespace UniGetUI.Interface
         /// </summary>
         public async void HandleClosingEvent(AppWindow sender, AppWindowClosingEventArgs args)
         {
+            AutoUpdater.ReleaseLockForAutoupdate_Window = true;
             SaveGeometry(Force: true);
-            if (!Settings.Get("DisableSystemTray"))
+            if (!Settings.Get("DisableSystemTray") || AutoUpdater.UpdateReadyToBeInstalled)
             {
                 args.Cancel = true;
                 try
@@ -225,15 +271,15 @@ namespace UniGetUI.Interface
             }
             else if (baseUrl.StartsWith("showDiscoverPage"))
             {
-                NavigationPage.DiscoverNavButton.ForceClick();
+                NavigationPage.NavigateTo(PageType.Discover);
             }
             else if (baseUrl.StartsWith("showUpdatesPage"))
             {
-                NavigationPage.UpdatesNavButton.ForceClick();
+                NavigationPage.NavigateTo(PageType.Updates);
             }
             else if (baseUrl.StartsWith("showInstalledPage"))
             {
-                NavigationPage.InstalledNavButton.ForceClick();
+                NavigationPage.NavigateTo(PageType.Installed);
             }
             else
             {
@@ -279,7 +325,7 @@ namespace UniGetUI.Interface
                     {
                         // Handle potential JSON files
                         Logger.ImportantInfo("Begin attempt to open the package bundle " + param);
-                        NavigationPage.BundlesNavButton.ForceClick();
+                        NavigationPage.NavigateTo(PageType.Bundles);
                         _ = NavigationPage.BundlesPage.OpenFromFile(param);
                     }
                     else if (param.EndsWith("UniGetUI.exe") || param.EndsWith("UniGetUI.dll"))
@@ -367,17 +413,17 @@ namespace UniGetUI.Interface
 
             DiscoverPackages.ExecuteRequested += (_, _) =>
             {
-                NavigationPage.DiscoverNavButton.ForceClick();
+                NavigationPage.NavigateTo(PageType.Discover);
                 Activate();
             };
             AvailableUpdates.ExecuteRequested += (_, _) =>
             {
-                NavigationPage.UpdatesNavButton.ForceClick();
+                NavigationPage.NavigateTo(PageType.Updates);
                 Activate();
             };
             InstalledPackages.ExecuteRequested += (_, _) =>
             {
-                NavigationPage.InstalledNavButton.ForceClick();
+                NavigationPage.NavigateTo(PageType.Installed);
                 Activate();
             };
             AboutUniGetUI.Label = CoreTools.Translate("WingetUI Version {0}", CoreData.VersionName);
@@ -399,16 +445,12 @@ namespace UniGetUI.Interface
             TrayIcon = new TaskbarIcon();
             ContentRoot.Children.Add(TrayIcon);
             Closed += (_, _) => TrayIcon.Dispose();
-            TrayIcon.ContextMenuMode = H.NotifyIcon.ContextMenuMode.PopupMenu;
+            TrayIcon.ContextMenuMode = ContextMenuMode.PopupMenu;
 
             XamlUICommand ShowHideCommand = new();
             ShowHideCommand.ExecuteRequested += (_, _) =>
             {
-                if (MainApp.Instance.TooltipStatus.AvailableUpdates > 0)
-                {
-                    MainApp.Instance?.MainWindow?.NavigationPage?.UpdatesNavButton?.ForceClick();
-                }
-
+                NavigationPage?.LoadDefaultPage();
                 Activate();
             };
 

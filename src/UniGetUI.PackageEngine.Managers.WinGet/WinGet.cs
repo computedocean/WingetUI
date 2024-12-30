@@ -7,7 +7,6 @@ using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
 using UniGetUI.Interface.Enums;
 using UniGetUI.PackageEngine.Classes.Manager;
-using UniGetUI.PackageEngine.Classes.Manager.Classes;
 using UniGetUI.PackageEngine.Classes.Manager.ManagerHelpers;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.ManagerClasses.Classes;
@@ -73,9 +72,9 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                 DefaultSource = new ManagerSource(this, "winget", new Uri("https://cdn.winget.microsoft.com/cache"))
             };
 
-            SourceProvider = new WinGetSourceProvider(this);
-            PackageDetailsProvider = new WinGetPackageDetailsProvider(this);
-            OperationProvider = new WinGetOperationProvider(this);
+            SourcesHelper = new WinGetSourceHelper(this);
+            DetailsHelper = new WinGetPkgDetailsHelper(this);
+            OperationHelper = new WinGetPkgOperationHelper(this);
 
             LocalPcSource = new LocalWinGetSource(this, CoreTools.Translate("Local PC"), IconType.LocalPc);
             AndroidSubsystemSource = new(this, CoreTools.Translate("Android Subsystem"), IconType.Android);
@@ -87,19 +86,19 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
 
         protected override IEnumerable<Package> FindPackages_UnSafe(string query)
         {
-            return WinGetHelper.Instance.FindPackages_UnSafe(this, query);
+            return WinGetHelper.Instance.FindPackages_UnSafe(query);
         }
 
         protected override IEnumerable<Package> GetAvailableUpdates_UnSafe()
         {
-            return WinGetHelper.Instance.GetAvailableUpdates_UnSafe(this);
+            return WinGetHelper.Instance.GetAvailableUpdates_UnSafe();
         }
 
         protected override IEnumerable<Package> GetInstalledPackages_UnSafe()
         {
             try
             {
-                var packages = WinGetHelper.Instance.GetInstalledPackages_UnSafe(this);
+                var packages = WinGetHelper.Instance.GetInstalledPackages_UnSafe();
                 NO_PACKAGES_HAVE_BEEN_LOADED = !packages.Any();
                 return packages;
             }
@@ -210,12 +209,12 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
             {
                 if (FORCE_BUNDLED)
                 {
-                    WinGetHelper.Instance = new BundledWinGetHelper();
+                    WinGetHelper.Instance = new BundledWinGetHelper(this);
                     status.Version += "\nUsing bundled WinGet helper (CLI parsing)";
                 }
                 else
                 {
-                    WinGetHelper.Instance = new NativeWinGetHelper();
+                    WinGetHelper.Instance = new NativeWinGetHelper(this);
                     status.Version += "\nUsing Native WinGet helper (COM Api)";
                 }
             }
@@ -224,12 +223,42 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                 Logger.Warn($"Cannot instantiate {(FORCE_BUNDLED? "Bundled" : "Native")} WinGet Helper due to error: {ex.Message}");
                 Logger.Warn(ex);
                 Logger.Warn("WinGet will resort to using BundledWinGetHelper()");
-                WinGetHelper.Instance = new BundledWinGetHelper();
+                WinGetHelper.Instance = new BundledWinGetHelper(this);
                 status.Version += "\nUsing bundled WinGet helper (CLI parsing, caused by exception)";
             }
 
             return status;
         }
+
+        // For future usage
+        private void ReRegisterCOMServer()
+        {
+            WinGetHelper.Instance = new NativeWinGetHelper(this);
+            NativePackageHandler.Clear();
+        }
+
+        public override void AttemptFastRepair()
+        {
+            try
+            {
+                if (WinGetHelper.Instance is NativeWinGetHelper)
+                {
+                    Logger.ImportantInfo("Attempting to reconnec to WinGet COM Server...");
+                    ReRegisterCOMServer();
+                    NO_PACKAGES_HAVE_BEEN_LOADED = false;
+                }
+                else
+                {
+                    Logger.Warn("Attempted to reconnect to COM Server but Bundled WinGet is being used.");
+                }
+            } catch (Exception ex)
+            {
+                Logger.Error("An error ocurred while attempting to reconnect to COM Server");
+                Logger.Error(ex);
+            }
+        }
+
+
 
         public override void RefreshPackageIndexes()
         {

@@ -23,15 +23,15 @@ namespace UniGetUI.Interface.SoftwarePages
 {
     public class PackageBundlesPage : AbstractPackagesPage
     {
-        BetterMenuItem? MenuInstallOptions;
-        BetterMenuItem? MenuInstall;
-        BetterMenuItem? MenuShare;
-        BetterMenuItem? MenuDetails;
-        BetterMenuItem? MenuAsAdmin;
-        BetterMenuItem? MenuInteractive;
-        BetterMenuItem? MenuSkipHash;
+        private BetterMenuItem? MenuInstallOptions;
+        private BetterMenuItem? MenuInstall;
+        private BetterMenuItem? MenuShare;
+        private BetterMenuItem? MenuDetails;
+        private BetterMenuItem? MenuAsAdmin;
+        private BetterMenuItem? MenuInteractive;
+        private BetterMenuItem? MenuSkipHash;
 
-        private bool _hasUnsavedChanges = false;
+        private bool _hasUnsavedChanges;
         private bool HasUnsavedChanges
         {
             get => _hasUnsavedChanges;
@@ -426,7 +426,6 @@ namespace UniGetUI.Interface.SoftwarePages
             Loader.Remove(package);
         }
 
-
         public async Task OpenFromFile(string? file = null)
         {
             try
@@ -540,15 +539,24 @@ namespace UniGetUI.Interface.SoftwarePages
 
                 DialogHelper.HideLoadingDialog();
                 await MainApp.Instance.MainWindow.ShowDialogAsync(warningDialog);
-
-
             }
         }
 
-        public static async Task<string> CreateBundle(IEnumerable<IPackage> packages, BundleFormatType formatType = BundleFormatType.JSON)
+        public static async Task<string> CreateBundle(IEnumerable<IPackage> unsorted_packages, BundleFormatType formatType = BundleFormatType.JSON)
         {
             SerializableBundle_v1 exportable = new();
             exportable.export_version = 2.0;
+
+            List<IPackage> packages = unsorted_packages.ToList();
+            packages.Sort(Comparison);
+
+            int Comparison(IPackage x, IPackage y)
+            {
+                if(x.Id != y.Id) return String.Compare(x.Id, y.Id, StringComparison.Ordinal);
+                if(x.Name != y.Name) return String.Compare(x.Name, y.Name, StringComparison.Ordinal);
+                return (x.VersionAsFloat > y.VersionAsFloat) ? -1 : 1;
+            }
+
             foreach (IPackage package in packages)
                 if (package is Package && !package.Source.IsVirtualManager)
                     exportable.packages.Add(await Task.Run(package.AsSerializable));
@@ -650,7 +658,7 @@ namespace UniGetUI.Interface.SoftwarePages
 
             if (manager?.Capabilities.SupportsCustomSources == true)
             {
-                source = manager?.SourceProvider?.SourceFactory.GetSourceIfExists(raw_package.Source);
+                source = manager?.SourcesHelper?.Factory.GetSourceIfExists(raw_package.Source);
             }
             else
                 source = manager?.DefaultSource;
@@ -669,5 +677,3 @@ namespace UniGetUI.Interface.SoftwarePages
         }
     }
 }
-
-

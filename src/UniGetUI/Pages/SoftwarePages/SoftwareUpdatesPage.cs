@@ -179,7 +179,7 @@ namespace UniGetUI.Interface.SoftwarePages
             MenuInteractive.IsEnabled = package.Manager.Capabilities.CanRunInteractively;
             MenuskipHash.IsEnabled = package.Manager.Capabilities.CanSkipIntegrityChecks;
 
-            MenuOpenInstallLocation.IsEnabled = package.Manager.GetPackageInstallLocation(package) is not null;
+            MenuOpenInstallLocation.IsEnabled = package.Manager.DetailsHelper.GetInstallLocation(package) is not null;
         }
 
         public override void GenerateToolBar()
@@ -215,7 +215,7 @@ namespace UniGetUI.Interface.SoftwarePages
             ToolBar.PrimaryCommands.Add(HelpButton);
 
             Dictionary<AppBarButton, string> Labels = new()
-            { // Entries with a trailing space are collapsed
+            { // Entries with a leading space are collapsed
               // Their texts will be used as the tooltip
                 { UpdateSelected,       CoreTools.Translate("Update selected packages") },
                 { UpdateAsAdmin,        " " + CoreTools.Translate("Update as administrator") },
@@ -269,6 +269,7 @@ namespace UniGetUI.Interface.SoftwarePages
                 {
                     await package.AddToIgnoredUpdatesAsync();
                     PEInterface.UpgradablePackagesLoader.Remove(package);
+                    PEInterface.UpgradablePackagesLoader.IgnoredPackages[package.Id] = package;
                 }
             };
 
@@ -389,7 +390,7 @@ namespace UniGetUI.Interface.SoftwarePages
                                 upgradablePackages[0].Version))
 
                             .AddArgument("action", NotificationArguments.ShowOnUpdatesTab)
-                            .AddButton(new AppNotificationButton(CoreTools.Translate("Open WingetUI"))
+                            .AddButton(new AppNotificationButton(CoreTools.Translate("View on UniGetUI").Replace("'", "´"))
                                 .AddArgument("action", NotificationArguments.ShowOnUpdatesTab)
                             )
                             .AddButton(new AppNotificationButton(CoreTools.Translate("Update"))
@@ -429,7 +430,7 @@ namespace UniGetUI.Interface.SoftwarePages
                             .AddText(CoreTools.Translate("{0} packages can be updated", upgradablePackages.Count))
                             .SetAttributionText(attribution)
 
-                            .AddButton(new AppNotificationButton(CoreTools.Translate("Open WingetUI"))
+                            .AddButton(new AppNotificationButton(CoreTools.Translate("Open UniGetUI").Replace("'", "´"))
                                 .AddArgument("action", NotificationArguments.ShowOnUpdatesTab)
                             )
                             .AddButton(new AppNotificationButton(CoreTools.Translate("Update all"))
@@ -529,6 +530,7 @@ namespace UniGetUI.Interface.SoftwarePages
 
             _ = package.AddToIgnoredUpdatesAsync();
             PEInterface.UpgradablePackagesLoader.Remove(package);
+            PEInterface.UpgradablePackagesLoader.IgnoredPackages[package.Id] = package;
         }
 
         private void MenuSkipVersion_Invoked(object sender, RoutedEventArgs e)
@@ -541,6 +543,7 @@ namespace UniGetUI.Interface.SoftwarePages
 
             _ = package.AddToIgnoredUpdatesAsync(package.NewVersion);
             PEInterface.UpgradablePackagesLoader.Remove(package);
+            PEInterface.UpgradablePackagesLoader.IgnoredPackages[package.Id] = package;
         }
 
         public void UpdatePackageForId(string id)

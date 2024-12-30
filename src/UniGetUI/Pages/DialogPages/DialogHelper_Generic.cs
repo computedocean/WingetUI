@@ -1,15 +1,18 @@
 using System.Diagnostics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.Windows.AppNotifications;
+using Microsoft.Windows.AppNotifications.Builder;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
 using UniGetUI.Interface;
 using UniGetUI.Interface.Dialogs;
+using UniGetUI.Interface.Enums;
 using UniGetUI.PackageEngine;
+using UniGetUI.PackageEngine.Classes.Packages.Classes;
 
 namespace UniGetUI.Pages.DialogPages;
 
@@ -54,18 +57,15 @@ public static partial class DialogHelper
     {
         ContentDialog dialog = new();
 
-        string PREVIOUSLY_ATTEMPTED_PREF = $"AlreadyAttemptedToInstall{dep_name}";
-        string DEP_SKIPPED_PREF = $"SkippedInstalling{dep_name}";
-
-        if (Settings.Get(DEP_SKIPPED_PREF))
+        if (Settings.GetDictionaryItem<string, string>("DependencyManagement", dep_name) == "skipped")
         {
             Logger.Error(
-                $"Dependency {dep_name} was not found, and the user set it to not be reminded of the midding dependency");
+                $"Dependency {dep_name} was not found, and the user set it to not be reminded of the missing dependency");
             return;
         }
 
-        bool NotFirstTime = Settings.Get(PREVIOUSLY_ATTEMPTED_PREF);
-        Settings.Set(PREVIOUSLY_ATTEMPTED_PREF, true);
+        bool NotFirstTime = Settings.GetDictionaryItem<string, string>("DependencyManagement", dep_name) == "attempted";
+        Settings.SetDictionaryItem("DependencyManagement", dep_name, "attempted");
 
         dialog.XamlRoot = Window.MainContentGrid.XamlRoot;
         dialog.Style = Application.Current.Resources["DefaultContentDialogStyle"] as Style;
@@ -125,8 +125,8 @@ public static partial class DialogHelper
         {
             c.Content = CoreTools.Translate("Do not show this dialog again for {0}", dep_name);
             c.IsChecked = false;
-            c.Checked += (_, _) => Settings.Set(DEP_SKIPPED_PREF, true);
-            c.Unchecked += (_, _) => Settings.Set(DEP_SKIPPED_PREF, false);
+            c.Checked += (_, _) => Settings.SetDictionaryItem("DependencyManagement", dep_name, "skipped");
+            c.Unchecked += (_, _) => Settings.SetDictionaryItem("DependencyManagement", dep_name, "attempted");
             p.Children.Add(c);
         }
 
@@ -236,11 +236,81 @@ public static partial class DialogHelper
         IgnoredUpdatesManager IgnoredUpdatesPage = new();
         UpdatesDialog.Content = IgnoredUpdatesPage;
         IgnoredUpdatesPage.Close += (_, _) => UpdatesDialog.Hide();
-
-        _ = IgnoredUpdatesPage.UpdateData();
         await Window.ShowDialogAsync(UpdatesDialog);
     }
 
+    public static async Task ManageDesktopShortcuts(List<string>? NewShortucts = null)
+    {
+        ContentDialog? ShortcutsDialog = new()
+        {
+            Style = Application.Current.Resources["DefaultContentDialogStyle"] as Style,
+            XamlRoot = Window.XamlRoot
+        };
+        ShortcutsDialog.Resources["ContentDialogMaxWidth"] = 1400;
+        ShortcutsDialog.Resources["ContentDialogMaxHeight"] = 1000;
+        ShortcutsDialog.Title = CoreTools.Translate("Automatic desktop shortcut remover");
+
+        DesktopShortcutsManager DesktopShortcutsPage = new(NewShortucts);
+        DesktopShortcutsPage.Close += (_, _) => ShortcutsDialog.Hide();
+
+        ShortcutsDialog.Content = DesktopShortcutsPage;
+        ShortcutsDialog.SecondaryButtonText = CoreTools.Translate("Save and close");
+        ShortcutsDialog.DefaultButton = ContentDialogButton.None;
+        ShortcutsDialog.SecondaryButtonClick += (_, _) => DesktopShortcutsPage.SaveChangesAndClose();
+
+        await Window.ShowDialogAsync(ShortcutsDialog);
+    }
+
+    public static async Task HandleNewDesktopShortcuts()
+    {
+        var UnknownShortcuts = DesktopShortcutsDatabase.GetUnknownShortcuts();
+
+        if (!Settings.AreNotificationsDisabled())
+        {
+            AppNotificationManager.Default.RemoveByTagAsync(CoreData.NewShortcutsNotificationTag.ToString());
+            AppNotification notification;
+
+            if (UnknownShortcuts.Count == 1)
+            {
+                AppNotificationBuilder builder = new AppNotificationBuilder()
+                    .SetScenario(AppNotificationScenario.Default)
+                    .SetTag(CoreData.NewShortcutsNotificationTag.ToString())
+                    .AddText(CoreTools.Translate("Desktop shortcut created"))
+                    .AddText(CoreTools.Translate("UniGetUI has detected a new desktop shortcut that can be deleted automatically."))
+                    .SetAttributionText(UnknownShortcuts.First().Split("\\").Last())
+                    .AddButton(new AppNotificationButton(CoreTools.Translate("Open UniGetUI").Replace("'", "´"))
+                        .AddArgument("action", NotificationArguments.Show)
+                    )
+                    .AddArgument("action", NotificationArguments.Show);
+
+                notification = builder.BuildNotification();
+            }
+            else
+            {
+                string attribution = "";
+                foreach (string shortcut in UnknownShortcuts) attribution += shortcut.Split("\\").Last() + ", ";
+                attribution = attribution.TrimEnd(' ').TrimEnd(',');
+
+                AppNotificationBuilder builder = new AppNotificationBuilder()
+                    .SetScenario(AppNotificationScenario.Default)
+                    .SetTag(CoreData.NewShortcutsNotificationTag.ToString())
+                    .AddText(CoreTools.Translate("{0} desktop shortcuts created", UnknownShortcuts.Count))
+                    .AddText(CoreTools.Translate("UniGetUI has detected {0} new desktop shortcuts that can be deleted automatically.", UnknownShortcuts.Count))
+                    .SetAttributionText(attribution)
+                    .AddButton(new AppNotificationButton(CoreTools.Translate("Open UniGetUI").Replace("'", "´"))
+                        .AddArgument("action", NotificationArguments.ShowOnUpdatesTab)
+                    )
+                    .AddArgument("action", NotificationArguments.ShowOnUpdatesTab);
+
+                notification = builder.BuildNotification();
+            }
+
+            notification.ExpiresOnReboot = true;
+            AppNotificationManager.Default.Show(notification);
+        }
+
+        await ManageDesktopShortcuts(UnknownShortcuts);
+    }
 
     public static async void WarnAboutAdminRights()
     {
@@ -321,15 +391,15 @@ public static partial class DialogHelper
                             "windowspowershell\\v1.0\\powershell.exe"),
                     Arguments =
                         "-ExecutionPolicy Bypass -NoLogo -NoProfile -Command \"& {" +
-                        "cmd.exe /C \"rmdir /Q /S `\"%localappdata%\\Temp\\WinGet`\"\"; " +
-                        "cmd.exe /C \"%localappdata%\\Microsoft\\WindowsApps\\winget.exe source reset --force\"; " +
+                        "cmd.exe /C \"rmdir /Q /S `\"%temp%\\WinGet`\"\"; " +
+                        "cmd.exe /C \"`\"%localappdata%\\Microsoft\\WindowsApps\\winget.exe`\" source reset --force\"; " +
                         "taskkill /im winget.exe /f; " +
                         "taskkill /im WindowsPackageManagerServer.exe /f; " +
                         "Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force; " +
-                        "Install-Module Microsoft.WinGet.Client -Force -Scope AllUsers -AllowClobber; " +
+                        "Install-Module Microsoft.WinGet.Client -Force -AllowClobber; " +
                         "Import-Module Microsoft.WinGet.Client; " +
                         "Repair-WinGetPackageManager -Force -Latest; " +
-                        "Get-AppxPackage -Name 'Microsoft.DesktopAppInstaller' | Reset-AppxPackage" +
+                        "Get-AppxPackage -Name 'Microsoft.DesktopAppInstaller' | Reset-AppxPackage; " +
                         "}\"",
                     UseShellExecute = true,
                     Verb = "runas"

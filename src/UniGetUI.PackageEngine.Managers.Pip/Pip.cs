@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using UniGetUI.Core.Logging;
 using UniGetUI.Core.Tools;
 using UniGetUI.Interface.Enums;
 using UniGetUI.PackageEngine.Classes.Manager;
+using UniGetUI.PackageEngine.Classes.Manager.Classes;
 using UniGetUI.PackageEngine.Classes.Manager.ManagerHelpers;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.ManagerClasses.Classes;
@@ -18,6 +20,29 @@ namespace UniGetUI.PackageEngine.Managers.PipManager
 
         public Pip()
         {
+            Dependencies = [
+                // parse_pip_search is required for pip package finding to work
+                new ManagerDependency(
+                    "parse-pip-search",
+                    Path.Join(Environment.SystemDirectory, "windowspowershell\\v1.0\\powershell.exe"),
+                    "-ExecutionPolicy Bypass -NoLogo -NoProfile -Command \"& {python.exe "
+                        + "-m pip install parse_pip_search; if($error.count -ne 0){pause}}\"",
+                    "python -m pip install parse_pip_search",
+                    async () =>
+                    {
+                        bool found = (await CoreTools.WhichAsync("parse_pip_search.exe")).Item1;
+                        if (found) return true;
+                        else if (Status.ExecutablePath.Contains("WindowsApps\\python.exe"))
+                        {
+                            Logger.Warn("parse_pip_search could was not found but the user will not be prompted to install it.");
+                            Logger.Warn("NOTE: Microsoft Store python is not fully supported on UniGetUI");
+                            return true;
+                        }
+                        else return false;
+                    }
+                )
+            ];
+
             Capabilities = new ManagerCapabilities
             {
                 CanRunAsAdmin = true,
@@ -42,8 +67,8 @@ namespace UniGetUI.PackageEngine.Managers.PipManager
 
             };
 
-            PackageDetailsProvider = new PipPackageDetailsProvider(this);
-            OperationProvider = new PipOperationProvider(this);
+            DetailsHelper = new PipPkgDetailsHelper(this);
+            OperationHelper = new PipPkgOperationHelper(this);
         }
 
         protected override IEnumerable<Package> FindPackages_UnSafe(string query)
@@ -285,6 +310,12 @@ namespace UniGetUI.PackageEngine.Managers.PipManager
             };
             process.Start();
             status.Version = process.StandardOutput.ReadToEnd().Trim();
+
+            if (process.ExitCode == 9009)
+            {
+                status.Found = false;
+                return status;
+            }
 
             return status;
         }

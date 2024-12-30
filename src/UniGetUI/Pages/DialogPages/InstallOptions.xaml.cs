@@ -20,7 +20,7 @@ namespace UniGetUI.Interface.Dialogs
         public SerializableInstallationOptions_v1 Options;
         public IPackage Package;
         public event EventHandler? Close;
-        private OperationType Operation;
+        private readonly OperationType Operation;
 
         public InstallOptionsPage(IPackage package, SerializableInstallationOptions_v1 options) : this(package, OperationType.None, options) { }
         public InstallOptionsPage(IPackage package, OperationType operation, SerializableInstallationOptions_v1 options)
@@ -132,7 +132,7 @@ namespace UniGetUI.Interface.Dialogs
             IgnoreUpdatesCheckbox.IsChecked = await Package.HasUpdatesIgnoredAsync();
             VersionComboBox.IsEnabled = false;
 
-            IEnumerable<string> versions = await Task.Run(() => Package.Manager.GetPackageVersions(Package));
+            IEnumerable<string> versions = await Task.Run(() => Package.Manager.DetailsHelper.GetVersions(Package));
             foreach (string ver in versions)
             {
                 VersionComboBox.Items.Add(ver);

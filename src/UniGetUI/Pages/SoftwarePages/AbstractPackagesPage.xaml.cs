@@ -1,11 +1,9 @@
 using System.Collections.Concurrent;
-using System.ComponentModel;
 using System.Diagnostics;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
 using UniGetUI.Interface.Widgets;
@@ -16,6 +14,7 @@ using UniGetUI.PackageEngine.PackageClasses;
 using UniGetUI.PackageEngine.PackageLoader;
 using Windows.System;
 using Windows.UI.Core;
+using UniGetUI.Interface.Pages;
 using UniGetUI.Pages.DialogPages;
 
 // To learn more about WinUI, the WinUI project structure,
@@ -23,7 +22,7 @@ using UniGetUI.Pages.DialogPages;
 
 namespace UniGetUI.Interface
 {
-    public abstract partial class AbstractPackagesPage
+    public abstract partial class AbstractPackagesPage : IKeyboardShortcutListener, IEnterLeaveListener
     {
 
         protected struct PackagesPageData
@@ -61,8 +60,6 @@ namespace UniGetUI.Interface
         protected readonly bool MEGA_QUERY_BOX_ENABLED;
         protected readonly bool SHOW_LAST_CHECKED_TIME;
         protected readonly bool DISABLE_FILTER_ON_QUERY_CHANGE;
-        public readonly string INSTANT_SEARCH_SETTING_NAME;
-        public readonly string SIDEPANEL_WIDTH_SETTING_NAME;
         protected readonly string PAGE_NAME;
         public readonly bool RoleIsUpdateLike;
         protected DateTime LastPackageLoadTime { get; private set; }
@@ -113,6 +110,10 @@ namespace UniGetUI.Interface
         }
         protected string FoundPackages_SubtitleText { get => NoMatches_SubtitleText; }
 
+        private string TypeQuery = "";
+        private int LastKeyDown;
+        private readonly int QUERY_SEPARATION_TIME = 1000; // 500ms between keypresses starts a new query
+
         protected AbstractPackagesPage(PackagesPageData data)
         {
             InitializeComponent();
@@ -132,8 +133,6 @@ namespace UniGetUI.Interface
             Loader = data.Loader;
 
             PAGE_NAME = data.PageName;
-            INSTANT_SEARCH_SETTING_NAME = $"DisableInstantSearch{PAGE_NAME}Tab";
-            SIDEPANEL_WIDTH_SETTING_NAME = $"SidepanelWidth{PAGE_NAME}Page";
 
             MainTitle.Text = data.PageTitle;
             HeaderIcon.Glyph = data.Glyph;
@@ -199,7 +198,7 @@ namespace UniGetUI.Interface
             {
                 if (InstantSearchCheckbox.IsChecked == true)
                 {
-                    if(!DISABLE_FILTER_ON_QUERY_CHANGE)
+                    if (!DISABLE_FILTER_ON_QUERY_CHANGE)
                         FilterPackages();
                 }
 
@@ -279,7 +278,7 @@ namespace UniGetUI.Interface
                 BackgroundText.Visibility = Visibility.Collapsed;
             }
 
-            if (Settings.Get($"HideToggleFilters{PAGE_NAME}Page"))
+            if (Settings.GetDictionaryItem<string, bool>("HideToggleFilters", PAGE_NAME))
             {
                 HideFilteringPane(skipAnimation: true);
             }
@@ -290,7 +289,7 @@ namespace UniGetUI.Interface
 
             QueryBlock.PlaceholderText = CoreTools.Translate("Search for packages");
             MegaQueryBlock.PlaceholderText = CoreTools.Translate("Search for packages");
-            InstantSearchCheckbox.IsChecked = !Settings.Get(INSTANT_SEARCH_SETTING_NAME);
+            InstantSearchCheckbox.IsChecked = !Settings.GetDictionaryItem<string, bool>("DisableInstantSearch", PAGE_NAME);
 
             HeaderIcon.FontWeight = new Windows.UI.Text.FontWeight(700);
             NameHeader.Content = CoreTools.Translate("Package Name");
@@ -449,7 +448,7 @@ namespace UniGetUI.Interface
         }
 
         private void InstantSearchValueChanged(object sender, RoutedEventArgs e)
-        { Settings.Set(INSTANT_SEARCH_SETTING_NAME, InstantSearchCheckbox.IsChecked == false); }
+        { Settings.SetDictionaryItem("DisableInstantSearch", PAGE_NAME, !InstantSearchCheckbox.IsChecked); }
         private void SourcesTreeView_SelectionChanged(TreeView sender, TreeViewSelectionChangedEventArgs args)
         { FilterPackages(); }
 
@@ -481,6 +480,101 @@ namespace UniGetUI.Interface
             Loader_PackagesChanged(this, EventArgs.Empty);
         }
 
+        private void SelectAndScrollTo(int index)
+        {
+            PackageList.Select(index);
+            PackageList.ScrollView?.ScrollTo(0, Math.Max(0, (index - 3) * 39), new ScrollingScrollOptions
+            (
+                ScrollingAnimationMode.Disabled,
+                ScrollingSnapPointsMode.Ignore
+            ));
+        }
+
+        public void PackageList_KeyDown(object sender, KeyRoutedEventArgs e)
+        {
+            string key = ((char)e.Key).ToString().ToLower();
+            if ("abcdefghijklmnopqrsztuvwxyz1234567890".IndexOf(key) > -1)
+            {
+                if (Environment.TickCount - LastKeyDown > QUERY_SEPARATION_TIME)
+                {
+                    TypeQuery = key;
+                }
+                else
+                {
+                    TypeQuery += key;
+                }
+
+                int IdQueryIndex = -1;
+                int NameSimilarityIndex = -1;
+                int IdSimilarityIndex = -1;
+                bool SelectedPackage = false;
+                for (int i = 0; i < FilteredPackages.Count; i++)
+                {
+                    if (FilteredPackages[i].Package.Name.ToLower().StartsWith(TypeQuery))
+                    {
+                        SelectAndScrollTo(i);
+                        SelectedPackage = true;
+                        break;
+                    }
+                    // To avoid jumping back high up because an ID matched it (prevent typing "wi" focusing id:"WildfireGames.0AD" instead of name:"Windows")
+                    if (IdQueryIndex == -1 && FilteredPackages[i].Package.Id.ToLower().StartsWith(TypeQuery))
+                    {
+                        IdQueryIndex = i;
+                    }
+                    if (NameSimilarityIndex == -1 && FilteredPackages[i].Package.Name.ToLower().Contains(TypeQuery))
+                    {
+                        NameSimilarityIndex = i;
+                    }
+                    if (IdSimilarityIndex == -1 && FilteredPackages[i].Package.Id.ToLower().Contains(TypeQuery))
+                    {
+                        IdSimilarityIndex = i;
+                    }
+                }
+                int QueryIndex = IdQueryIndex > -1 ? IdQueryIndex : (NameSimilarityIndex > -1 ? NameSimilarityIndex : IdSimilarityIndex);
+                if (!SelectedPackage)
+                {
+                    bool SameChars = true;
+                    char LastChar = TypeQuery.ToCharArray()[0];
+                    foreach (var c in TypeQuery)
+                    {
+                        if (c != LastChar)
+                        {
+                            SameChars = false;
+                            break;
+                        }
+                        LastChar = c;
+                    }
+
+                    if (SameChars)
+                    {
+                        int IndexOffset = TypeQuery.Length - 1;
+                        int FirstIdx = -1;
+                        int LastIdx = -1;
+                        for (int idx = 0; idx < FilteredPackages.Count; idx++)
+                        {
+                            if (FilteredPackages[idx].Package.Name.ToLower().StartsWith(LastChar))
+                            {
+                                if (FirstIdx == -1) FirstIdx = idx;
+                                LastIdx = idx;
+                            }
+                            else if (FirstIdx > -1)
+                            {
+                                // Break after the LastIdx has been set
+                                break;
+                            }
+                        }
+
+                        SelectAndScrollTo(FirstIdx + (IndexOffset % (LastIdx - FirstIdx + 1)));
+                    }
+                    else if (QueryIndex > -1)
+                    {
+                        SelectAndScrollTo(QueryIndex);
+                    }
+                }
+            }
+            LastKeyDown = Environment.TickCount;
+        }
+
         /// <summary>
         /// Will filter the packages with the query on QueryBlock.Text and put the
         /// resulting packages on the ItemsView
@@ -507,7 +601,7 @@ namespace UniGetUI.Interface
                         VisibleManagers.Add(manager);
                         if (manager.Capabilities.SupportsCustomSources)
                         {
-                            foreach (IManagerSource source in manager.SourceFactory.GetAvailableSources())
+                            foreach (IManagerSource source in manager.SourcesHelper.Factory.GetAvailableSources())
                                 if (!VisibleSources.Contains(source)) VisibleSources.Add(source);
                         }
                     }
@@ -703,7 +797,7 @@ namespace UniGetUI.Interface
 
         protected void OpenPackageInstallLocation(IPackage? package)
         {
-            string? path = package?.Manager.GetPackageInstallLocation(package);
+            string? path = package?.Manager.DetailsHelper.GetInstallLocation(package);
 
             if(path is not null)
                 Process.Start(new ProcessStartInfo
@@ -752,11 +846,11 @@ namespace UniGetUI.Interface
             if ((int)e.NewSize.Width < 30)
             {
                 HideFilteringPane();
-                Settings.SetValue(SIDEPANEL_WIDTH_SETTING_NAME, "250");
+                Settings.SetDictionaryItem("SidepanelWidths", PAGE_NAME, 250);
             }
             else
             {
-                Settings.SetValue(SIDEPANEL_WIDTH_SETTING_NAME, ((int)e.NewSize.Width).ToString());
+                Settings.SetDictionaryItem("SidepanelWidths", PAGE_NAME, (int)e.NewSize.Width);
             }
         }
 
@@ -859,7 +953,7 @@ namespace UniGetUI.Interface
 
         private void ToggleFiltersButton_Click(object sender, RoutedEventArgs e)
         {
-            Settings.Set($"HideToggleFilters{PAGE_NAME}Page", !ToggleFiltersButton.IsChecked ?? false);
+            Settings.SetDictionaryItem("HideToggleFilters", PAGE_NAME, !ToggleFiltersButton.IsChecked ?? false);
             if (ToggleFiltersButton.IsChecked ?? false)
             {
                 ShowFilteringPane();
@@ -908,11 +1002,11 @@ namespace UniGetUI.Interface
             int final_width = 250;
             try
             {
-                final_width = int.Parse(Settings.GetValue(SIDEPANEL_WIDTH_SETTING_NAME));
+                final_width = Settings.GetDictionaryItem<string, int>("SidepanelWidths", PAGE_NAME);
             }
             catch
             {
-                Settings.SetValue(SIDEPANEL_WIDTH_SETTING_NAME, "250");
+                Settings.SetDictionaryItem("SidepanelWidths", PAGE_NAME, 250);
             }
 
             if (!skipAnimation)
@@ -947,6 +1041,20 @@ namespace UniGetUI.Interface
                 var icon = await Task.Run(wrapper.Package.GetIconUrlIfAny);
                 if(icon is not null) wrapper.PackageIcon = icon;
             }
+
+            FilterPackages();
+        }
+
+        public void OnEnter()
+        {
+            Visibility = Visibility.Visible;
+            IsEnabled = true;
+        }
+
+        public void OnLeave()
+        {
+            Visibility = Visibility.Collapsed;
+            IsEnabled = false;
         }
     }
 }

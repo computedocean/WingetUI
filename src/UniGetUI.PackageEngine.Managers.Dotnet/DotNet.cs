@@ -59,8 +59,8 @@ namespace UniGetUI.PackageEngine.Managers.DotNetManager
                 KnownSources = [new ManagerSource(this, "nuget.org", new Uri("https://www.nuget.org/api/v2"))],
             };
 
-            PackageDetailsProvider = new DotNetDetailsProvider(this);
-            OperationProvider = new DotNetOperationProvider(this);
+            DetailsHelper = new DotNetDetailsHelper(this);
+            OperationHelper = new DotNetPkgOperationHelper(this);
         }
 
         protected override IEnumerable<Package> GetAvailableUpdates_UnSafe()
@@ -140,6 +140,8 @@ namespace UniGetUI.PackageEngine.Managers.DotNetManager
                     {
                         continue;
                     }
+
+                    if(elements[2].Trim() == "") continue;
 
                     Packages.Add(new Package(
                         CoreTools.FormatAsName(elements[0]),

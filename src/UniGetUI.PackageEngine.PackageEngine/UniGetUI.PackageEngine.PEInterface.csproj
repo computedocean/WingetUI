@@ -8,7 +8,7 @@
     <Platforms>x64</Platforms>
    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
   <WindowsSdkPackageVersion>10.0.26100.53</WindowsSdkPackageVersion>
-    <SdkVersion>8.0.401</SdkVersion>
+    <SdkVersion>8.0.404</SdkVersion>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <PublishSelfContained>true</PublishSelfContained>
     <Authors>Martí Climent and the contributors</Authors>
@@ -36,6 +36,7 @@
     <ProjectReference Include="..\UniGetUI.PackageEngine.Managers.PowerShell\UniGetUI.PackageEngine.Managers.PowerShell.csproj" />
     <ProjectReference Include="..\UniGetUI.PackageEngine.Managers.Scoop\UniGetUI.PackageEngine.Managers.Scoop.csproj" />
     <ProjectReference Include="..\UniGetUI.PackageEngine.Managers.WinGet\UniGetUI.PackageEngine.Managers.WinGet.csproj" />
+    <ProjectReference Include="..\UniGetUI.PackageEngine.Managers.Vcpkg\UniGetUI.PackageEngine.Managers.Vcpkg.csproj" />
     <ProjectReference Include="..\UniGetUI.PackageEngine.PackageLoader\UniGetUI.PackageEngine.PackageLoaders.csproj" />
     <ProjectReference Include="..\UniGetUI.PackageEngine.PackageManagerClasses\UniGetUI.PackageEngine.Classes.csproj" />
   </ItemGroup>
