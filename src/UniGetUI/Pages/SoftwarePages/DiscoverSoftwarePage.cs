@@ -7,19 +7,19 @@ using UniGetUI.Interface.Widgets;
 using UniGetUI.PackageEngine;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
-using UniGetUI.PackageEngine.Operations;
-using UniGetUI.PackageEngine.PackageClasses;
 using UniGetUI.PackageEngine.PackageLoader;
 using Windows.System;
+using UniGetUI.Interface.Telemetry;
 using UniGetUI.Pages.DialogPages;
 
 namespace UniGetUI.Interface.SoftwarePages
 {
-    public class DiscoverSoftwarePage : AbstractPackagesPage
+    public partial class DiscoverSoftwarePage : AbstractPackagesPage
     {
         private BetterMenuItem? MenuAsAdmin;
         private BetterMenuItem? MenuInteractive;
         private BetterMenuItem? MenuSkipHash;
+        private BetterMenuItem? MenuDownloadInstaller;
         public DiscoverSoftwarePage()
         : base(new PackagesPageData
         {
@@ -104,6 +104,14 @@ namespace UniGetUI.Interface.SoftwarePages
             MenuSkipHash.Click += MenuSkipHash_Invoked;
             menu.Items.Add(MenuSkipHash);
 
+            MenuDownloadInstaller = new BetterMenuItem
+            {
+                Text = CoreTools.AutoTranslated("Download installer"),
+                IconName = IconType.Download
+            };
+            MenuDownloadInstaller.Click += (_, _) => _ = MainApp.Operations.AskLocationAndDownload(SelectedItem, TEL_InstallReferral.DIRECT_SEARCH);
+            menu.Items.Add(MenuDownloadInstaller);
+
             menu.Items.Add(new MenuFlyoutSeparator { Height = 5 });
 
             BetterMenuItem menuShare = new()
@@ -178,7 +186,9 @@ namespace UniGetUI.Interface.SoftwarePages
                     toolButton.LabelPosition = CommandBarLabelPosition.Collapsed;
                 }
 
-                toolButton.Label = Labels[toolButton].Trim();
+                string text = Labels[toolButton].Trim();
+                toolButton.Label = text;
+                ToolTipService.SetToolTip(toolButton, text);
             }
 
             Dictionary<AppBarButton, IconType> Icons = new()
@@ -199,45 +209,15 @@ namespace UniGetUI.Interface.SoftwarePages
                 toolButton.Icon = new LocalIcon(Icons[toolButton]);
             }
 
-            PackageDetails.Click += (_, _) => ShowDetailsForPackage(SelectedItem);
+            PackageDetails.Click += (_, _) => ShowDetailsForPackage(SelectedItem, TEL_InstallReferral.DIRECT_SEARCH);
             ExportSelection.Click += ExportSelection_Click;
             HelpButton.Click += (_, _) => MainApp.Instance.MainWindow.NavigationPage.ShowHelp();
             InstallationSettings.Click += (_, _) => ShowInstallationOptionsForPackage(SelectedItem);
 
-            InstallSelected.Click += (_, _) =>
-            {
-                foreach (IPackage package in FilteredPackages.GetCheckedPackages())
-                {
-                    MainApp.Instance.AddOperationToList(new InstallPackageOperation(package));
-                }
-            };
-
-            InstallAsAdmin.Click += async (_, _) =>
-            {
-                foreach (IPackage package in FilteredPackages.GetCheckedPackages())
-                {
-                    InstallationOptions options = await InstallationOptions.FromPackageAsync(package, elevated: true);
-                    MainApp.Instance.AddOperationToList(new InstallPackageOperation(package, options));
-                }
-            };
-
-            InstallSkipHash.Click += async (_, _) =>
-            {
-                foreach (IPackage package in FilteredPackages.GetCheckedPackages())
-                {
-                    InstallationOptions options = await InstallationOptions.FromPackageAsync(package, no_integrity: true);
-                    MainApp.Instance.AddOperationToList(new InstallPackageOperation(package, options));
-                }
-            };
-
-            InstallInteractive.Click += async (_, _) =>
-            {
-                foreach (IPackage package in FilteredPackages.GetCheckedPackages())
-                {
-                    InstallationOptions options = await InstallationOptions.FromPackageAsync(package, interactive: true);
-                    MainApp.Instance.AddOperationToList(new InstallPackageOperation(package, options));
-                }
-            };
+            InstallSelected.Click += (_, _) => MainApp.Operations.Install(FilteredPackages.GetCheckedPackages(), TEL_InstallReferral.DIRECT_SEARCH);
+            InstallAsAdmin.Click += (_, _) => MainApp.Operations.Install(FilteredPackages.GetCheckedPackages(), TEL_InstallReferral.DIRECT_SEARCH, elevated: true);
+            InstallSkipHash.Click += (_, _) => MainApp.Operations.Install(FilteredPackages.GetCheckedPackages(), TEL_InstallReferral.DIRECT_SEARCH, no_integrity: true);
+            InstallInteractive.Click += (_, _) => MainApp.Operations.Install(FilteredPackages.GetCheckedPackages(), TEL_InstallReferral.DIRECT_SEARCH, interactive: true);
 
             SharePackage.Click += (_, _) => MainApp.Instance.MainWindow.SharePackage(SelectedItem);
         }
@@ -270,7 +250,7 @@ namespace UniGetUI.Interface.SoftwarePages
 
         protected override void WhenShowingContextMenu(IPackage package)
         {
-            if (MenuAsAdmin is null || MenuInteractive is null || MenuSkipHash is null)
+            if (MenuAsAdmin is null || MenuInteractive is null || MenuSkipHash is null || MenuDownloadInstaller is null)
             {
                 Logger.Warn("MenuItems are null on DiscoverPackagesPage");
                 return;
@@ -279,6 +259,7 @@ namespace UniGetUI.Interface.SoftwarePages
             MenuAsAdmin.IsEnabled = package.Manager.Capabilities.CanRunAsAdmin;
             MenuInteractive.IsEnabled = package.Manager.Capabilities.CanRunInteractively;
             MenuSkipHash.IsEnabled = package.Manager.Capabilities.CanSkipIntegrityChecks;
+            MenuDownloadInstaller.IsEnabled = package.Manager.Capabilities.CanDownloadInstaller;
         }
 
         private async void ExportSelection_Click(object sender, RoutedEventArgs e)
@@ -291,156 +272,31 @@ namespace UniGetUI.Interface.SoftwarePages
 
         private void MenuDetails_Invoked(object sender, RoutedEventArgs e)
         {
-            ShowDetailsForPackage(SelectedItem);
+            ShowDetailsForPackage(SelectedItem, TEL_InstallReferral.DIRECT_SEARCH);
         }
 
         private void MenuShare_Invoked(object sender, RoutedEventArgs e)
         {
-            if (PackageList.SelectedItem is null)
-            {
+            if (SelectedItem is null)
                 return;
-            }
 
             MainApp.Instance.MainWindow.SharePackage(SelectedItem);
         }
 
         private void MenuInstall_Invoked(object sender, RoutedEventArgs e)
-        {
-            IPackage? package = SelectedItem;
-            if (package is null)
-            {
-                return;
-            }
+            => _ = MainApp.Operations.Install(SelectedItem, TEL_InstallReferral.DIRECT_SEARCH);
 
-            MainApp.Instance.AddOperationToList(new InstallPackageOperation(package));
-        }
+        private void MenuSkipHash_Invoked(object sender, RoutedEventArgs e)
+            => _ = MainApp.Operations.Install(SelectedItem, TEL_InstallReferral.DIRECT_SEARCH, no_integrity: true);
 
-        private async void MenuSkipHash_Invoked(object sender, RoutedEventArgs e)
-        {
-            IPackage? package = SelectedItem;
-            if (package is null)
-            {
-                return;
-            }
+        private void MenuInteractive_Invoked(object sender, RoutedEventArgs e)
+            => _ = MainApp.Operations.Install(SelectedItem, TEL_InstallReferral.DIRECT_SEARCH, interactive: true);
 
-            MainApp.Instance.AddOperationToList(new InstallPackageOperation(package,
-                await InstallationOptions.FromPackageAsync(package, no_integrity: true)));
-        }
-
-        private async void MenuInteractive_Invoked(object sender, RoutedEventArgs e)
-        {
-            IPackage? package = SelectedItem;
-            if (package is null)
-            {
-                return;
-            }
-
-            MainApp.Instance.AddOperationToList(new InstallPackageOperation(package,
-                await InstallationOptions.FromPackageAsync(package, interactive: true)));
-        }
-
-        private async void MenuAsAdmin_Invoked(object sender, RoutedEventArgs e)
-        {
-            IPackage? package = SelectedItem;
-            if (package is null)
-            {
-                return;
-            }
-
-            MainApp.Instance.AddOperationToList(new InstallPackageOperation(package,
-                await InstallationOptions.FromPackageAsync(package, elevated: true)));
-        }
+        private void MenuAsAdmin_Invoked(object sender, RoutedEventArgs e)
+            => _ = MainApp.Operations.Install(SelectedItem, TEL_InstallReferral.DIRECT_SEARCH, elevated: true);
 
         private void MenuInstallSettings_Invoked(object sender, RoutedEventArgs e)
-        {
-            ShowInstallationOptionsForPackage(SelectedItem);
-        }
+            => ShowInstallationOptionsForPackage(SelectedItem);
 
-        public void ShowSharedPackage_ThreadSafe(string id, string combinedSourceName)
-        {
-            var contents = combinedSourceName.Split(':');
-            string managerName = contents[0];
-            string sourceName = "";
-            if (contents.Length > 1) sourceName = contents[1];
-            ShowSharedPackage_ThreadSafe(id, managerName, sourceName);
-        }
-
-        public void ShowSharedPackage_ThreadSafe(string id, string managerName, string sourceName)
-        {
-            MainApp.Instance.MainWindow.DispatcherQueue.TryEnqueue(async () =>
-            {
-                IPackage? package = await GetPackageFromIdAndManager(id, managerName, sourceName);
-                if (package is not null) ShowDetailsForPackage(package);
-            });
-        }
-
-        private static async Task<IPackage?> GetPackageFromIdAndManager(string id, string managerName, string sourceName)
-        {
-            try
-            {
-                Logger.Info($"Showing shared package with pId={id} and pSource={managerName}: ´{sourceName} ...");
-                MainApp.Instance.MainWindow.Activate();
-                DialogHelper.ShowLoadingDialog(CoreTools.Translate("Please wait...", id));
-
-                IPackageManager? manager = null;
-
-                foreach (var candidate in PEInterface.Managers)
-                {
-                    if (candidate.Name == managerName || candidate.DisplayName == managerName)
-                    {
-                        manager = candidate;
-                        break;
-                    }
-                }
-
-                if (manager is null)
-                {
-                    throw new ArgumentException(CoreTools.Translate("The package manager \"{0}\" was not found", managerName));
-                }
-
-                if(!manager.IsEnabled())
-                    throw new ArgumentException(CoreTools.Translate("The package manager \"{0}\" is disabled", manager.DisplayName));
-
-                if(!manager.Status.Found)
-                    throw new ArgumentException(CoreTools.Translate("There is an error with the configuration of the package manager \"{0}\"", manager.DisplayName));
-
-                var results = await Task.Run(() => manager.FindPackages(id));
-                var candidates = results.Where(p => p.Id == id).ToArray();
-
-                if (candidates.Length == 0)
-                {
-                    throw new ArgumentException(CoreTools.Translate("The package \"{0}\" was not found on the package manager \"{1}\"", id, manager.DisplayName));
-                }
-
-                IPackage package = candidates[0];
-
-                // Get package from best source
-                if (candidates.Length >= 1 && manager.Capabilities.SupportsCustomSources)
-                    foreach (var candidate in candidates)
-                        if (candidate.Source.Name == sourceName)
-                            package = candidate;
-
-                Logger.ImportantInfo($"Found package {package.Id} on manager {package.Manager.Name}, showing it...");
-                DialogHelper.HideLoadingDialog();
-                return package;
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"An error occurred while attempting to show the package with id {id}");
-                Logger.Error(ex);
-                var warningDialog = new ContentDialog
-                {
-                    Title = CoreTools.Translate("Package not found"),
-                    Content = CoreTools.Translate("An error occurred when attempting to show the package with Id {0}", id) + ":\n" + ex.Message,
-                    CloseButtonText = CoreTools.Translate("Ok"),
-                    DefaultButton = ContentDialogButton.Close,
-                    XamlRoot = MainApp.Instance.MainWindow.Content.XamlRoot // Ensure the dialog is shown in the correct context
-                };
-
-                DialogHelper.HideLoadingDialog();
-                await MainApp.Instance.MainWindow.ShowDialogAsync(warningDialog);
-                return null;
-            }
-        }
     }
 }

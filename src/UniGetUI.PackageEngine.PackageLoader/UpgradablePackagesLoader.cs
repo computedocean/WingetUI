@@ -3,37 +3,50 @@ using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Interface.Enums;
 using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.PackageClasses;
 
 namespace UniGetUI.PackageEngine.PackageLoader
 {
     public class UpgradablePackagesLoader : AbstractPackageLoader
     {
         private System.Timers.Timer? UpdatesTimer;
+        public static UpgradablePackagesLoader Instance = null!;
 
         /// <summary>
         /// The collection of packages with updates ignored
         /// </summary>
         public ConcurrentDictionary<string, IPackage> IgnoredPackages = new();
 
-        public UpgradablePackagesLoader(IEnumerable<IPackageManager> managers)
-        : base(managers, "DISCOVERABLE_PACKAGES", AllowMultiplePackageVersions: false, CheckedBydefault: !Settings.Get("DisableSelectingUpdatesByDefault"))
+        public UpgradablePackagesLoader(IReadOnlyList<IPackageManager> managers)
+        : base(managers,
+            identifier: "UPGRADABLE_PACKAGES",
+            AllowMultiplePackageVersions: false,
+            DisableReload: false,
+            CheckedBydefault: !Settings.Get("DisableSelectingUpdatesByDefault"),
+            RequiresInternet: true)
         {
+            Instance = this;
             FinishedLoading += (_, _) => StartAutoCheckTimeout();
         }
 
         protected override async Task<bool> IsPackageValid(IPackage package)
         {
-            if (package.Version == package.NewVersion) return false;
-            if (await package.HasUpdatesIgnoredAsync(package.NewVersion))
+            if (package.VersionString == package.NewVersionString) return false;
+            if (await package.HasUpdatesIgnoredAsync(package.NewVersionString))
             {
                 IgnoredPackages[package.Id] = package;
+                return false;
+            }
+            if ((await InstallationOptions.FromPackageAsync(package)).SkipMinorUpdates && package.IsUpdateMinor())
+            {
+                Logger.Info($"Ignoring package {package.Id} because it is a minor update ({package.VersionString} -> {package.NewVersionString}) and SkipMinorUpdates is set to true.");
                 return false;
             }
             if (package.NewerVersionIsInstalled()) return false;
             return true;
         }
 
-        protected override IEnumerable<IPackage> LoadPackagesFromManager(IPackageManager manager)
+        protected override IReadOnlyList<IPackage> LoadPackagesFromManager(IPackageManager manager)
         {
             return manager.GetAvailableUpdates();
         }

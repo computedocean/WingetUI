@@ -58,7 +58,7 @@ public class AutoUpdater
     /// <summary>
     /// Performs the entire update process, and returns true/false whether the process finished successfully;
     /// </summary>
-    public static async Task<bool> CheckAndInstallUpdates(Window window, InfoBar banner, bool Verbose, bool AutoLaunch = false)
+    public static async Task<bool> CheckAndInstallUpdates(Window window, InfoBar banner, bool Verbose, bool AutoLaunch = false, bool ManualCheck = false)
     {
         Window = window;
         Banner = banner;
@@ -90,12 +90,10 @@ public class AutoUpdater
                     && await CheckInstallerHash(InstallerPath, InstallerHash))
                 {
                     Logger.Info($"A cached valid installer was found, launching update process...");
-                    return await PrepairToLaunchInstaller(InstallerPath, LatestVersion, AutoLaunch);
+                    return await PrepairToLaunchInstaller(InstallerPath, LatestVersion, AutoLaunch, ManualCheck);
                 }
-                else
-                {
-                    File.Delete(InstallerPath);
-                }
+
+                File.Delete(InstallerPath);
 
                 ShowMessage_ThreadSafe(
                     CoreTools.Translate("UniGetUI version {0} is being downloaded.", LatestVersion.ToString(CultureInfo.InvariantCulture)),
@@ -109,28 +107,24 @@ public class AutoUpdater
                 if (await CheckInstallerHash(InstallerPath, InstallerHash))
                 {
                     Logger.Info("The downloaded installer is valid, launching update process...");
-                    return await PrepairToLaunchInstaller(InstallerPath, LatestVersion, AutoLaunch);
+                    return await PrepairToLaunchInstaller(InstallerPath, LatestVersion, AutoLaunch, ManualCheck);
                 }
-                else
-                {
-                    ShowMessage_ThreadSafe(
-                        CoreTools.Translate("The installer authenticity could not be verified."),
-                        CoreTools.Translate("The update process has been aborted."),
-                        InfoBarSeverity.Error,
-                        true);
-                    return false;
-                }
+
+                ShowMessage_ThreadSafe(
+                    CoreTools.Translate("The installer authenticity could not be verified."),
+                    CoreTools.Translate("The update process has been aborted."),
+                    InfoBarSeverity.Error,
+                    true);
+                return false;
             }
-            else
-            {
-                if (Verbose) ShowMessage_ThreadSafe(
-                    CoreTools.Translate("Great! You are on the latest version."),
-                    CoreTools.Translate("There are no new UniGetUI versions to be installed"),
-                    InfoBarSeverity.Success,
-                    true
-                );
-                return true;
-            }
+
+            if (Verbose) ShowMessage_ThreadSafe(
+                CoreTools.Translate("Great! You are on the latest version."),
+                CoreTools.Translate("There are no new UniGetUI versions to be installed"),
+                InfoBarSeverity.Success,
+                true
+            );
+            return true;
 
         }
         catch (Exception e)
@@ -138,7 +132,7 @@ public class AutoUpdater
             Logger.Error("An error occurred while checking for updates: ");
             Logger.Error(e);
             // We don't want an error popping if updates can't
-            if(Verbose || !WasCheckingForUpdates) ShowMessage_ThreadSafe(
+            if (Verbose || !WasCheckingForUpdates) ShowMessage_ThreadSafe(
                 CoreTools.Translate("An error occurred when checking for updates: "),
                 e.Message,
                 InfoBarSeverity.Error,
@@ -158,7 +152,7 @@ public class AutoUpdater
     {
         Logger.Debug($"Begin check for updates on endpoint {endpoint}");
         string[] UpdateResponse;
-        using (HttpClient client = new(CoreData.GenericHttpClientParameters))
+        using (HttpClient client = new(CoreTools.GenericHttpClientParameters))
         {
             client.Timeout = TimeSpan.FromSeconds(600);
             client.DefaultRequestHeaders.UserAgent.ParseAdd(CoreData.UserAgentString);
@@ -203,7 +197,7 @@ public class AutoUpdater
     private static async Task DownloadInstaller(string downloadUrl, string installerLocation)
     {
         Logger.Debug($"Downloading installer from {downloadUrl} to {installerLocation}");
-        using (HttpClient client = new(CoreData.GenericHttpClientParameters))
+        using (HttpClient client = new(CoreTools.GenericHttpClientParameters))
         {
             client.Timeout = TimeSpan.FromSeconds(600);
             client.DefaultRequestHeaders.UserAgent.ParseAdd(CoreData.UserAgentString);
@@ -218,7 +212,7 @@ public class AutoUpdater
     /// <summary>
     /// Waits for the window to be closed if it is open and launches the updater
     /// </summary>
-    private static async Task<bool> PrepairToLaunchInstaller(string installerLocation, string NewVersion, bool AutoLaunch)
+    private static async Task<bool> PrepairToLaunchInstaller(string installerLocation, string NewVersion, bool AutoLaunch, bool ManualCheck)
     {
         Logger.Debug("Starting the process to launch the installer.");
         UpdateReadyToBeInstalled = true;
@@ -227,7 +221,7 @@ public class AutoUpdater
         ReleaseLockForAutoupdate_UpdateBanner = false;
 
         // Check if the user has disabled updates
-        if (Settings.Get("DisableAutoUpdateWingetUI"))
+        if (!ManualCheck && Settings.Get("DisableAutoUpdateWingetUI"))
         {
             Banner.IsOpen = false;
             Logger.Warn("User disabled updates!");
@@ -270,7 +264,7 @@ public class AutoUpdater
         {
             Logger.Debug("Waiting for mainWindow to be closed or for user to trigger the update from the notification...");
             while (
-                !ReleaseLockForAutoupdate_Window &&
+                !(ReleaseLockForAutoupdate_Window && !ManualCheck) &&
                 !ReleaseLockForAutoupdate_Notification &&
                 !ReleaseLockForAutoupdate_UpdateBanner)
             {
@@ -279,7 +273,7 @@ public class AutoUpdater
             Logger.Debug("Autoupdater lock released, launching installer...");
         }
 
-        if (Settings.Get("DisableAutoUpdateWingetUI"))
+        if (!ManualCheck && Settings.Get("DisableAutoUpdateWingetUI"))
         {
             Logger.Warn("User has disabled updates");
             return true;
@@ -295,12 +289,12 @@ public class AutoUpdater
     private static async Task LaunchInstallerAndQuit(string installerLocation)
     {
         Logger.Debug("Launching the updater...");
-        Process p = new()
+        using Process p = new()
         {
             StartInfo = new()
             {
                 FileName = installerLocation,
-                Arguments = "/SILENT /SUPPRESSMSGBOXES /NORESTART /SP-",
+                Arguments = "/SILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NoVCRedist /NoEdgeWebView /NoWinGet /NoChocolatey",
                 UseShellExecute = true,
                 CreateNoWindow = true,
             }

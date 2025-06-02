@@ -1,4 +1,5 @@
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
 using Microsoft.Windows.AppLifecycle;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
@@ -14,26 +15,55 @@ namespace UniGetUI
             // Having an async main method breaks WebView2
             try
             {
-                CoreData.IsDaemon = args.Contains("--daemon");
-
-                if (args.Contains("--uninstall-unigetui") || args.Contains("--uninstall-wingetui"))
+                if (args.Contains(CLIHandler.HELP))
                 {
-                    // If the app is being uninstalled, run the cleaner and exit
-                    UninstallPreps();
+                    CLIHandler.Help();
+                    Environment.Exit(0);
                 }
-                else if (args.Contains("--migrate-wingetui-to-unigetui"))
+                else if (args.Contains(CLIHandler.MIGRATE_WINGETUI_TO_UNIGETUI))
                 {
-                    WingetUIToUniGetUIMigrator();
+                    int ret = CLIHandler.WingetUIToUniGetUIMigrator();
+                    Environment.Exit(ret);
+                }
+                else if (args.Contains(CLIHandler.UNINSTALL_UNIGETUI) || args.Contains(CLIHandler.UNINSTALL_WINGETUI))
+                {
+                    int ret = CLIHandler.UninstallUniGetUI();
+                    Environment.Exit(ret);
+                }
+                else if (args.Contains(CLIHandler.IMPORT_SETTINGS))
+                {
+                    int ret = CLIHandler.ImportSettings();
+                    Environment.Exit(ret);
+                }
+                else if (args.Contains(CLIHandler.EXPORT_SETTINGS))
+                {
+                    int ret = CLIHandler.ExportSettings();
+                    Environment.Exit(ret);
+                }
+                else if (args.Contains(CLIHandler.ENABLE_SETTING))
+                {
+                    int ret = CLIHandler.EnableSetting();
+                    Environment.Exit(ret);
+                }
+                else if (args.Contains(CLIHandler.DISABLE_SETTING))
+                {
+                    int ret = CLIHandler.DisableSetting();
+                    Environment.Exit(ret);
+                }
+                else if (args.Contains(CLIHandler.SET_SETTING_VAL))
+                {
+                    int ret = CLIHandler.SetSettingsValue();
+                    Environment.Exit(ret);
                 }
                 else
                 {
-                    // Otherwise, run UniGetUI as normal
+                    CoreData.WasDaemon = CoreData.IsDaemon = args.Contains(CLIHandler.DAEMON);
                     _ = AsyncMain();
                 }
             }
             catch (Exception e)
             {
-                CoreTools.ReportFatalException(e);
+                CrashHandler.ReportFatalException(e);
             }
         }
 
@@ -56,6 +86,7 @@ namespace UniGetUI
                 Logger.ImportantInfo(textart);
                 Logger.ImportantInfo("  ");
                 Logger.ImportantInfo($"Build {CoreData.BuildNumber}");
+                Logger.ImportantInfo($"Data directory {CoreData.UniGetUIDataDirectory}");
                 Logger.ImportantInfo($"Encoding Code Page set to {CoreData.CODE_PAGE}");
 
                 // WinRT single-instance fancy stuff
@@ -65,10 +96,9 @@ namespace UniGetUI
                 // If this is the main instance, start the app
                 if (!isRedirect)
                 {
-                    Microsoft.UI.Xaml.Application.Start((_) =>
+                    Application.Start((_) =>
                     {
-                        DispatcherQueueSynchronizationContext context = new(
-                            DispatcherQueue.GetForCurrentThread());
+                        DispatcherQueueSynchronizationContext context = new(DispatcherQueue.GetForCurrentThread());
                         SynchronizationContext.SetSynchronizationContext(context);
                         var app = new MainApp();
                     });
@@ -76,7 +106,7 @@ namespace UniGetUI
             }
             catch (Exception e)
             {
-                CoreTools.ReportFatalException(e);
+                CrashHandler.ReportFatalException(e);
             }
         }
 
@@ -91,13 +121,12 @@ namespace UniGetUI
                 // example on single-instance apps using unpackaged AppSdk + WinUI3
                 bool isRedirect = false;
 
-                var keyInstance = AppInstance.FindOrRegisterForKey("MartiCliment.UniGetUI.MainInterface");
-
+                var keyInstance = AppInstance.FindOrRegisterForKey(CoreData.MainWindowIdentifier);
                 if (keyInstance.IsCurrent)
                 {
                     keyInstance.Activated += async (_, e) =>
                     {
-                        if (MainApp.Current is MainApp baseInstance)
+                        if (Application.Current is MainApp baseInstance)
                         {
                             await baseInstance.ShowMainWindowFromRedirectAsync(e);
                         }
@@ -115,79 +144,6 @@ namespace UniGetUI
             {
                 Logger.Warn(e);
                 return false;
-            }
-        }
-
-        /// <summary>
-        /// This method should be called when the app is being uninstalled
-        /// It removes system links and other stuff that should be removed on uninstall
-        /// </summary>
-        private static void UninstallPreps()
-        {
-            /*try
-            {
-                AppNotificationManager.Default.UnregisterAll();
-            }
-            catch
-            {
-            }*/
-        }
-
-        // This method shall be ran as administrator
-        private static void WingetUIToUniGetUIMigrator()
-        {
-            try
-            {
-                string[] BasePaths =
-                [
-                    // User desktop icon
-                    Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
-
-                    // User start menu icon
-                    Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),
-
-                    // Common desktop icon
-                    Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory),
-
-                    // User start menu icon
-                    Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu),
-                ];
-
-                foreach (string path in BasePaths)
-                {
-                    foreach (string old_wingetui_icon in new[] { "WingetUI.lnk", "WingetUI .lnk", "UniGetUI (formerly WingetUI) .lnk", "UniGetUI (formerly WingetUI).lnk" })
-                    {
-                        try
-                        {
-                            string old_file = Path.Join(path, old_wingetui_icon);
-                            string new_file = Path.Join(path, "UniGetUI.lnk");
-                            if (!File.Exists(old_file))
-                            {
-                                continue;
-                            }
-
-                            if (File.Exists(old_file) && File.Exists(new_file))
-                            {
-                                Logger.Info("Deleting shortcut " + old_file + " since new shortcut already exists");
-                                File.Delete(old_file);
-                            }
-                            else if (File.Exists(old_file) && !File.Exists(new_file))
-                            {
-                                Logger.Info("Moving shortcut to " + new_file);
-                                File.Move(old_file, new_file);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Warn($"An error occurred while migrating the shortcut {Path.Join(path, old_wingetui_icon)}");
-                            Logger.Warn(ex);
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex);
             }
         }
     }

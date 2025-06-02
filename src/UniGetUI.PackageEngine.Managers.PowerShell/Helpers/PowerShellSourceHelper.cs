@@ -30,19 +30,19 @@ namespace UniGetUI.PackageEngine.Managers.PowerShellManager
 
         protected override OperationVeredict _getAddSourceOperationVeredict(IManagerSource source, int ReturnCode, string[] Output)
         {
-            return ReturnCode == 0 ? OperationVeredict.Succeeded : OperationVeredict.Failed;
+            return ReturnCode == 0 ? OperationVeredict.Success : OperationVeredict.Failure;
         }
 
         protected override OperationVeredict _getRemoveSourceOperationVeredict(IManagerSource source, int ReturnCode, string[] Output)
         {
-            return ReturnCode == 0 ? OperationVeredict.Succeeded : OperationVeredict.Failed;
+            return ReturnCode == 0 ? OperationVeredict.Success : OperationVeredict.Failure;
         }
 
-        protected override IEnumerable<IManagerSource> GetSources_UnSafe()
+        protected override IReadOnlyList<IManagerSource> GetSources_UnSafe()
         {
             List<ManagerSource> sources = [];
 
-            Process p = new()
+            using Process p = new()
             {
                 StartInfo = new()
                 {

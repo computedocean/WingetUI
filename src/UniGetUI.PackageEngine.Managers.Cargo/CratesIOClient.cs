@@ -1,5 +1,6 @@
 using System.Text.Json;
 using UniGetUI.Core.Data;
+using UniGetUI.Core.Tools;
 
 namespace UniGetUI.PackageEngine.Managers.CargoManager;
 
@@ -87,12 +88,12 @@ internal class CratesIOClient
 
     private static T Fetch<T>(Uri url)
     {
-        HttpClient client = new(CoreData.GenericHttpClientParameters);
+        HttpClient client = new(CoreTools.GenericHttpClientParameters);
         client.DefaultRequestHeaders.UserAgent.ParseAdd(CoreData.UserAgentString);
 
         var manifestStr = client.GetStringAsync(url).GetAwaiter().GetResult();
 
-        var manifest = JsonSerializer.Deserialize<T>(manifestStr, options: CoreData.SerializingOptions)
+        var manifest = JsonSerializer.Deserialize<T>(manifestStr, options: SerializationHelpers.DefaultOptions)
                        ?? throw new NullResponseException($"Null response for request to {url}");
         return manifest;
     }

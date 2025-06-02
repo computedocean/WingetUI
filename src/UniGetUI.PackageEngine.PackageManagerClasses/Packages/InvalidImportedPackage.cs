@@ -10,7 +10,7 @@ using UniGetUI.PackageEngine.Structs;
 
 namespace UniGetUI.PackageEngine.PackageClasses
 {
-    public class InvalidImportedPackage : IPackage, INotifyPropertyChanged
+    public partial class InvalidImportedPackage : IPackage, INotifyPropertyChanged
     {
         public IPackageDetails Details { get; }
 
@@ -33,17 +33,17 @@ namespace UniGetUI.PackageEngine.PackageClasses
 
         public string Id { get; }
 
-        public string Version { get; }
+        public string VersionString { get; }
 
-        public double VersionAsFloat { get; }
+        public CoreTools.Version NormalizedVersion { get; }
 
-        public double NewVersionAsFloat { get => .0F; }
+        public CoreTools.Version NormalizedNewVersion { get => CoreTools.Version.Null; }
 
         public IManagerSource Source { get; }
 
         public IPackageManager Manager { get; }
 
-        public string NewVersion { get => ""; }
+        public string NewVersionString { get => ""; }
 
         public bool IsUpgradable { get => false; }
 
@@ -55,12 +55,12 @@ namespace UniGetUI.PackageEngine.PackageClasses
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        public InvalidImportedPackage(SerializableIncompatiblePackage_v1 data, IManagerSource source)
+        public InvalidImportedPackage(SerializableIncompatiblePackage data, IManagerSource source)
         {
             Name = data.Name;
             Id = data.Id.Split('\\')[^1];
-            Version = data.Version;
-            VersionAsFloat = CoreTools.GetVersionStringAsFloat(data.Version);
+            VersionString = data.Version;
+            NormalizedVersion = CoreTools.VersionStringToStruct(data.Version);
             SourceAsString = data.Source;
             AutomationName = data.Name;
             Manager = source.Manager;
@@ -75,18 +75,18 @@ namespace UniGetUI.PackageEngine.PackageClasses
             return Task.CompletedTask;
         }
 
-        public SerializablePackage_v1 AsSerializable()
+        public SerializablePackage AsSerializable()
         {
             throw new NotImplementedException();
         }
 
-        public SerializableIncompatiblePackage_v1 AsSerializable_Incompatible()
+        public SerializableIncompatiblePackage AsSerializable_Incompatible()
         {
-            return new SerializableIncompatiblePackage_v1
+            return new SerializableIncompatiblePackage
             {
                 Name = Name,
                 Id = Id,
-                Version = Version,
+                Version = VersionString,
                 Source = SourceAsString,
             };
         }
@@ -131,7 +131,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
             return null;
         }
 
-        public IEnumerable<Uri> GetScreenshots()
+        public IReadOnlyList<Uri> GetScreenshots()
         {
             return [];
         }
@@ -162,6 +162,11 @@ namespace UniGetUI.PackageEngine.PackageClasses
         }
 
         public bool NewerVersionIsInstalled()
+        {
+            return false;
+        }
+
+        public bool IsUpdateMinor()
         {
             return false;
         }

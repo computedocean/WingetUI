@@ -9,7 +9,7 @@ using UniGetUI.Core.Tools;
 
 namespace UniGetUI.Interface.Widgets
 {
-    public sealed class TextboxCard : SettingsCard
+    public sealed partial class TextboxCard : SettingsCard
     {
         private readonly TextBox _textbox = new();
         private readonly HyperlinkButton _helpbutton = new();
@@ -67,7 +67,6 @@ namespace UniGetUI.Interface.Widgets
             s.Children.Add(_helpbutton);
             s.Children.Add(_textbox);
 
-            DefaultStyleKey = typeof(TextboxCard);
             Content = s;
         }
 

@@ -6,9 +6,18 @@ namespace UniGetUI.PackageEngine.PackageLoader
 {
     public class InstalledPackagesLoader : AbstractPackageLoader
     {
-        public InstalledPackagesLoader(IEnumerable<IPackageManager> managers)
-        : base(managers, "INSTALLED_PACKAGES", AllowMultiplePackageVersions: true, CheckedBydefault: false)
+        public static InstalledPackagesLoader Instance = null!;
+
+        public InstalledPackagesLoader(IReadOnlyList<IPackageManager> managers)
+        : base(
+            managers,
+            identifier: "INSTALLED_PACKAGES",
+            AllowMultiplePackageVersions: true,
+            DisableReload: false,
+            CheckedBydefault: false,
+            RequiresInternet: true)
         {
+            Instance = this;
         }
 
         protected override Task<bool> IsPackageValid(IPackage package)
@@ -16,7 +25,7 @@ namespace UniGetUI.PackageEngine.PackageLoader
             return Task.FromResult(true);
         }
 
-        protected override IEnumerable<IPackage> LoadPackagesFromManager(IPackageManager manager)
+        protected override IReadOnlyList<IPackage> LoadPackagesFromManager(IPackageManager manager)
         {
             return manager.GetInstalledPackages();
         }
@@ -40,20 +49,20 @@ namespace UniGetUI.PackageEngine.PackageLoader
             IsLoading = true;
             InvokeStartedLoadingEvent();
 
-            List<Task<IEnumerable<IPackage>>> tasks = new();
+            List<Task<IReadOnlyList<IPackage>>> tasks = [];
 
             foreach (IPackageManager manager in Managers)
             {
                 if (manager.IsEnabled() && manager.Status.Found)
                 {
-                    Task<IEnumerable<IPackage>> task = Task.Run(() => LoadPackagesFromManager(manager));
+                    Task<IReadOnlyList<IPackage>> task = Task.Run(() => LoadPackagesFromManager(manager));
                     tasks.Add(task);
                 }
             }
 
             while (tasks.Count > 0)
             {
-                foreach (Task<IEnumerable<IPackage>> task in tasks.ToArray())
+                foreach (Task<IReadOnlyList<IPackage>> task in tasks.ToArray())
                 {
                     if (!task.IsCompleted)
                     {
@@ -73,7 +82,7 @@ namespace UniGetUI.PackageEngine.PackageLoader
                                     await WhenAddingPackage(package);
                                 }
                             }
-                            InvokePackagesChangedEvent();
+                            InvokePackagesChangedEvent(true, task.Result.ToArray(), []);
                         }
                         tasks.Remove(task);
                     }

@@ -19,8 +19,15 @@ namespace UniGetUI.Core.Classes;
 public static class TaskRecycler<ReturnT>
 {
     private static readonly ConcurrentDictionary<int, Task<ReturnT>> _tasks = new();
+    private static readonly ConcurrentDictionary<int, Task> _tasks_VOID = new();
 
     // ---------------------------------------------------------------------------------------------------------------
+
+    public static Task RunOrAttachAsync_VOID(Action method, int cacheTimeSecs = 0)
+    {
+        int hash = method.GetHashCode();
+        return _runTaskAndWait_VOID(new Task(method), hash, cacheTimeSecs);
+    }
 
     /// Asynchronous entry point for 0 parameters
     public static Task<ReturnT> RunOrAttachAsync(Func<ReturnT> method, int cacheTimeSecs = 0)
@@ -86,6 +93,37 @@ public static class TaskRecycler<ReturnT>
 
     // ---------------------------------------------------------------------------------------------------------------
 
+
+    /// <summary>
+    /// Handles running the task if no such task was found on cache, and returning the cached task if it was found.
+    /// </summary>
+    private static async Task _runTaskAndWait_VOID(Task task, int hash, int cacheTimeSecsSecs)
+    {
+        if (_tasks_VOID.TryGetValue(hash, out Task? _task))
+        {
+            // Get the cached task, which is either running or finished
+            task = _task;
+        }
+        else if (!_tasks_VOID.TryAdd(hash, task))
+        {
+            // Race condition, an equivalent task got added from another thread between the TryGetValue and TryAdd,
+            // so we are going to restart the call to _runTaskAndWait in order for TryGetValue to return the new task again
+            await _runTaskAndWait_VOID(task, hash, cacheTimeSecsSecs);
+            return;
+        }
+        else
+        {
+            // Now that the new task is in the cache, run the task.
+            task.Start();
+        }
+
+        // Wait for the task to finish
+        await task;
+
+        // Schedule the task for removal after the cache time expires
+        _removeFromCache_VOID(hash, cacheTimeSecsSecs);
+    }
+
     /// <summary>
     /// Handles running the task if no such task was found on cache, and returning the cached task if it was found.
     /// </summary>
@@ -127,6 +165,14 @@ public static class TaskRecycler<ReturnT>
             await Task.Delay(cacheTimeSecsSecs * 1000);
 
         _tasks.Remove(hash, out _);
+    }
+
+    private static async void _removeFromCache_VOID(int hash, int cacheTimeSecsSecs)
+    {
+        if (cacheTimeSecsSecs > 0)
+            await Task.Delay(cacheTimeSecsSecs * 1000);
+
+        _tasks_VOID.Remove(hash, out _);
     }
 }
 

@@ -6,7 +6,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
     /// <summary>
     /// A special ObservableCollection designed to work with Package objects
     /// </summary>
-    public class ObservablePackageCollection : SortableObservableCollection<PackageWrapper>
+    public partial class ObservablePackageCollection : SortableObservableCollection<PackageWrapper>
     {
         public enum Sorter
         {
@@ -17,26 +17,38 @@ namespace UniGetUI.PackageEngine.PackageClasses
             NewVersion,
             Source,
         }
+        public Sorter CurrentSorter { get; private set; }
 
         public ObservablePackageCollection()
         {
+            CurrentSorter = Sorter.Name;
             SortingSelector = x => x.Package.Name;
         }
 
-        /// <summary>
-        /// Add a package to the collection
-        /// </summary>
-        public void Add(IPackage p)
+        public void FromRange(IReadOnlyList<PackageWrapper> packages)
         {
-            base.Add(new PackageWrapper(p));
+            BlockSorting = true;
+
+            // Clear the list
+            Clear();
+
+            // Add all packages
+            foreach (var w in packages)
+                Add(w);
+
+            BlockSorting = false;
+            Sort();
         }
+
 
         /// <summary>
         /// Sets the property with which to filter the package and sorts the collection
         /// </summary>
         /// <param name="field">The field with which to sort the collection</param>
+        ///
         public void SetSorter(Sorter field)
         {
+            CurrentSorter = field;
             switch (field)
             {
                 case Sorter.Checked:
@@ -52,11 +64,11 @@ namespace UniGetUI.PackageEngine.PackageClasses
                     break;
 
                 case Sorter.Version:
-                    SortingSelector = x => x.Package.VersionAsFloat;
+                    SortingSelector = x => x.Package.NormalizedVersion;
                     break;
 
                 case Sorter.NewVersion:
-                    SortingSelector = x => x.Package.NewVersionAsFloat;
+                    SortingSelector = x => x.Package.NormalizedNewVersion;
                     break;
 
                 case Sorter.Source:
@@ -66,24 +78,11 @@ namespace UniGetUI.PackageEngine.PackageClasses
         }
 
         /// <summary>
-        /// Clears the collection, deleting the wrapper objects in the process
-        /// </summary>
-        public new void Clear()
-        {
-            foreach (PackageWrapper wrapper in this)
-            {
-                wrapper.Dispose();
-            }
-            base.Clear();
-            GC.Collect();
-        }
-
-        /// <summary>
         /// Returns a list containing the packages in this collection
         /// </summary>
         public List<IPackage> GetPackages()
         {
-            List<IPackage> packages = new();
+            List<IPackage> packages = [];
             foreach (PackageWrapper wrapper in this)
             {
                 packages.Add(wrapper.Package);
@@ -115,7 +114,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
         {
             foreach (PackageWrapper wrapper in this)
             {
-                wrapper.Package.IsChecked = true;
+                wrapper.IsChecked = true;
             }
         }
 
@@ -126,7 +125,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
         {
             foreach (PackageWrapper wrapper in this)
             {
-                wrapper.Package.IsChecked = false;
+                wrapper.IsChecked = false;
             }
         }
     }

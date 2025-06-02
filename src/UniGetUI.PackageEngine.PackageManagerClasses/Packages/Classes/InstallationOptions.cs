@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Language;
 using UniGetUI.Core.Logging;
@@ -22,6 +23,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
         public bool InteractiveInstallation { get; set; }
         public bool RunAsAdministrator { get; set; }
         public string Version { get; set; } = "";
+        public bool SkipMinorUpdates { get; set; }
         public Architecture? Architecture { get; set; }
         public PackageScope? InstallationScope { get; set; }
         public List<string> CustomParameters { get; set; } = [];
@@ -42,7 +44,6 @@ namespace UniGetUI.PackageEngine.PackageClasses
         /// <summary>
         /// Returns the InstallationOptions object associated with the given package.
         /// </summary>
-        /// <param name="package">The package from which to load the InstallationOptions</param>
         /// <returns>The package's InstallationOptions instance</returns>
         public static InstallationOptions FromPackage(IPackage package, bool? elevated = null, bool?
             interactive = null, bool? no_integrity = null, bool? remove_data = null)
@@ -94,25 +95,32 @@ namespace UniGetUI.PackageEngine.PackageClasses
         }
 
         /// <summary>
-        /// Returns a new InstallationOptions object from a given SerializableInstallationOptions_v1 and a package.
+        /// Returns a new InstallationOptions object from a given SerializableInstallationOptions and a package.
         /// </summary>
-        public static InstallationOptions FromSerialized(SerializableInstallationOptions_v1 options, IPackage package)
+        public static InstallationOptions FromSerialized(SerializableInstallationOptions options, IPackage package)
         {
             InstallationOptions instance = new(package);
             instance.FromSerializable(options);
             return instance;
         }
 
+        public static InstallationOptions CreateEmpty(IPackage package)
+        {
+            InstallationOptions instance = new(package);
+            return instance;
+        }
+
         /// <summary>
-        /// Loads and applies the options from the given SerializableInstallationOptions_v1 object to the current object.
+        /// Loads and applies the options from the given SerializableInstallationOptions object to the current object.
         /// </summary>
-        public void FromSerializable(SerializableInstallationOptions_v1 options)
+        public void FromSerializable(SerializableInstallationOptions options)
         {
             SkipHashCheck = options.SkipHashCheck;
             InteractiveInstallation = options.InteractiveInstallation;
             RunAsAdministrator = options.RunAsAdministrator;
             CustomInstallLocation = options.CustomInstallLocation;
             Version = options.Version;
+            SkipMinorUpdates = options.SkipMinorUpdates;
             PreRelease = options.PreRelease;
 
             if (options.Architecture != "" && CommonTranslations.InvertedArchNames.TryGetValue(options.Architecture, out var name))
@@ -137,18 +145,19 @@ namespace UniGetUI.PackageEngine.PackageClasses
         }
 
         /// <summary>
-        /// Returns a SerializableInstallationOptions_v1 object containing the options of the current instance.
+        /// Returns a SerializableInstallationOptions object containing the options of the current instance.
         /// </summary>
-        public SerializableInstallationOptions_v1 AsSerializable()
+        public SerializableInstallationOptions AsSerializable()
         {
-            SerializableInstallationOptions_v1 options = new()
+            SerializableInstallationOptions options = new()
             {
                 SkipHashCheck = SkipHashCheck,
                 InteractiveInstallation = InteractiveInstallation,
                 RunAsAdministrator = RunAsAdministrator,
                 CustomInstallLocation = CustomInstallLocation,
                 PreRelease = PreRelease,
-                Version = Version
+                Version = Version,
+                SkipMinorUpdates = SkipMinorUpdates
             };
             if (Architecture is not null)
             {
@@ -166,7 +175,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
 
         private FileInfo GetPackageOptionsFile()
         {
-            string optionsFileName = Package.Manager.Name + "." + Package.Id + ".json";
+            string optionsFileName = Package.Manager.Name + "." + Package.Id.Split(":")[0] + ".json";
             return new FileInfo(Path.Join(CoreData.UniGetUIInstallationOptionsDirectory, optionsFileName));
         }
 
@@ -193,7 +202,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
 
                 string fileContents = JsonSerializer.Serialize(
                     AsSerializable(),
-                    CoreData.SerializingOptions
+                    SerializationHelpers.DefaultOptions
                 );
                 File.WriteAllText(optionsFile.FullName, fileContents);
             }
@@ -213,20 +222,15 @@ namespace UniGetUI.PackageEngine.PackageClasses
             try
             {
                 if (!optionsFile.Exists)
-                {
                     return;
-                }
 
-                using FileStream inputStream = optionsFile.OpenRead();
-                SerializableInstallationOptions_v1? options = JsonSerializer.Deserialize<SerializableInstallationOptions_v1>(
-                    inputStream, CoreData.SerializingOptions);
+                var rawData = File.ReadAllText(optionsFile.FullName);
+                JsonNode? jsonData = JsonNode.Parse(rawData);
+                if (jsonData is null)
+                    return;
 
-                if (options is null)
-                {
-                    throw new InvalidOperationException("Deserialized options cannot be null!");
-                }
-
-                FromSerializable(options);
+                var serializedOptions = new SerializableInstallationOptions(jsonData);
+                FromSerializable(serializedOptions);
             }
             catch (JsonException)
             {
@@ -254,7 +258,8 @@ namespace UniGetUI.PackageEngine.PackageClasses
                    $"InstallationScope={InstallationScope};" +
                    $"InstallationScope={CustomInstallLocation};" +
                    $"CustomParameters={customparams};" +
-                   $"RemoveDataOnUninstall={RemoveDataOnUninstall}>";
+                   $"RemoveDataOnUninstall={RemoveDataOnUninstall};" +
+                   $"PreRelease={PreRelease}>";
         }
     }
 }

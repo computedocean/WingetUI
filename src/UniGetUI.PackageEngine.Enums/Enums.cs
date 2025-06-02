@@ -22,22 +22,24 @@ namespace UniGetUI.PackageEngine.Enums
 
     public enum BundleFormatType
     {
+        UBUNDLE,
         JSON,
         YAML,
-        XML
+        XML,
     }
 
     public enum OperationVeredict
     {
-        Succeeded,
-        Failed,
+        Success,
+        Failure,
         Canceled,
-        RestartRequired,
+        // RestartRequired,
         AutoRetry,
     }
+
     public enum OperationStatus
     {
-        Pending,
+        InQueue,
         Running,
         Succeeded,
         Failed,

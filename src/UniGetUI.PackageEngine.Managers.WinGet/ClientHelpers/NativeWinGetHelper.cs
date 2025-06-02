@@ -46,7 +46,7 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
         }
     }
 
-    public IEnumerable<Package> FindPackages_UnSafe(string query)
+    public IReadOnlyList<Package> FindPackages_UnSafe(string query)
     {
         List<Package> packages = [];
         INativeTaskLogger logger = Manager.TaskLogger.CreateNew(LoggableTaskType.FindPackages);
@@ -148,11 +148,11 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
         return packages;
     }
 
-    public IEnumerable<Package> GetAvailableUpdates_UnSafe()
+    public IReadOnlyList<Package> GetAvailableUpdates_UnSafe()
     {
         var logger = Manager.TaskLogger.CreateNew(LoggableTaskType.ListUpdates);
         List<Package> packages = [];
-        foreach (var nativePackage in TaskRecycler<IEnumerable<CatalogPackage>>.RunOrAttach(GetLocalWinGetPackages))
+        foreach (var nativePackage in TaskRecycler<IReadOnlyList<CatalogPackage>>.RunOrAttach(GetLocalWinGetPackages))
         {
             if (nativePackage.IsUpdateAvailable)
             {
@@ -187,16 +187,18 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
 
     }
 
-    public IEnumerable<Package> GetInstalledPackages_UnSafe()
+    public IReadOnlyList<Package> GetInstalledPackages_UnSafe()
     {
         var logger = Manager.TaskLogger.CreateNew(LoggableTaskType.ListInstalledPackages);
         List<Package> packages = [];
-        foreach (var nativePackage in TaskRecycler<IEnumerable<CatalogPackage>>.RunOrAttach(GetLocalWinGetPackages, 15))
+        foreach (var nativePackage in TaskRecycler<IReadOnlyList<CatalogPackage>>.RunOrAttach(GetLocalWinGetPackages, 15))
         {
             IManagerSource source;
-            if (nativePackage.DefaultInstallVersion is not null && nativePackage.DefaultInstallVersion.PackageCatalog is not null)
+            var availableVersions = nativePackage.AvailableVersions?.ToArray() ?? [];
+            if (availableVersions.Length > 0)
             {
-                source = Manager.SourcesHelper.Factory.GetSourceOrDefault(nativePackage.DefaultInstallVersion.PackageCatalog.Info.Name);
+                var installPackage = nativePackage.GetPackageVersionInfo(availableVersions[0]);
+                source = Manager.SourcesHelper.Factory.GetSourceOrDefault(installPackage.PackageCatalog.Info.Name);
             }
             else
             {
@@ -216,7 +218,7 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
         return packages;
     }
 
-    private IEnumerable<CatalogPackage> GetLocalWinGetPackages()
+    private IReadOnlyList<CatalogPackage> GetLocalWinGetPackages()
     {
         var logger = Manager.TaskLogger.CreateNew(LoggableTaskType.OtherTask);
         logger.Log("OtherTask: GetWinGetLocalPackages");
@@ -256,12 +258,12 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
         return foundPackages;
     }
 
-    public IEnumerable<IManagerSource> GetSources_UnSafe()
+    public IReadOnlyList<IManagerSource> GetSources_UnSafe()
     {
         List<ManagerSource> sources = [];
         INativeTaskLogger logger = Manager.TaskLogger.CreateNew(LoggableTaskType.ListSources);
 
-        foreach (PackageCatalogReference catalog in WinGetManager.GetPackageCatalogs().ToArray())
+        foreach (PackageCatalogReference catalog in WinGetManager.GetPackageCatalogs().ToList())
         {
             try
             {
@@ -282,7 +284,7 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
         return sources;
     }
 
-    public IEnumerable<string> GetInstallableVersions_Unsafe(IPackage package)
+    public IReadOnlyList<string> GetInstallableVersions_Unsafe(IPackage package)
     {
         INativeTaskLogger logger = Manager.TaskLogger.CreateNew(LoggableTaskType.LoadPackageVersions);
 
@@ -368,6 +370,13 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
             StandardOutputEncoding = System.Text.Encoding.UTF8
         };
         process.StartInfo = startInfo;
+        if (CoreTools.IsAdministrator())
+        {
+            string WinGetTemp = Path.Join(Path.GetTempPath(), "UniGetUI", "ElevatedWinGetTemp");
+            Logger.Warn($"[WARN] Redirecting %TEMP% folder to {WinGetTemp}, since UniGetUI was run as admin");
+            process.StartInfo.Environment["TEMP"] = WinGetTemp;
+            process.StartInfo.Environment["TMP"] = WinGetTemp;
+        }
         process.Start();
 
         logger.Log("Begin loading installers:");

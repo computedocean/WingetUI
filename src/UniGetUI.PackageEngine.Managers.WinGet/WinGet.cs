@@ -1,5 +1,8 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
@@ -40,6 +43,7 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                 CanSkipIntegrityChecks = true,
                 CanRunInteractively = true,
                 SupportsCustomVersions = true,
+                CanDownloadInstaller = true,
                 SupportsCustomArchitectures = true,
                 SupportedCustomArchitectures = [Architecture.X86, Architecture.X64, Architecture.Arm64],
                 SupportsCustomScopes = true,
@@ -52,7 +56,9 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                     KnowsPackageCount = false,
                     KnowsUpdateDate = true,
                     MustBeInstalledAsAdmin = true,
-                }
+                },
+                SupportsProxy = ProxySupport.Partially,
+                SupportsProxyAuth = false
             };
 
             Properties = new ManagerProperties
@@ -76,25 +82,39 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
             DetailsHelper = new WinGetPkgDetailsHelper(this);
             OperationHelper = new WinGetPkgOperationHelper(this);
 
-            LocalPcSource = new LocalWinGetSource(this, CoreTools.Translate("Local PC"), IconType.LocalPc);
-            AndroidSubsystemSource = new(this, CoreTools.Translate("Android Subsystem"), IconType.Android);
-            SteamSource = new(this, "Steam", IconType.Steam);
-            UbisoftConnectSource = new(this, "Ubisoft Connect", IconType.UPlay);
-            GOGSource = new(this, "GOG", IconType.GOG);
-            MicrosoftStoreSource = new(this, "Microsoft Store", IconType.MsStore);
+            LocalPcSource = new LocalWinGetSource(this, CoreTools.Translate("Local PC"), IconType.LocalPc, LocalWinGetSource.Type_t.LocalPC);
+            AndroidSubsystemSource = new(this, CoreTools.Translate("Android Subsystem"), IconType.Android, LocalWinGetSource.Type_t.Android);
+            SteamSource = new(this, "Steam", IconType.Steam, LocalWinGetSource.Type_t.Steam);
+            UbisoftConnectSource = new(this, "Ubisoft Connect", IconType.UPlay, LocalWinGetSource.Type_t.Ubisoft);
+            GOGSource = new(this, "GOG", IconType.GOG, LocalWinGetSource.Type_t.GOG);
+            MicrosoftStoreSource = new(this, "Microsoft Store", IconType.MsStore, LocalWinGetSource.Type_t.MicrosftStore);
         }
 
-        protected override IEnumerable<Package> FindPackages_UnSafe(string query)
+        public static string GetProxyArgument()
+        {
+            if (!Settings.Get("EnableProxy")) return "";
+            var proxyUri = Settings.GetProxyUrl();
+            if (proxyUri is null) return "";
+
+            if (Settings.Get("EnableProxyAuth"))
+            {
+                Logger.Warn("Proxy is enabled, but WinGet does not support proxy authentication, so the proxy setting will be ignored");
+                return "";
+            }
+            return $"--proxy {proxyUri.ToString()[..^1]}";
+        }
+
+        protected override IReadOnlyList<Package> FindPackages_UnSafe(string query)
         {
             return WinGetHelper.Instance.FindPackages_UnSafe(query);
         }
 
-        protected override IEnumerable<Package> GetAvailableUpdates_UnSafe()
+        protected override IReadOnlyList<Package> GetAvailableUpdates_UnSafe()
         {
             return WinGetHelper.Instance.GetAvailableUpdates_UnSafe();
         }
 
-        protected override IEnumerable<Package> GetInstalledPackages_UnSafe()
+        protected override IReadOnlyList<Package> GetInstalledPackages_UnSafe()
         {
             try
             {
@@ -116,44 +136,42 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
             {
                 return MicrosoftStoreSource;
             }
-            else
+
+            string MeaningfulId = IdPieces[^1];
+
+            // Fast Local PC Check
+            if (MeaningfulId[0] == '{')
             {
-                string MeaningfulId = IdPieces[^1];
-
-                // Fast Local PC Check
-                if (MeaningfulId[0] == '{')
-                {
-                    return LocalPcSource;
-                }
-
-                // Check if source is android
-                if(MeaningfulId.Count(x => x == '.') >= 2 && MeaningfulId.All(c => (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '…'))
-                {
-                    return AndroidSubsystemSource;
-                }
-
-                // Check if source is Steam
-                if (MeaningfulId == "Steam" || MeaningfulId.StartsWith("Steam App"))
-                {
-                    return SteamSource;
-                }
-
-                // Check if source is Ubisoft Connect
-                if (MeaningfulId == "Uplay" || MeaningfulId.StartsWith("Uplay Install"))
-                {
-                    return UbisoftConnectSource;
-                }
-
-                // Check if source is GOG
-                if (MeaningfulId.EndsWith("_is1") &&
-                    MeaningfulId.Replace("_is1", "").All(c => (c >= '0' && c <= '9')))
-                {
-                    return GOGSource;
-                }
-
-                // Otherwise they are Local PC
                 return LocalPcSource;
             }
+
+            // Check if source is android
+            if (MeaningfulId.Count(x => x == '.') >= 2 && MeaningfulId.All(c => (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '…'))
+            {
+                return AndroidSubsystemSource;
+            }
+
+            // Check if source is Steam
+            if (MeaningfulId == "Steam" || MeaningfulId.StartsWith("Steam App"))
+            {
+                return SteamSource;
+            }
+
+            // Check if source is Ubisoft Connect
+            if (MeaningfulId == "Uplay" || MeaningfulId.StartsWith("Uplay Install"))
+            {
+                return UbisoftConnectSource;
+            }
+
+            // Check if source is GOG
+            if (MeaningfulId.EndsWith("_is1") &&
+                MeaningfulId.Replace("_is1", "").All(c => (c >= '0' && c <= '9')))
+            {
+                return GOGSource;
+            }
+
+            // Otherwise they are Local PC
+            return LocalPcSource;
         }
 
         protected override ManagerStatus LoadManager()
@@ -183,6 +201,8 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                 return status;
             }
 
+            TryRepairTempFolderPermissions();
+
             Process process = new()
             {
                 StartInfo = new ProcessStartInfo
@@ -197,6 +217,14 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                     StandardErrorEncoding = Encoding.UTF8
                 }
             };
+
+            if (CoreTools.IsAdministrator())
+            {
+                string WinGetTemp = Path.Join(Path.GetTempPath(), "UniGetUI", "ElevatedWinGetTemp");
+                process.StartInfo.Environment["TEMP"] = WinGetTemp;
+                process.StartInfo.Environment["TMP"] = WinGetTemp;
+            }
+
             process.Start();
             status.Version = $"{(FORCE_BUNDLED ? "Bundled" : "System")} WinGet CLI Version: {process.StandardOutput.ReadToEnd().Trim()}";
             string error = process.StandardError.ReadToEnd();
@@ -243,31 +271,85 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
             {
                 if (WinGetHelper.Instance is NativeWinGetHelper)
                 {
-                    Logger.ImportantInfo("Attempting to reconnec to WinGet COM Server...");
+                    Logger.ImportantInfo("Attempting to reconnect to WinGet COM Server...");
                     ReRegisterCOMServer();
+                    TryRepairTempFolderPermissions();
                     NO_PACKAGES_HAVE_BEEN_LOADED = false;
+
                 }
                 else
                 {
                     Logger.Warn("Attempted to reconnect to COM Server but Bundled WinGet is being used.");
                 }
-            } catch (Exception ex)
+            }
+            catch (Exception ex)
             {
                 Logger.Error("An error ocurred while attempting to reconnect to COM Server");
                 Logger.Error(ex);
             }
         }
 
+        private static void TryRepairTempFolderPermissions()
+        {
+            if (Settings.Get("DisableNewWinGetTroubleshooter")) return;
 
+            try
+            {
+                string tempPath = Path.GetTempPath();
+                string winGetTempPath = Path.Combine(tempPath, "WinGet");
+
+                if (!Directory.Exists(winGetTempPath))
+                {
+                    Logger.Warn("WinGet temp folder does not exist, creating it...");
+                    Directory.CreateDirectory(winGetTempPath);
+                }
+
+                var directoryInfo = new DirectoryInfo(winGetTempPath);
+                var accessControl = directoryInfo.GetAccessControl();
+                var rules = accessControl.GetAccessRules(true, true, typeof(NTAccount));
+
+                bool userHasAccess = false;
+                string currentUser = WindowsIdentity.GetCurrent().Name;
+
+                foreach (FileSystemAccessRule rule in rules)
+                {
+                    if (rule.IdentityReference.Value.Equals(currentUser, StringComparison.CurrentCultureIgnoreCase))
+                    {
+                        userHasAccess = true;
+                        break;
+                    }
+                }
+
+                if (!userHasAccess)
+                {
+                    Logger.Warn("WinGet temp folder does not have correct permissions set, adding the current user...");
+                    var rule = new FileSystemAccessRule(
+                        currentUser,
+                        FileSystemRights.FullControl,
+                        InheritanceFlags.ContainerInherit |
+                        InheritanceFlags.ObjectInherit,
+                        PropagationFlags.None,
+                        AccessControlType.Allow);
+
+                    accessControl.AddAccessRule(rule);
+                    directoryInfo.SetAccessControl(accessControl);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("An error occurred while attempting to properly configure WinGet's temp folder permissions.");
+                Logger.Error(ex);
+            }
+        }
 
         public override void RefreshPackageIndexes()
         {
-            Process p = new()
+            using Process p = new()
             {
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = Status.ExecutablePath,
-                    Arguments = Properties.ExecutableCallArgs + " source update --disable-interactivity",
+                    Arguments = Properties.ExecutableCallArgs + " source update --disable-interactivity " + WinGet.GetProxyArgument(),
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -278,6 +360,14 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
             };
 
             IProcessTaskLogger logger = TaskLogger.CreateNew(LoggableTaskType.RefreshIndexes, p);
+
+            if (CoreTools.IsAdministrator())
+            {
+                string WinGetTemp = Path.Join(Path.GetTempPath(), "UniGetUI", "ElevatedWinGetTemp");
+                logger.AddToStdErr($"[WARN] Redirecting %TEMP% folder to {WinGetTemp}, since UniGetUI was run as admin");
+                p.StartInfo.Environment["TEMP"] = WinGetTemp;
+                p.StartInfo.Environment["TMP"] = WinGetTemp;
+            }
 
             p.Start();
             logger.AddToStdOut(p.StandardOutput.ReadToEnd());
@@ -290,13 +380,25 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
 
     public class LocalWinGetSource : ManagerSource
     {
+        public enum Type_t
+        {
+            LocalPC,
+            MicrosftStore,
+            Steam,
+            GOG,
+            Android,
+            Ubisoft
+        }
+
+        public readonly Type_t Type;
         private readonly string name;
         private readonly IconType __icon_id;
         public override IconType IconId { get => __icon_id; }
 
-        public LocalWinGetSource(WinGet manager, string name, IconType iconId)
+        public LocalWinGetSource(WinGet manager, string name, IconType iconId, Type_t type)
             : base(manager, name, new Uri("https://microsoft.com/local-pc-source"), isVirtualManager: true)
         {
+            Type = type;
             this.name = name;
             __icon_id = iconId;
             AsString = Name;

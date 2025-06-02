@@ -1,7 +1,14 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 
 namespace UniGetUI.PackageEngine.ManagerClasses.Manager
 {
+    public enum ProxySupport
+    {
+        No,
+        Partially,
+        Yes,
+    }
+
     public struct SourceCapabilities
     {
         public bool KnowsUpdateDate { get; set; } = false;
@@ -18,6 +25,7 @@ namespace UniGetUI.PackageEngine.ManagerClasses.Manager
         public bool CanSkipIntegrityChecks = false;
         public bool CanRunInteractively = false;
         public bool CanRemoveDataOnUninstall = false;
+        public bool CanDownloadInstaller = false;
         public bool SupportsCustomVersions = false;
         public bool SupportsCustomArchitectures = false;
         public Architecture[] SupportedCustomArchitectures = [];
@@ -27,6 +35,8 @@ namespace UniGetUI.PackageEngine.ManagerClasses.Manager
         public bool SupportsCustomSources = false;
         public bool SupportsCustomPackageIcons = false;
         public bool SupportsCustomPackageScreenshots = false;
+        public ProxySupport SupportsProxy = ProxySupport.No;
+        public bool SupportsProxyAuth = false;
         public SourceCapabilities Sources { get; set; }
         public ManagerCapabilities()
         {

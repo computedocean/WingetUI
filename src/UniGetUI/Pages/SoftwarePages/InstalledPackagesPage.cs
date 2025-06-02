@@ -5,20 +5,19 @@ using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
 using UniGetUI.Interface.Enums;
+using UniGetUI.Interface.Telemetry;
 using UniGetUI.Interface.Widgets;
 using UniGetUI.PackageEngine;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.PackageEngine.Managers.WingetManager;
-using UniGetUI.PackageEngine.Operations;
-using UniGetUI.PackageEngine.PackageClasses;
 using UniGetUI.Pages.DialogPages;
 
 namespace UniGetUI.Interface.SoftwarePages
 {
-    public class InstalledPackagesPage : AbstractPackagesPage
+    public partial class InstalledPackagesPage : AbstractPackagesPage
     {
-        private bool HasDoneBackup;
+        private static bool HasDoneBackup;
 
         private BetterMenuItem? MenuAsAdmin;
         private BetterMenuItem? MenuInteractive;
@@ -30,6 +29,7 @@ namespace UniGetUI.Interface.SoftwarePages
         private BetterMenuItem? MenuSharePackage;
         private BetterMenuItem? MenuPackageDetails;
         private BetterMenuItem? MenuOpenInstallLocation;
+        private BetterMenuItem? MenuDownloadInstaller;
 
         public InstalledPackagesPage()
         : base(new PackagesPageData
@@ -116,6 +116,16 @@ namespace UniGetUI.Interface.SoftwarePages
 
             menu.Items.Add(new MenuFlyoutSeparator());
 
+            MenuDownloadInstaller = new BetterMenuItem
+            {
+                Text = CoreTools.AutoTranslated("Download installer"),
+                IconName = IconType.Download
+            };
+            MenuDownloadInstaller.Click += (_, _) => _ = MainApp.Operations.AskLocationAndDownload(SelectedItem, TEL_InstallReferral.ALREADY_INSTALLED);
+            menu.Items.Add(MenuDownloadInstaller);
+
+            menu.Items.Add(new MenuFlyoutSeparator());
+
             MenuReinstallPackage = new()
             {
                 Text = CoreTools.AutoTranslated("Reinstall package"),
@@ -131,7 +141,6 @@ namespace UniGetUI.Interface.SoftwarePages
             };
             MenuUninstallThenReinstall.Click += MenuUninstallThenReinstall_Invoked;
             menu.Items.Add(MenuUninstallThenReinstall);
-
             menu.Items.Add(new MenuFlyoutSeparator());
 
             MenuIgnoreUpdates = new()
@@ -219,7 +228,9 @@ namespace UniGetUI.Interface.SoftwarePages
                     toolButton.LabelPosition = CommandBarLabelPosition.Collapsed;
                 }
 
-                toolButton.Label = Labels[toolButton].Trim();
+                string text = Labels[toolButton].Trim();
+                toolButton.Label = text;
+                ToolTipService.SetToolTip(toolButton, text);
             }
 
             Dictionary<AppBarButton, IconType> Icons = new()
@@ -241,7 +252,7 @@ namespace UniGetUI.Interface.SoftwarePages
                 toolButton.Icon = new LocalIcon(Icons[toolButton]);
             }
 
-            PackageDetails.Click += (_, _) => ShowDetailsForPackage(SelectedItem);
+            PackageDetails.Click += (_, _) => ShowDetailsForPackage(SelectedItem, TEL_InstallReferral.ALREADY_INSTALLED);
 
             ExportSelection.Click += ExportSelection_Click;
             HelpButton.Click += (_, _) => MainApp.Instance.MainWindow.NavigationPage.ShowHelp();
@@ -250,16 +261,18 @@ namespace UniGetUI.Interface.SoftwarePages
             IgnoreSelected.Click += async (_, _) =>
             {
                 foreach (IPackage package in FilteredPackages.GetCheckedPackages())
-                    if(!package.Source.IsVirtualManager)
+                {
+                    if (!package.Source.IsVirtualManager)
                     {
                         PEInterface.UpgradablePackagesLoader.Remove(package);
                         await package.AddToIgnoredUpdatesAsync();
                     }
+                }
             };
 
-            UninstallSelected.Click += (_, _) => ConfirmAndUninstall(FilteredPackages.GetCheckedPackages());
-            UninstallAsAdmin.Click += (_, _) => ConfirmAndUninstall(FilteredPackages.GetCheckedPackages(), elevated: true);
-            UninstallInteractive.Click += (_, _) => ConfirmAndUninstall(FilteredPackages.GetCheckedPackages(), interactive: true);
+            UninstallSelected.Click += (_, _) => MainApp.Operations.ConfirmAndUninstall(FilteredPackages.GetCheckedPackages());
+            UninstallAsAdmin.Click += (_, _) => MainApp.Operations.ConfirmAndUninstall(FilteredPackages.GetCheckedPackages(), elevated: true);
+            UninstallInteractive.Click += (_, _) => MainApp.Operations.ConfirmAndUninstall(FilteredPackages.GetCheckedPackages(), interactive: true);
             SharePackage.Click += (_, _) => MainApp.Instance.MainWindow.SharePackage(SelectedItem);
         }
 
@@ -278,13 +291,13 @@ namespace UniGetUI.Interface.SoftwarePages
                 }
             }
 
-            if(WinGet.NO_PACKAGES_HAVE_BEEN_LOADED && !Settings.Get("DisableWinGetMalfunctionDetector"))
+            if (WinGet.NO_PACKAGES_HAVE_BEEN_LOADED && !Settings.Get("DisableWinGetMalfunctionDetector"))
             {
                 var infoBar = MainApp.Instance.MainWindow.WinGetWarningBanner;
                 infoBar.IsOpen = true;
                 infoBar.Title = CoreTools.Translate("WinGet malfunction detected");
                 infoBar.Message = CoreTools.Translate("It looks like WinGet is not working properly. Do you want to attempt to repair WinGet?");
-                var button = new Button() { Content = CoreTools.Translate("Repair WinGet") };
+                var button = new Button { Content = CoreTools.Translate("Repair WinGet") };
                 infoBar.ActionButton = button;
                 button.Click += (_, _) => DialogHelper.HandleBrokenWinGet();
             }
@@ -301,7 +314,8 @@ namespace UniGetUI.Interface.SoftwarePages
                 || MenuIgnoreUpdates is null
                 || MenuSharePackage is null
                 || MenuPackageDetails is null
-                || MenuOpenInstallLocation is null)
+                || MenuOpenInstallLocation is null
+                || MenuDownloadInstaller is null)
             {
                 Logger.Error("Menu items are null on InstalledPackagesTab");
                 return;
@@ -316,9 +330,10 @@ namespace UniGetUI.Interface.SoftwarePages
             MenuInstallationOptions.IsEnabled = !IS_LOCAL;
             MenuReinstallPackage.IsEnabled = !IS_LOCAL;
             MenuUninstallThenReinstall.IsEnabled = !IS_LOCAL;
-            MenuIgnoreUpdates.IsEnabled = false; //!IS_LOCAL;
+            MenuIgnoreUpdates.IsEnabled = false; // Will be set on the lines below;
             MenuSharePackage.IsEnabled = !IS_LOCAL;
             MenuPackageDetails.IsEnabled = !IS_LOCAL;
+            MenuDownloadInstaller.IsEnabled = !IS_LOCAL && package.Manager.Capabilities.CanDownloadInstaller;;
 
             MenuOpenInstallLocation.IsEnabled = package.Manager.DetailsHelper.GetInstallLocation(package) is not null;
             if (!IS_LOCAL)
@@ -326,12 +341,12 @@ namespace UniGetUI.Interface.SoftwarePages
                 if (await package.HasUpdatesIgnoredAsync())
                 {
                     MenuIgnoreUpdates.Text = CoreTools.Translate("Do not ignore updates for this package anymore");
-                    MenuIgnoreUpdates.Icon = new FontIcon() { Glyph = "\uE77A" };
+                    MenuIgnoreUpdates.Icon = new FontIcon { Glyph = "\uE77A" };
                 }
                 else
                 {
                     MenuIgnoreUpdates.Text = CoreTools.Translate("Ignore updates for this package");
-                    MenuIgnoreUpdates.Icon = new FontIcon() { Glyph = "\uE718" };
+                    MenuIgnoreUpdates.Icon = new FontIcon { Glyph = "\uE718" };
                 }
                 MenuIgnoreUpdates.IsEnabled = true;
             }
@@ -346,39 +361,19 @@ namespace UniGetUI.Interface.SoftwarePages
 
         }
 
-        public async void ConfirmAndUninstall(IPackage package, IInstallationOptions options)
-        {
-            if (await DialogHelper.ConfirmUninstallation(package))
-            {
-                MainApp.Instance.AddOperationToList(new UninstallPackageOperation(package, options));
-            }
-        }
-
-        public async void ConfirmAndUninstall(IEnumerable<IPackage> packages, bool? elevated = null, bool? interactive = null, bool? remove_data = null)
-        {
-            if (await DialogHelper.ConfirmUninstallation(packages))
-            {
-                foreach (IPackage package in packages)
-                {
-                    MainApp.Instance.AddOperationToList(new UninstallPackageOperation(package,
-                        await InstallationOptions.FromPackageAsync(package, elevated, interactive, remove_data: remove_data)));
-                }
-            }
-        }
-
-        public async Task BackupPackages()
+        public static async Task BackupPackages()
         {
 
             try
             {
                 Logger.Debug("Starting package backup");
                 List<IPackage> packagesToExport = [];
-                foreach (IPackage package in Loader.Packages)
+                foreach (IPackage package in PEInterface.InstalledPackagesLoader.Packages)
                 {
                     packagesToExport.Add(package);
                 }
 
-                string BackupContents = await PackageBundlesPage.CreateBundle(packagesToExport.ToArray(), BundleFormatType.JSON);
+                string BackupContents = await PackageBundlesPage.CreateBundle(packagesToExport.ToArray(), BundleFormatType.UBUNDLE);
 
                 string dirName = Settings.GetValue("ChangeBackupOutputDirectory");
                 if (dirName == "")
@@ -416,83 +411,36 @@ namespace UniGetUI.Interface.SoftwarePages
             }
         }
 
-        private async void MenuUninstall_Invoked(object sender, RoutedEventArgs args)
-        {
-            IPackage? package = SelectedItem;
-            if (package is null)
-            {
-                return;
-            }
+        private void MenuUninstall_Invoked(object sender, RoutedEventArgs args)
+            => MainApp.Operations.ConfirmAndUninstall(SelectedItem);
 
-            ConfirmAndUninstall(package, await InstallationOptions.FromPackageAsync(package));
-        }
+        private void MenuAsAdmin_Invoked(object sender, RoutedEventArgs args)
+            => MainApp.Operations.ConfirmAndUninstall(SelectedItem, elevated: true);
 
-        private async void MenuAsAdmin_Invoked(object sender, RoutedEventArgs args)
-        {
-            IPackage? package = SelectedItem;
-            if (package is null)
-            {
-                return;
-            }
+        private void MenuInteractive_Invoked(object sender, RoutedEventArgs args)
+            => MainApp.Operations.ConfirmAndUninstall(SelectedItem, interactive: true);
 
-            ConfirmAndUninstall(package, await InstallationOptions.FromPackageAsync(package, elevated: true));
-        }
-
-        private async void MenuInteractive_Invoked(object sender, RoutedEventArgs args)
-        {
-            IPackage? package = SelectedItem;
-            if (package is null)
-            {
-                return;
-            }
-
-            ConfirmAndUninstall(package, await InstallationOptions.FromPackageAsync(package, interactive: true));
-        }
-
-        private async void MenuRemoveData_Invoked(object sender, RoutedEventArgs args)
-        {
-            IPackage? package = SelectedItem;
-            if (package is null)
-            {
-                return;
-            }
-
-            ConfirmAndUninstall(package, await InstallationOptions.FromPackageAsync(package, remove_data: true));
-        }
+        private void MenuRemoveData_Invoked(object sender, RoutedEventArgs args)
+            => MainApp.Operations.ConfirmAndUninstall(SelectedItem, remove_data: true);
 
         private void MenuReinstall_Invoked(object sender, RoutedEventArgs args)
-        {
-            IPackage? package = SelectedItem;
-            if (package is null)
-            {
-                return;
-            }
+            => _ = MainApp.Operations.Install(SelectedItem, TEL_InstallReferral.ALREADY_INSTALLED);
 
-            MainApp.Instance.AddOperationToList(new InstallPackageOperation(package));
+        private async void MenuUninstallThenReinstall_Invoked(object sender, RoutedEventArgs args)
+        {
+            var op = await MainApp.Operations.Uninstall(SelectedItem, ignoreParallel: true);
+            _ = MainApp.Operations.Install(SelectedItem, TEL_InstallReferral.ALREADY_INSTALLED, ignoreParallel: true, req: op);
         }
 
-        private void MenuUninstallThenReinstall_Invoked(object sender, RoutedEventArgs args)
-        {
-            IPackage? package = SelectedItem;
-            if (package is null)
-            {
-                return;
-            }
-
-            MainApp.Instance.AddOperationToList(new UninstallPackageOperation(package, IgnoreParallelInstalls: true));
-            MainApp.Instance.AddOperationToList(new InstallPackageOperation(package, IgnoreParallelInstalls: true));
-
-        }
         private async void MenuIgnorePackage_Invoked(object sender, RoutedEventArgs args)
         {
             IPackage? package = SelectedItem;
-            if (package is null)
-            {
-                return;
-            }
+            if (package is null) return;
 
-            if(await package.HasUpdatesIgnoredAsync())
+            if (await package.HasUpdatesIgnoredAsync())
+            {
                 await package.RemoveFromIgnoredUpdatesAsync();
+            }
             else
             {
                 await package.AddToIgnoredUpdatesAsync();
@@ -502,27 +450,20 @@ namespace UniGetUI.Interface.SoftwarePages
 
         private void MenuShare_Invoked(object sender, RoutedEventArgs args)
         {
-            if (PackageList.SelectedItem is null)
-            {
+            if (SelectedItem is null)
                 return;
-            }
 
             MainApp.Instance.MainWindow.SharePackage(SelectedItem);
         }
 
         private void MenuDetails_Invoked(object sender, RoutedEventArgs args)
         {
-            ShowDetailsForPackage(SelectedItem);
+            ShowDetailsForPackage(SelectedItem, TEL_InstallReferral.ALREADY_INSTALLED);
         }
 
-        private async void MenuInstallSettings_Invoked(object sender, RoutedEventArgs e)
+        private void MenuInstallSettings_Invoked(object sender, RoutedEventArgs e)
         {
-            IPackage? package = SelectedItem;
-            if (package is not null &&
-                await DialogHelper.ShowInstallatOptions_Continue(package, OperationType.Uninstall))
-            {
-                ConfirmAndUninstall(package, await InstallationOptions.FromPackageAsync(package));
-            }
+            ShowInstallationOptionsForPackage(SelectedItem);
         }
     }
 }

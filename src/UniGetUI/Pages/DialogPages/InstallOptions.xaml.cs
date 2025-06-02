@@ -5,6 +5,7 @@ using UniGetUI.Core.Language;
 using UniGetUI.Core.Tools;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.PackageClasses;
 using UniGetUI.PackageEngine.Serializable;
 
 // To learn more about WinUI, the WinUI project structure,
@@ -17,18 +18,22 @@ namespace UniGetUI.Interface.Dialogs
     /// </summary>
     public sealed partial class InstallOptionsPage : Page
     {
-        public SerializableInstallationOptions_v1 Options;
+        public SerializableInstallationOptions Options;
         public IPackage Package;
         public event EventHandler? Close;
         private readonly OperationType Operation;
+        private readonly string packageInstallLocation;
+        private bool _uiLoaded;
 
-        public InstallOptionsPage(IPackage package, SerializableInstallationOptions_v1 options) : this(package, OperationType.None, options) { }
-        public InstallOptionsPage(IPackage package, OperationType operation, SerializableInstallationOptions_v1 options)
+        public InstallOptionsPage(IPackage package, SerializableInstallationOptions options) : this(package, OperationType.None, options) { }
+        public InstallOptionsPage(IPackage package, OperationType operation, SerializableInstallationOptions options)
         {
             Package = package;
             InitializeComponent();
             Operation = operation;
             Options = options;
+
+            packageInstallLocation = Package.Manager.DetailsHelper.GetInstallLocation(package) ?? CoreTools.Translate("Unset or unknown");
 
             AdminCheckBox.IsChecked = Options.RunAsAdministrator;
             AdminCheckBox.IsEnabled = Package.Manager.Capabilities.CanRunAsAdmin;
@@ -83,6 +88,8 @@ namespace UniGetUI.Interface.Dialogs
                 }
             }
 
+            SkipMinorUpdatesCheckbox.IsChecked = Options.SkipMinorUpdates;
+
             if (Package.Manager.Capabilities.SupportsCustomVersions)
             {
                 _ = LoadVersions();
@@ -112,13 +119,17 @@ namespace UniGetUI.Interface.Dialogs
 
             ResetDir.IsEnabled = Package.Manager.Capabilities.SupportsCustomLocations;
             SelectDir.IsEnabled = Package.Manager.Capabilities.SupportsCustomLocations;
-            CustomInstallLocation.Text = Options.CustomInstallLocation;
 
-            if (Options.CustomParameters.Any())
+            if (Options.CustomInstallLocation == "") CustomInstallLocation.Text = packageInstallLocation;
+            else CustomInstallLocation.Text = Options.CustomInstallLocation;
+
+            if (Options.CustomParameters.Count != 0)
             {
                 CustomParameters.Text = string.Join(' ', Options.CustomParameters);
             }
 
+            _uiLoaded = true;
+            GenerateCommand();
             LoadIgnoredUpdates();
         }
 
@@ -132,7 +143,7 @@ namespace UniGetUI.Interface.Dialogs
             IgnoreUpdatesCheckbox.IsChecked = await Package.HasUpdatesIgnoredAsync();
             VersionComboBox.IsEnabled = false;
 
-            IEnumerable<string> versions = await Task.Run(() => Package.Manager.DetailsHelper.GetVersions(Package));
+            IReadOnlyList<string> versions = await Task.Run(() => Package.Manager.DetailsHelper.GetVersions(Package));
             foreach (string ver in versions)
             {
                 VersionComboBox.Items.Add(ver);
@@ -150,7 +161,7 @@ namespace UniGetUI.Interface.Dialogs
             VersionProgress.Visibility = Visibility.Collapsed;
         }
 
-        public async Task<SerializableInstallationOptions_v1> GetUpdatedOptions()
+        public async Task<SerializableInstallationOptions> GetUpdatedOptions(bool updateIgnoredUpdates = true)
         {
             Options.RunAsAdministrator = AdminCheckBox?.IsChecked ?? false;
             Options.InteractiveInstallation = InteractiveCheckBox?.IsChecked ?? false;
@@ -174,7 +185,9 @@ namespace UniGetUI.Interface.Dialogs
                 Options.InstallationScope = "";
             }
 
-            Options.CustomInstallLocation = CustomInstallLocation.Text;
+            if (CustomInstallLocation.Text == packageInstallLocation) Options.CustomInstallLocation = "";
+            else Options.CustomInstallLocation = CustomInstallLocation.Text;
+
             Options.CustomParameters = CustomParameters.Text.Split(' ').ToList();
             Options.PreRelease = VersionComboBox.SelectedValue.ToString() == CoreTools.Translate("PreRelease");
 
@@ -186,16 +199,20 @@ namespace UniGetUI.Interface.Dialogs
             {
                 Options.Version = "";
             }
+            Options.SkipMinorUpdates = SkipMinorUpdatesCheckbox?.IsChecked ?? false;
 
-            if (IgnoreUpdatesCheckbox?.IsChecked ?? false)
+            if (updateIgnoredUpdates)
             {
-                await Package.AddToIgnoredUpdatesAsync(version: "*");
-            }
-            else
-            {
-                if (await Package.GetIgnoredUpdatesVersionAsync() == "*")
+                if (IgnoreUpdatesCheckbox?.IsChecked ?? false)
                 {
-                    await Package.RemoveFromIgnoredUpdatesAsync();
+                    await Package.AddToIgnoredUpdatesAsync(version: "*");
+                }
+                else
+                {
+                    if (await Package.GetIgnoredUpdatesVersionAsync() == "*")
+                    {
+                        await Package.RemoveFromIgnoredUpdatesAsync();
+                    }
                 }
             }
             return Options;
@@ -209,16 +226,42 @@ namespace UniGetUI.Interface.Dialogs
             {
                 CustomInstallLocation.Text = folder;
             }
+            GenerateCommand();
         }
 
         private void ResetDir_Click(object sender, RoutedEventArgs e)
         {
-            CustomInstallLocation.Text = "";
+            CustomInstallLocation.Text = packageInstallLocation;
+            GenerateCommand();
         }
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)
         {
             Close?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void CustomParameters_TextChanged(object sender, TextChangedEventArgs e) => GenerateCommand();
+        private void ScopeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) => GenerateCommand();
+        private void VersionComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e) => GenerateCommand();
+        private void AdminCheckBox_Click(object sender, RoutedEventArgs e) => GenerateCommand();
+        private void InteractiveCheckBox_Click(object sender, RoutedEventArgs e) => GenerateCommand();
+        private void HashCheckbox_Click(object sender, RoutedEventArgs e) => GenerateCommand();
+        private void ArchitectureComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e) => GenerateCommand();
+
+
+        private async void GenerateCommand()
+        {
+            if (!_uiLoaded) return;
+            InstallationOptions io = InstallationOptions.FromSerialized(await GetUpdatedOptions(updateIgnoredUpdates: false), Package);
+            var op = Operation;
+            if (op is OperationType.None) op = OperationType.Install;
+            var commandline = await Task.Run(() => Package.Manager.OperationHelper.GetParameters(Package, io, op));
+            CommandBox.Text = Package.Manager.Properties.ExecutableFriendlyName + " " + string.Join(" ", commandline);
+        }
+
+        private void LayoutGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if(LayoutGrid.ActualSize.Y > 1 && LayoutGrid.ActualSize.Y < double.PositiveInfinity) MaxHeight = LayoutGrid.ActualSize.Y;
         }
     }
 }

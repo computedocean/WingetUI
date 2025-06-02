@@ -1,4 +1,5 @@
 {
+  "af": [],
   "ar": [
     {
       "name": "Abdu11ahAS",
@@ -79,8 +80,16 @@
       "link": "https://github.com/AAUCrisp"
     },
     {
+      "name": "bstordrup",
+      "link": "https://github.com/bstordrup"
+    },
+    {
       "name": "mikkolukas",
       "link": "https://github.com/mikkolukas"
+    },
+    {
+      "name": "siewers",
+      "link": "https://github.com/siewers"
     },
     {
       "name": "yrjarv",
@@ -97,6 +106,10 @@
       "link": "https://github.com/alxhu-dev"
     },
     {
+      "name": "Araxxas",
+      "link": "https://github.com/Araxxas"
+    },
+    {
       "name": "CanePlayz",
       "link": "https://github.com/CanePlayz"
     },
@@ -109,12 +122,28 @@
       "link": "https://github.com/ebnater"
     },
     {
+      "name": "martinwilco",
+      "link": "https://github.com/martinwilco"
+    },
+    {
       "name": "michaelmairegger",
       "link": "https://github.com/michaelmairegger"
     },
     {
       "name": "Seeloewen",
       "link": "https://github.com/Seeloewen"
+    },
+    {
+      "name": "TheScarfix",
+      "link": "https://github.com/TheScarfix"
+    },
+    {
+      "name": "tkohlmeier",
+      "link": "https://github.com/tkohlmeier"
+    },
+    {
+      "name": "VfBFan",
+      "link": "https://github.com/VfBFan"
     },
     {
       "name": "yrjarv",
@@ -125,6 +154,14 @@
     {
       "name": "antwnhsx",
       "link": "https://github.com/antwnhsx"
+    },
+    {
+      "name": "panos78",
+      "link": "https://github.com/panos78"
+    },
+    {
+      "name": "seijind",
+      "link": "https://github.com/seijind"
     },
     {
       "name": "thunderstrike116",
@@ -171,6 +208,10 @@
       "link": "https://github.com/marticliment"
     },
     {
+      "name": "P10Designs",
+      "link": "https://github.com/P10Designs"
+    },
+    {
       "name": "rubnium",
       "link": "https://github.com/rubnium"
     },
@@ -179,6 +220,7 @@
       "link": "https://github.com/uKER"
     }
   ],
+  "es-MX": [],
   "et": [
     {
       "name": "artjom3729",
@@ -187,28 +229,8 @@
   ],
   "fa": [
     {
-      "name": "Imorate",
-      "link": "https://github.com/Imorate"
-    },
-    {
-      "name": "itsarian",
-      "link": "https://github.com/itsarian"
-    },
-    {
-      "name": "Mahdi-Hazrati",
-      "link": "https://github.com/Mahdi-Hazrati"
-    },
-    {
-      "name": "moon24-s",
-      "link": "https://github.com/moon24-s"
-    },
-    {
-      "name": "saeed205",
-      "link": "https://github.com/saeed205"
-    },
-    {
-      "name": "smsi2001",
-      "link": "https://github.com/smsi2001"
+      "name": "MobinMardi",
+      "link": "https://github.com/MobinMardi"
     }
   ],
   "fi": [
@@ -217,10 +239,20 @@
       "link": "https://github.com/simakuutio"
     }
   ],
+  "fil": [
+    {
+      "name": "infyProductions",
+      "link": "https://github.com/infyProductions"
+    }
+  ],
   "fr": [
     {
       "name": "BreatFR",
       "link": ""
+    },
+    {
+      "name": "Entropiness",
+      "link": "https://github.com/Entropiness"
     },
     {
       "name": "Evans Costa",
@@ -239,6 +271,7 @@
       "link": "https://github.com/W1L7dev"
     }
   ],
+  "gl": [],
   "gu": [],
   "he": [
     {
@@ -251,6 +284,10 @@
     }
   ],
   "hi": [
+    {
+      "name": "Ashu-r",
+      "link": "https://github.com/Ashu-r"
+    },
     {
       "name": "atharva_xoxo",
       "link": "https://github.com/atharva_xoxo"
@@ -280,6 +317,10 @@
     {
       "name": "joenior",
       "link": "https://github.com/joenior"
+    },
+    {
+      "name": "nrarfn",
+      "link": "https://github.com/nrarfn"
     }
   ],
   "it": [
@@ -334,6 +375,16 @@
       "link": ""
     }
   ],
+  "ka": [
+    {
+      "name": "marticliment",
+      "link": "https://github.com/marticliment"
+    },
+    {
+      "name": "ppvnf",
+      "link": "https://github.com/ppvnf"
+    }
+  ],
   "kn": [
     {
       "name": "skanda890",
@@ -342,12 +393,24 @@
   ],
   "ko": [
     {
+      "name": "jihoon416",
+      "link": "https://github.com/jihoon416"
+    },
+    {
       "name": "minbert",
       "link": "https://github.com/minbert"
     },
     {
+      "name": "MuscularPuky",
+      "link": "https://github.com/MuscularPuky"
+    },
+    {
       "name": "shblue21",
       "link": "https://github.com/shblue21"
+    },
+    {
+      "name": "thejjw",
+      "link": "https://github.com/thejjw"
     },
     {
       "name": "VenusGirl",
@@ -374,7 +437,12 @@
       "link": ""
     }
   ],
+  "mr": [],
   "nb": [
+    {
+      "name": "mikaelkw",
+      "link": "https://github.com/mikaelkw"
+    },
     {
       "name": "yrjarv",
       "link": "https://github.com/yrjarv"
@@ -406,6 +474,14 @@
       "link": "https://github.com/GrzegorzKi"
     },
     {
+      "name": "ikarmus2001",
+      "link": "https://github.com/ikarmus2001"
+    },
+    {
+      "name": "juliazero",
+      "link": "https://github.com/juliazero"
+    },
+    {
       "name": "KamilZielinski",
       "link": "https://github.com/KamilZielinski"
     },
@@ -416,6 +492,10 @@
     {
       "name": "RegularGvy13",
       "link": "https://github.com/RegularGvy13"
+    },
+    {
+      "name": "szumsky",
+      "link": "https://github.com/szumsky"
     },
     {
       "name": "ThePhaseless",
@@ -450,11 +530,19 @@
       "link": "https://github.com/PoetaGA"
     },
     {
+      "name": "Putocoroa",
+      "link": "https://github.com/Putocoroa"
+    },
+    {
       "name": "Tiago_Ferreira",
       "link": "https://github.com/Tiago_Ferreira"
     }
   ],
   "ro": [
+    {
+      "name": "David735453",
+      "link": "https://github.com/David735453"
+    },
     {
       "name": "SilverGreen93",
       "link": "https://github.com/SilverGreen93"
@@ -470,6 +558,10 @@
       "link": "https://github.com/bropines"
     },
     {
+      "name": "Denisskas",
+      "link": "https://github.com/Denisskas"
+    },
+    {
       "name": "DvladikD",
       "link": "https://github.com/DvladikD"
     },
@@ -479,6 +571,10 @@
     },
     {
       "name": "Gleb Saygin",
+      "link": ""
+    },
+    {
+      "name": "Ilia Petrov",
       "link": ""
     },
     {
@@ -492,6 +588,14 @@
     {
       "name": "sklart",
       "link": ""
+    },
+    {
+      "name": "solarscream",
+      "link": "https://github.com/solarscream"
+    },
+    {
+      "name": "tapnisu",
+      "link": "https://github.com/tapnisu"
     }
   ],
   "sa": [
@@ -504,6 +608,10 @@
     {
       "name": "SashikaSandeepa",
       "link": "https://github.com/SashikaSandeepa"
+    },
+    {
+      "name": "Savithu-s3",
+      "link": "https://github.com/Savithu-s3"
     },
     {
       "name": "ttheek",
@@ -542,12 +650,24 @@
     {
       "name": "curudel",
       "link": "https://github.com/curudel"
+    },
+    {
+      "name": "kakmonster",
+      "link": "https://github.com/kakmonster"
+    },
+    {
+      "name": "umeaboy",
+      "link": "https://github.com/umeaboy"
     }
   ],
   "tg": [
     {
       "name": "lasersPew",
       "link": ""
+    },
+    {
+      "name": "znarfm",
+      "link": "https://github.com/znarfm"
     }
   ],
   "th": [
@@ -570,8 +690,8 @@
       "link": "https://github.com/ahmetozmtn"
     },
     {
-      "name": "dogancanyr",
-      "link": "https://github.com/dogancanyr"
+      "name": "dogancanyr @anzeralp",
+      "link": "https://github.com/dogancanyr @anzeralp"
     },
     {
       "name": "gokberkgs",
@@ -586,6 +706,10 @@
     {
       "name": "Operator404",
       "link": ""
+    },
+    {
+      "name": "Taron-art",
+      "link": "https://github.com/Taron-art"
     }
   ],
   "ur": [
@@ -596,20 +720,28 @@
     {
       "name": "digitpk",
       "link": "https://github.com/digitpk"
+    },
+    {
+      "name": "hamzaharoon1314",
+      "link": "https://github.com/hamzaharoon1314"
     }
   ],
   "vi": [
+    {
+      "name": "aethervn2309",
+      "link": "https://github.com/aethervn2309"
+    },
     {
       "name": "legendsjoon",
       "link": "https://github.com/legendsjoon"
     },
     {
-      "name": "long5436",
-      "link": "https://github.com/long5436"
-    },
-    {
       "name": "txavlog",
       "link": "https://github.com/txavlog"
+    },
+    {
+      "name": "vanlongluuly",
+      "link": "https://github.com/vanlongluuly"
     }
   ],
   "zh_CN": [
@@ -668,6 +800,10 @@
     {
       "name": "SpaceTimee",
       "link": "https://github.com/SpaceTimee"
+    },
+    {
+      "name": "xiaopangju",
+      "link": "https://github.com/xiaopangju"
     },
     {
       "name": "Yisme",

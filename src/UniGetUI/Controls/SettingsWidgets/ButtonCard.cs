@@ -7,7 +7,7 @@ using UniGetUI.Core.Tools;
 
 namespace UniGetUI.Interface.Widgets
 {
-    public sealed class ButtonCard : SettingsCard
+    public sealed partial class ButtonCard : SettingsCard
     {
         private readonly Button _button = new();
 
@@ -27,7 +27,6 @@ namespace UniGetUI.Interface.Widgets
         {
             _button.MinWidth = 200;
             _button.Click += (_, _) => { Click?.Invoke(this, EventArgs.Empty); };
-            DefaultStyleKey = typeof(ButtonCard);
             Content = _button;
         }
     }

@@ -1,3 +1,4 @@
+extern alias DrawingCommon;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Web;
@@ -7,22 +8,22 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.Win32;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
-using UniGetUI.Interface.Widgets;
 using UniGetUI.PackageEngine;
 using UniGetUI.PackageEngine.Classes.Manager.Classes;
 using UniGetUI.PackageEngine.Interfaces;
 using Windows.ApplicationModel.DataTransfer;
+using H.NotifyIcon.EfficiencyMode;
 using Microsoft.Windows.AppNotifications;
 using UniGetUI.Core.Classes;
 using UniGetUI.Interface.Enums;
 using UniGetUI.PackageEngine.PackageClasses;
 using UniGetUI.Pages.DialogPages;
+using TitleBar = WinUIEx.TitleBar;
 
 namespace UniGetUI.Interface
 {
@@ -46,8 +47,6 @@ namespace UniGetUI.Interface
 
         public List<ContentDialog> DialogQueue = [];
 
-        public List<NavButton> NavButtonList = [];
-
         public static readonly ObservableQueue<string> ParametersToProcess = new();
 
         public MainWindow()
@@ -55,11 +54,12 @@ namespace UniGetUI.Interface
             DialogHelper.Window = this;
 
             InitializeComponent();
+            DismissableNotification.CloseButtonContent = CoreTools.Translate("Close");
 
             ExtendsContentIntoTitleBar = true;
             try
             {
-                SetTitleBar(ContentRoot);
+                SetTitleBar(MainContentGrid);
             } catch
             {
                 Logger.Warn("Could not set the title bar to the content root");
@@ -72,17 +72,28 @@ namespace UniGetUI.Interface
             LoadTrayMenu();
             ApplyTheme();
 
+            if (Settings.Get("ShowVersionNumberOnTitlebar"))
+            {
+                AddToSubtitle(CoreTools.Translate("version {0}", CoreData.VersionName));
+            }
+
             if (CoreTools.IsAdministrator())
             {
-                Title = "UniGetUI " + CoreTools.Translate("[RAN AS ADMINISTRATOR]");
-                AppTitle.Text = Title;
+                AddToSubtitle(CoreTools.Translate("[RAN AS ADMINISTRATOR]"));
+            }
+
+            if (CoreData.IsPortable)
+            {
+                AddToSubtitle(CoreTools.Translate("Portable mode"));
             }
 
 #if DEBUG
-            Title = Title + " - DEBUG BUILD";
-            AppTitle.Text = Title;
+            AddToSubtitle(CoreTools.Translate("DEBUG BUILD"));
 #endif
-            var panel = new StackPanel()
+
+            ApplyProxyVariableToProcess();
+
+            var panel = new StackPanel
             {
                 Width = 400,
                 Orientation = Orientation.Vertical,
@@ -113,44 +124,154 @@ namespace UniGetUI.Interface
 
             _ = AutoUpdater.UpdateCheckLoop(this, UpdatesBanner);
 
-            if (!Settings.Get("TransferredOldSettings"))
-                TransferOldSettingsFormats();
+
+            TransferOldSettingsFormats();
+
+            Activated += (_, e) =>
+            {
+                if (e.WindowActivationState is WindowActivationState.CodeActivated
+                    or WindowActivationState.PointerActivated)
+                {
+                    DWMThreadHelper.ChangeState_DWM(false);
+                    DWMThreadHelper.ChangeState_XAML(false);
+                }
+            };
+
+            if (CoreData.IsDaemon)
+            {
+                try
+                {
+                    TrayIcon?.ForceCreate(true);
+                }
+                catch (Exception ex)
+                {
+                    try
+                    {
+                        TrayIcon?.ForceCreate(false);
+                        Logger.Warn("Could not create taskbar tray with efficiency mode enabled");
+                        Logger.Warn(ex);
+                    }
+                    catch (Exception ex2)
+                    {
+                        Logger.Error("Could not create taskbar tray (hard crash)");
+                        Logger.Error(ex2);
+                    }
+                }
+                DWMThreadHelper.ChangeState_DWM(true);
+                DWMThreadHelper.ChangeState_XAML(true);
+                CoreData.IsDaemon = false;
+            }
+            else
+            {
+                Activate();
+            }
+        }
+
+        public static void ApplyProxyVariableToProcess()
+        {
+            try
+            {
+                var proxyUri = Settings.GetProxyUrl();
+                if (proxyUri is null || !Settings.Get("EnableProxy"))
+                {
+                    Environment.SetEnvironmentVariable("HTTP_PROXY", "", EnvironmentVariableTarget.Process);
+                    return;
+                }
+
+                string content;
+                if (Settings.Get("EnableProxyAuth") is false)
+                {
+                    content = proxyUri.ToString();
+                }
+                else
+                {
+                    var creds = Settings.GetProxyCredentials();
+                    if (creds is null)
+                    {
+                        content = $"--proxy {proxyUri.ToString()}";
+                    }
+                    else
+                    {
+                        content = $"{proxyUri.Scheme}://{Uri.EscapeDataString(creds.UserName)}" +
+                                  $":{Uri.EscapeDataString(creds.Password)}" +
+                                  $"@{proxyUri.AbsoluteUri.Replace($"{proxyUri.Scheme}://", "")}";
+                    }
+                }
+
+                Environment.SetEnvironmentVariable("HTTP_PROXY", content, EnvironmentVariableTarget.Process);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Failed to apply proxy settings:");
+                Logger.Error(ex);
+            }
+        }
+
+        private void AddToSubtitle(string line)
+        {
+            if (TitleBar.Subtitle.Length > 0)
+                TitleBar.Subtitle += " - ";
+            TitleBar.Subtitle += line;
+            Title = "UniGetUI - " + TitleBar.Subtitle;
+        }
+
+        private void ClearSubtitle()
+        {
+            TitleBar.Subtitle = "";
+            Title = "UniGetUI";
         }
 
         private static void TransferOldSettingsFormats()
         {
-            foreach (IPackageManager Manager in PEInterface.Managers)
+            if (!Settings.Get("TransferredOldSettings"))
             {
-                string SettingName = "Disable" + Manager.Name;
-                if (Settings.Get(SettingName))
+                foreach (IPackageManager Manager in PEInterface.Managers)
                 {
-                    Settings.SetDictionaryItem("DisabledManagers", Manager.Name, true);
-                    Settings.Set(SettingName, false);
+                    string SettingName = "Disable" + Manager.Name;
+                    if (Settings.Get(SettingName))
+                    {
+                        Settings.SetDictionaryItem("DisabledManagers", Manager.Name, true);
+                        Settings.Set(SettingName, false);
+                    }
                 }
+
+                // Dependency checks don't need to be transferred, because the worst case scenario is the user has to click the "don't show again" again
+
+                foreach (string Page in new[]{ "Discover", "Installed", "Bundles", "Updates"})
+                {
+                    if (Settings.Get($"HideToggleFilters{Page}Page"))
+                    {
+                        Settings.SetDictionaryItem("HideToggleFilters", Page, true);
+                        Settings.Set($"HideToggleFilters{Page}Page", false);
+                    }
+
+                    if (Settings.Get($"DisableInstantSearch{Page}Tab"))
+                    {
+                        Settings.SetDictionaryItem("DisableInstantSearch", Page, true);
+                        Settings.Set($"DisableInstantSearch{Page}Tab", false);
+                    }
+
+                    if (!int.TryParse(Settings.GetValue($"SidepanelWidth{Page}Page"), out int sidepanelWidth)) sidepanelWidth = 250;
+                    Settings.SetDictionaryItem("SidepanelWidths", Page, sidepanelWidth);
+                    Settings.Set($"SidepanelWidth{Page}Page", false);
+                }
+
+                Settings.Set("TransferredOldSettings", true);
             }
 
-            // Dependency checks don't need to be transferred, because the worst case scenario is the user has to click the "don't show again" again
-
-            foreach (string Page in new[]{ "Discover", "Installed", "Bundles", "Updates"})
+            if (!Settings.Get("TransferredOldSettingsv2"))
             {
-                if (Settings.Get($"HideToggleFilters{Page}Page"))
+                foreach (IPackageManager Manager in PEInterface.Managers)
                 {
-                    Settings.SetDictionaryItem("HideToggleFilters", Page, true);
-                    Settings.Set($"HideToggleFilters{Page}Page", false);
+                    string SettingName = "AlwaysElevate" + Manager.Name;
+                    if (Settings.Get(SettingName))
+                    {
+                        Settings.SetDictionaryItem("AlwaysElevate", Manager.Name, true);
+                        Settings.Set(SettingName, false);
+                    }
                 }
-
-                if (Settings.Get($"DisableInstantSearch{Page}Tab"))
-                {
-                    Settings.SetDictionaryItem("DisableInstantSearch", Page, true);
-                    Settings.Set($"DisableInstantSearch{Page}Tab", false);
-                }
-
-                if (!int.TryParse(Settings.GetValue($"SidepanelWidth{Page}Page"), out int sidepanelWidth)) sidepanelWidth = 250;
-                Settings.SetDictionaryItem("SidepanelWidths", Page, sidepanelWidth);
-                Settings.Set($"SidepanelWidth{Page}Page", false);
+                Settings.Set("TransferredOldSettingsv2", true);
             }
-
-            Settings.Set("TransferredOldSettings", true);
         }
 
         public void HandleNotificationActivation(AppNotificationActivatedEventArgs args)
@@ -160,7 +281,7 @@ namespace UniGetUI.Interface
 
             if (action == NotificationArguments.UpdateAllPackages)
             {
-                NavigationPage.UpdatesPage.UpdateAll();
+                MainApp.Operations.UpdateAll();
             }
             else if (action == NotificationArguments.ShowOnUpdatesTab)
             {
@@ -194,23 +315,25 @@ namespace UniGetUI.Interface
             if (!Settings.Get("DisableSystemTray") || AutoUpdater.UpdateReadyToBeInstalled)
             {
                 args.Cancel = true;
+                DWMThreadHelper.ChangeState_DWM(true);
+                DWMThreadHelper.ChangeState_XAML(true);
+
                 try
                 {
-                    this.Hide(enableEfficiencyMode: true);
-                    AppWindow.Hide();
+                    EfficiencyModeUtilities.SetEfficiencyMode(true);
                 }
                 catch (Exception ex)
                 {
-                    // Somewhere, Sometimes, MS Window Efficiency mode just crashes
-                    Logger.Debug("Windows efficiency mode API crashed, but this was expected");
-                    Logger.Debug(ex);
-                    this.Hide(enableEfficiencyMode: false);
-                    AppWindow.Hide();
+                    Logger.Error("Could not disable efficiency mode");
+                    Logger.Error(ex);
                 }
+
+                MainContentFrame.Content = null;
+                AppWindow.Hide();
             }
             else
             {
-                if (MainApp.Instance.OperationQueue.Count > 0)
+                if (MainApp.Operations.AreThereRunningOperations())
                 {
                     args.Cancel = true;
                     ContentDialog d = new()
@@ -235,7 +358,7 @@ namespace UniGetUI.Interface
         }
 
         /// <summary>
-        /// For a given deep link, perform the appropiate action
+        /// For a given deep link, perform the appropriate action
         /// </summary>
         /// <param name="link">the unigetui:// deep link to handle</param>
         private void HandleDeepLink(string link)
@@ -250,15 +373,14 @@ namespace UniGetUI.Interface
                 string ManagerName = Regex.Match(baseUrl, "managerName=([^&]+)").Value.Split("=")[^1];
                 string SourceName = Regex.Match(baseUrl, "sourceName=([^&]+)").Value.Split("=")[^1];
 
-
                 if (Id != "" && CombinedManagerName != "" && ManagerName == "" && SourceName == "")
                 {
                     Logger.Warn($"URI {link} follows old scheme");
-                    NavigationPage.DiscoverPage.ShowSharedPackage_ThreadSafe(Id, CombinedManagerName);
+                    DialogHelper.ShowSharedPackage_ThreadSafe(Id, CombinedManagerName);
                 }
                 else if (Id != "" && ManagerName != "" && SourceName != "")
                 {
-                    NavigationPage.DiscoverPage.ShowSharedPackage_ThreadSafe(Id, ManagerName, SourceName);
+                    DialogHelper.ShowSharedPackage_ThreadSafe(Id, ManagerName, SourceName);
                 }
                 else
                 {
@@ -294,7 +416,13 @@ namespace UniGetUI.Interface
         {
             while (ParametersToProcess.Count > 0)
             {
-                string param = ParametersToProcess.Dequeue().Trim('\'').Trim('"');
+                string? param = ParametersToProcess.Dequeue()?.Trim('\'')?.Trim('"');
+                if (param is null)
+                {
+                    Logger.Error("Attempted to process a null parameter");
+                    return;
+                }
+
                 if (param.Length > 2 && param[0] == '-' && param[1] == '-')
                 {
                     if (param == "--help")
@@ -325,8 +453,7 @@ namespace UniGetUI.Interface
                     {
                         // Handle potential JSON files
                         Logger.ImportantInfo("Begin attempt to open the package bundle " + param);
-                        NavigationPage.NavigateTo(PageType.Bundles);
-                        _ = NavigationPage.BundlesPage.OpenFromFile(param);
+                        NavigationPage.LoadBundleFile(param);
                     }
                     else if (param.EndsWith("UniGetUI.exe") || param.EndsWith("UniGetUI.dll"))
                     {
@@ -350,6 +477,19 @@ namespace UniGetUI.Interface
 
         public new void Activate()
         {
+            try
+            {
+                EfficiencyModeUtilities.SetEfficiencyMode(false);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Could not disable efficiency mode");
+                Logger.Error(ex);
+            }
+
+            DWMThreadHelper.ChangeState_DWM(false);
+            DWMThreadHelper.ChangeState_XAML(false);
+
             if (!HasLoadedLastGeometry)
             {
                 RestoreGeometry();
@@ -443,7 +583,7 @@ namespace UniGetUI.Interface
             TrayMenu.AreOpenCloseAnimationsEnabled = false;
 
             TrayIcon = new TaskbarIcon();
-            ContentRoot.Children.Add(TrayIcon);
+            MainContentGrid.Children.Add(TrayIcon);
             Closed += (_, _) => TrayIcon.Dispose();
             TrayIcon.ContextMenuMode = ContextMenuMode.PopupMenu;
 
@@ -461,97 +601,123 @@ namespace UniGetUI.Interface
             UpdateSystemTrayStatus();
         }
 
+        private string LastTrayIcon  = "";
         public void UpdateSystemTrayStatus()
         {
-            string modifier = "_empty";
-            string tooltip = CoreTools.Translate("Everything is up to date") + " - " + Title;
+            try
+            {
+                string modifier = "_empty";
+                string tooltip = CoreTools.Translate("Everything is up to date") + " - " + Title;
 
-            if (MainApp.Instance.TooltipStatus.OperationsInProgress > 0)
-            {
-                modifier = "_blue";
-                tooltip = CoreTools.Translate("Operation in progress") + " - " + Title;
-            }
-            else if (MainApp.Instance.TooltipStatus.ErrorsOccurred > 0)
-            {
-                modifier = "_orange";
-                tooltip = CoreTools.Translate("Attention required") + " - " + Title;
-            }
-            else if (MainApp.Instance.TooltipStatus.RestartRequired)
-            {
-                modifier = "_turquoise";
-                tooltip = CoreTools.Translate("Restart required") + " - " + Title;
-            }
-            else if (MainApp.Instance.TooltipStatus.AvailableUpdates > 0)
-            {
-                modifier = "_green";
-                if (MainApp.Instance.TooltipStatus.AvailableUpdates == 1)
+                if (MainApp.Operations.AreThereRunningOperations())
                 {
-                    tooltip = CoreTools.Translate("1 update is available") + " - " + Title;
+                    modifier = "_blue";
+                    tooltip = CoreTools.Translate("Operation in progress") + " - " + Title;
+                }
+                else if (MainApp.Tooltip.ErrorsOccurred > 0)
+                {
+                    modifier = "_orange";
+                    tooltip = CoreTools.Translate("Attention required") + " - " + Title;
+                }
+                else if (MainApp.Tooltip.RestartRequired)
+                {
+                    modifier = "_turquoise";
+                    tooltip = CoreTools.Translate("Restart required") + " - " + Title;
+                }
+                else if (MainApp.Tooltip.AvailableUpdates > 0)
+                {
+                    modifier = "_green";
+                    if (MainApp.Tooltip.AvailableUpdates == 1)
+                    {
+                        tooltip = CoreTools.Translate("1 update is available") + " - " + Title;
+                    }
+                    else
+                    {
+                        tooltip = CoreTools.Translate("{0} updates are available",
+                            MainApp.Tooltip.AvailableUpdates) + " - " + Title;
+                    }
+                }
+
+                if (TrayIcon is null)
+                {
+                    Logger.Warn("Attempting to update a null taskbar icon tray, aborting!");
+                    return;
+                }
+
+                TrayIcon.ToolTipText = tooltip;
+
+                ApplicationTheme theme = ApplicationTheme.Light;
+                string RegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+                string RegistryValueName = "SystemUsesLightTheme";
+                RegistryKey? key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath);
+                object? registryValueObject = key?.GetValue(RegistryValueName) ?? null;
+                if (registryValueObject is not null)
+                {
+                    int registryValue = (int)registryValueObject;
+                    theme = registryValue > 0 ? ApplicationTheme.Light : ApplicationTheme.Dark;
+                }
+
+                if (theme == ApplicationTheme.Light)
+                {
+                    modifier += "_black";
                 }
                 else
                 {
-                    tooltip = CoreTools.Translate("{0} updates are available",
-                        MainApp.Instance.TooltipStatus.AvailableUpdates) + " - " + Title;
+                    modifier += "_white";
                 }
+
+                string FullIconPath = Path.Join(CoreData.UniGetUIExecutableDirectory, "\\Assets\\Images\\tray" + modifier + ".ico");
+                if (LastTrayIcon != FullIconPath)
+                {
+                    LastTrayIcon = FullIconPath;
+                    if (File.Exists(FullIconPath))
+                    {
+                        TrayIcon.Icon = new DrawingCommon.System.Drawing.Icon(FullIconPath, 32, 32);
+                    }
+                }
+
+                if (Settings.Get("DisableSystemTray"))
+                {
+                    TrayIcon.Visibility = Visibility.Collapsed;
+                }
+                else
+                {
+                    TrayIcon.Visibility = Visibility.Visible;
+                }
+
             }
-
-            if (TrayIcon is null)
+            catch (Exception ex)
             {
-                Logger.Warn("Attempting to update a null taskbar icon tray, aborting!");
-                return;
-            }
-
-            TrayIcon.ToolTipText = tooltip;
-
-            ApplicationTheme theme = ApplicationTheme.Light;
-            string RegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
-            string RegistryValueName = "SystemUsesLightTheme";
-            RegistryKey? key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath);
-            object? registryValueObject = key?.GetValue(RegistryValueName) ?? null;
-            if (registryValueObject is not null)
-            {
-                int registryValue = (int)registryValueObject;
-                theme = registryValue > 0 ? ApplicationTheme.Light : ApplicationTheme.Dark;
-            }
-
-            if (theme == ApplicationTheme.Light)
-            {
-                modifier += "_black";
-            }
-            else
-            {
-                modifier += "_white";
-            }
-
-            string FullIconPath = Path.Join(CoreData.UniGetUIExecutableDirectory,
-                "\\Assets\\Images\\tray" + modifier + ".ico");
-
-            TrayIcon.SetValue(TaskbarIcon.IconSourceProperty, new BitmapImage { UriSource = new Uri(FullIconPath) });
-
-            if (Settings.Get("DisableSystemTray"))
-            {
-                TrayIcon.Visibility = Visibility.Collapsed;
-            }
-            else
-            {
-                TrayIcon.Visibility = Visibility.Visible;
+                Logger.Error("An error occurred while updating the System Tray icon:");
+                Logger.Error(ex);
             }
         }
 
         public void SwitchToInterface()
         {
-            SetTitleBar(__app_titlebar);
+            TitleBar.Visibility = Visibility.Visible;
+            SetTitleBar(TitleBar);
 
             NavigationPage = new MainView();
-            Grid.SetRow(NavigationPage, 4);
-            Grid.SetColumn(NavigationPage, 0);
-            MainContentGrid.Children.Add(NavigationPage);
+            NavigationPage.CanGoBackChanged += (_, can) => TitleBar.IsBackButtonVisible = can;
 
-            ColumnDefinition ContentColumn = ContentRoot.ColumnDefinitions[1];
-            ContentColumn.Width = new GridLength(1, GridUnitType.Star);
+            object? control = MainContentFrame.Content as Grid;
+            if (control is Grid loadingWindow)
+            {
+                loadingWindow.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                Logger.Error("MainContentFrame.Content somehow wasn't the loading window");
+            }
 
-            ColumnDefinition SpashScreenColumn = ContentRoot.ColumnDefinitions[0];
-            SpashScreenColumn.Width = new GridLength(0, GridUnitType.Pixel);
+            MainContentFrame.Content = NavigationPage;
+
+            Activated += (_, e) =>
+            {
+                if(e.WindowActivationState is WindowActivationState.CodeActivated or WindowActivationState.PointerActivated)
+                    MainContentFrame.Content = NavigationPage;
+            };
         }
 
         public void ApplyTheme()
@@ -560,16 +726,16 @@ namespace UniGetUI.Interface
             if (preferredTheme == "dark")
             {
                 MainApp.Instance.ThemeListener.CurrentTheme = ApplicationTheme.Dark;
-                ContentRoot.RequestedTheme = ElementTheme.Dark;
+                MainContentGrid.RequestedTheme = ElementTheme.Dark;
             }
             else if (preferredTheme == "light")
             {
                 MainApp.Instance.ThemeListener.CurrentTheme = ApplicationTheme.Light;
-                ContentRoot.RequestedTheme = ElementTheme.Light;
+                MainContentGrid.RequestedTheme = ElementTheme.Light;
             }
             else
             {
-                if (ContentRoot.ActualTheme == ElementTheme.Dark)
+                if (MainContentGrid.ActualTheme == ElementTheme.Dark)
                 {
                     MainApp.Instance.ThemeListener.CurrentTheme = ApplicationTheme.Dark;
                 }
@@ -578,7 +744,7 @@ namespace UniGetUI.Interface
                     MainApp.Instance.ThemeListener.CurrentTheme = ApplicationTheme.Light;
                 }
 
-                ContentRoot.RequestedTheme = ElementTheme.Default;
+                MainContentGrid.RequestedTheme = ElementTheme.Default;
             }
 
             if (AppWindowTitleBar.IsCustomizationSupported())
@@ -600,8 +766,15 @@ namespace UniGetUI.Interface
 
         public void SharePackage(IPackage? package)
         {
-            if (package is null || package.Source.IsVirtualManager || package is InvalidImportedPackage)
+            if (package is null)
+                return;
+
+            if (package.Source.IsVirtualManager || package is InvalidImportedPackage)
             {
+                DialogHelper.ShowDismissableBalloon(
+                    CoreTools.Translate("Something went wrong"),
+                    CoreTools.Translate("\"{0}\" is a local package and can't be shared", package.Name)
+                );
                 return;
             }
 
@@ -658,7 +831,7 @@ namespace UniGetUI.Interface
                     await Task.Delay(100);
                 }
 
-                dialog.RequestedTheme = ContentRoot.RequestedTheme;
+                dialog.RequestedTheme = MainContentGrid.RequestedTheme;
                 ContentDialogResult result = await dialog.ShowAsync();
                 DialogQueue.Remove(dialog);
                 return result;
@@ -676,10 +849,10 @@ namespace UniGetUI.Interface
             }
         }
 
-        public async Task HandleMissingDependencies(IEnumerable<ManagerDependency> dependencies)
+        public async Task HandleMissingDependencies(IReadOnlyList<ManagerDependency> dependencies)
         {
             int current = 1;
-            int total = dependencies.Count();
+            int total = dependencies.Count;
             foreach (ManagerDependency dependency in dependencies)
             {
                 await DialogHelper.ShowMissingDependency(dependency.Name, dependency.InstallFileName,
@@ -836,6 +1009,22 @@ namespace UniGetUI.Interface
             return true;
         }
 
+        private void TitleBar_PaneToggleRequested(WinUIEx.TitleBar sender, object args)
+        {
+            if (NavigationPage is null)
+                return;
+
+            if(this.AppWindow.Size.Width >= 1600)
+            {
+                Settings.Set("CollapseNavMenuOnWideScreen", NavigationPage.NavView.IsPaneOpen);
+            }
+            NavigationPage.NavView.IsPaneOpen = !NavigationPage.NavView.IsPaneOpen;
+        }
+
+        private void TitleBar_OnBackRequested(WinUIEx.TitleBar sender, object args)
+        {
+            NavigationPage?.NavigateBack();
+        }
     }
 
     public static class NativeHelpers

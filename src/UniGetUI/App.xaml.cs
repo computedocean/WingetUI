@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Windows.ApplicationModel.Activation;
 using CommunityToolkit.WinUI.Helpers;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using UniGetUI.Core.Data;
@@ -12,45 +13,57 @@ using UniGetUI.Core.Tools;
 using UniGetUI.Interface;
 using UniGetUI.PackageEngine;
 using UniGetUI.PackageEngine.Classes.Manager.Classes;
-using UniGetUI.PackageEngine.Operations;
 using Microsoft.Windows.AppLifecycle;
 using Microsoft.Windows.AppNotifications;
+using UniGetUI.Interface.Telemetry;
 using UniGetUI.PackageEngine.Interfaces;
 using LaunchActivatedEventArgs = Microsoft.UI.Xaml.LaunchActivatedEventArgs;
+using UniGetUI.Pages.DialogPages;
 
 namespace UniGetUI
 {
     public partial class MainApp
     {
-        public class __tooltip_options
-        {
-            private int _errors_occurred;
-            public int ErrorsOccurred { get { return _errors_occurred; } set { _errors_occurred = value; Instance.MainWindow.UpdateSystemTrayStatus(); } }
-            private bool _restart_required;
-            public bool RestartRequired { get { return _restart_required; } set { _restart_required = value; Instance.MainWindow.UpdateSystemTrayStatus(); } }
-            private int _operations_in_progress;
-            public int OperationsInProgress { get { return _operations_in_progress; } set { _operations_in_progress = value; Instance.MainWindow.UpdateSystemTrayStatus(); } }
-            private int _available_updates;
-            public int AvailableUpdates { get { return _available_updates; } set { _available_updates = value; Instance.MainWindow.UpdateSystemTrayStatus(); } }
-        }
+        public static DispatcherQueue Dispatcher = null!;
 
-        public List<AbstractOperation> OperationQueue = [];
+        public static class Tooltip
+        {
+            private static int _errors_occurred;
+            public static int ErrorsOccurred
+            {
+                get => _errors_occurred;
+                set { _errors_occurred = value; Instance?.MainWindow?.UpdateSystemTrayStatus(); }
+            }
+
+            private static bool _restart_required;
+            public static bool RestartRequired
+            {
+                get => _restart_required;
+                set { _restart_required = value; Instance?.MainWindow?.UpdateSystemTrayStatus(); }
+            }
+
+            private static int _available_updates;
+            public static int AvailableUpdates
+            {
+                get => _available_updates;
+                set { _available_updates = value; Instance?.MainWindow?.UpdateSystemTrayStatus(); }
+            }
+        }
 
         public bool RaiseExceptionAsFatal = true;
 
-        public SettingsPage settings = null!;
         public MainWindow MainWindow = null!;
         public ThemeListener ThemeListener = null!;
 
         private readonly BackgroundApiRunner BackgroundApi = new();
         public static MainApp Instance = null!;
-        public __tooltip_options TooltipStatus = new();
 
         public MainApp()
         {
             try
             {
                 Instance = this;
+                Dispatcher = DispatcherQueue.GetForCurrentThread();
 
                 InitializeComponent();
 
@@ -75,41 +88,19 @@ namespace UniGetUI
             }
             catch (Exception e)
             {
-                CoreTools.ReportFatalException(e);
+                CrashHandler.ReportFatalException(e);
             }
         }
 
         private static async void LoadGSudo()
         {
 #if DEBUG
-            bool DEBUG = true;
+            Logger.Warn($"Using bundled GSudo at {CoreData.ElevatorPath} since UniGetUI Elevator is not available!");
+            CoreData.ElevatorPath = (await CoreTools.WhichAsync("gsudo.exe")).Item2;
 #else
-            bool DEBUG = false;
+            CoreData.ElevatorPath = Path.Join(CoreData.UniGetUIExecutableDirectory, "Assets", "Utilities", "UniGetUI Elevator.exe");
+            Logger.Debug($"Using built-in UniGetUI Elevator at {CoreData.ElevatorPath}");
 #endif
-            if (!DEBUG && !Settings.Get("DisableUniGetUIElevator"))
-            {
-                Logger.ImportantInfo("Using built-in UniGetUI Elevator");
-                CoreData.GSudoPath = Path.Join(CoreData.UniGetUIExecutableDirectory, "Assets", "Utilities", "UniGetUI Elevator.exe");
-            }
-            else if (Settings.Get("UseUserGSudo"))
-            {
-                var(found, gsudo_path) = await CoreTools.WhichAsync("gsudo.exe");
-                if (found)
-                {
-                    Logger.Info($"Using System GSudo at {gsudo_path}");
-                    CoreData.GSudoPath = gsudo_path;
-                }
-                else
-                {
-                    Logger.Error("System GSudo enabled but not found!");
-                    CoreData.GSudoPath = Path.Join(CoreData.UniGetUIExecutableDirectory, "Assets", "Utilities", "gsudo.exe");
-                }
-            }
-            else
-            {
-                Logger.Warn($"Using bundled GSudo at {CoreData.GSudoPath} since UniGetUI Elevator is not available!");
-                CoreData.GSudoPath = Path.Join(CoreData.UniGetUIExecutableDirectory, "Assets", "Utilities", "gsudo.exe");
-            }
         }
 
         private void RegisterErrorHandling()
@@ -128,7 +119,7 @@ namespace UniGetUI
                 Logger.Error(" -");
                 if (Environment.GetCommandLineArgs().Contains("--report-all-errors") || RaiseExceptionAsFatal || MainWindow is null)
                 {
-                    CoreTools.ReportFatalException(e.Exception);
+                    CrashHandler.ReportFatalException(e.Exception);
                 }
                 else
                 {
@@ -212,11 +203,6 @@ namespace UniGetUI
             }
         }
 
-        public void AddOperationToList(AbstractOperation operation)
-        {
-            MainWindow.NavigationPage.OperationStackPanel.Children.Add(operation);
-        }
-
         /// <summary>
         /// Background component loader
         /// </summary>
@@ -227,47 +213,13 @@ namespace UniGetUI
                 IconDatabase.InitializeInstance();
                 IconDatabase.Instance.LoadIconAndScreenshotsDatabase();
 
-                // Bind the background api to the main interface
-
-                if (!Settings.Get("DisableApi"))
-                {
-
-                    BackgroundApi.OnOpenWindow += (_, _) => MainWindow.DispatcherQueue.TryEnqueue(() => MainWindow.Activate());
-
-                    BackgroundApi.OnOpenUpdatesPage += (_, _) => MainWindow.DispatcherQueue.TryEnqueue(() =>
-                    {
-                        MainWindow?.NavigationPage?.NavigateTo(PageType.Updates);
-                        MainWindow?.Activate();
-                    });
-
-                    BackgroundApi.OnShowSharedPackage += (_, package) => MainWindow.DispatcherQueue.TryEnqueue(() =>
-                    {
-                        MainWindow?.NavigationPage?.DiscoverPage.ShowSharedPackage_ThreadSafe(package.Key, package.Value);
-                        MainWindow?.Activate();
-                    });
-
-                    BackgroundApi.OnUpgradeAll += (_, _) => MainWindow.DispatcherQueue.TryEnqueue(() =>
-                    {
-                        MainWindow?.NavigationPage?.UpdatesPage.UpdateAll();
-                    });
-
-                    BackgroundApi.OnUpgradeAllForManager += (_, manager) => MainWindow.DispatcherQueue.TryEnqueue(() =>
-                    {
-                        MainWindow?.NavigationPage?.UpdatesPage.UpdateAllPackagesForManager(manager);
-                    });
-
-                    BackgroundApi.OnUpgradePackage += (_, package) => MainWindow.DispatcherQueue.TryEnqueue(() =>
-                    {
-                        MainWindow?.NavigationPage?.UpdatesPage.UpdatePackageForId(package);
-                    });
-
-                    _ = BackgroundApi.Start();
-                }
+                await InitializeBackgroundAPI();
 
                 _ = MainWindow.DoEntryTextAnimationAsync();
 
                 // Load package managers
-                await Task.Run(() => PEInterface.Initialize());
+                await Task.Run(PEInterface.Initialize);
+                TelemetryHandler.Initialize();
 
                 Logger.Info("LoadComponentsAsync finished executing. All managers loaded. Proceeding to interface.");
                 MainWindow.SwitchToInterface();
@@ -283,7 +235,54 @@ namespace UniGetUI
             }
             catch (Exception e)
             {
-                CoreTools.ReportFatalException(e);
+                CrashHandler.ReportFatalException(e);
+            }
+        }
+
+        private async Task InitializeBackgroundAPI()
+        {
+            // Bind the background api to the main interface
+            if (!Settings.Get("DisableApi"))
+            {
+                try
+                {
+                    BackgroundApi.OnOpenWindow += (_, _) =>
+                        MainWindow.DispatcherQueue.TryEnqueue(() => MainWindow.Activate());
+
+                    BackgroundApi.OnOpenUpdatesPage += (_, _) => MainWindow.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        MainWindow?.NavigationPage?.NavigateTo(PageType.Updates);
+                        MainWindow?.Activate();
+                    });
+
+                    BackgroundApi.OnShowSharedPackage += (_, package) => MainWindow.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        DialogHelper.ShowSharedPackage_ThreadSafe(package.Key, package.Value);
+                    });
+
+                    BackgroundApi.OnUpgradeAll += (_, _) => MainWindow.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        Operations.UpdateAll();
+                    });
+
+                    BackgroundApi.OnUpgradeAllForManager += (_, managerName) =>
+                        MainWindow.DispatcherQueue.TryEnqueue(async () =>
+                        {
+                            Operations.UpdateAllForManager(managerName);
+                        });
+
+                    BackgroundApi.OnUpgradePackage += (_, packageId) => MainWindow.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        Operations.UpdateForId(packageId);
+                    });
+
+                    await BackgroundApi.Start();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("Could not initialize Background API:");
+                    Logger.Error(ex);
+                }
             }
         }
 
@@ -333,14 +332,9 @@ namespace UniGetUI
             await MainWindow.HandleMissingDependencies(missing_deps);
         }
 
-        protected override async void OnLaunched(LaunchActivatedEventArgs args)
+        protected override void OnLaunched(LaunchActivatedEventArgs args)
         {
-            if (!CoreData.IsDaemon)
-            {
-                await ShowMainWindowFromLaunchAsync();
-            }
-
-            CoreData.IsDaemon = false;
+            MainWindow?.Activate();
         }
 
         public async Task ShowMainWindowFromRedirectAsync(AppActivationArguments rawArgs)
@@ -374,22 +368,16 @@ namespace UniGetUI
             MainWindow.DispatcherQueue.TryEnqueue(MainWindow.Activate);
         }
 
-        public async Task ShowMainWindowFromLaunchAsync()
-        {
-            while (MainWindow is null)
-                await Task.Delay(100);
-
-            MainWindow.DispatcherQueue.TryEnqueue(MainWindow.Activate);
-        }
-
         public async void DisposeAndQuit(int outputCode = 0)
         {
-            Logger.Warn("Quitting...");
+            Logger.Warn("Quitting UniGetUI");
+            DWMThreadHelper.ChangeState_DWM(false);
+            DWMThreadHelper.ChangeState_XAML(false);
             MainWindow?.Close();
             BackgroundApi?.Stop();
             Exit();
-            await Task.Delay(100);
-            Environment.Exit(outputCode);
+            // await Task.Delay(100);
+            // Environment.Exit(outputCode);
         }
 
         public void KillAndRestart()

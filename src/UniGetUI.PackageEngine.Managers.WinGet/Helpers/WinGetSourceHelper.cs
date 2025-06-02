@@ -26,15 +26,15 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
 
         protected override OperationVeredict _getAddSourceOperationVeredict(IManagerSource source, int ReturnCode, string[] Output)
         {
-            return ReturnCode == 0 ? OperationVeredict.Succeeded : OperationVeredict.Failed;
+            return ReturnCode == 0 ? OperationVeredict.Success : OperationVeredict.Failure;
         }
 
         protected override OperationVeredict _getRemoveSourceOperationVeredict(IManagerSource source, int ReturnCode, string[] Output)
         {
-            return ReturnCode == 0 ? OperationVeredict.Succeeded : OperationVeredict.Failed;
+            return ReturnCode == 0 ? OperationVeredict.Success : OperationVeredict.Failure;
         }
 
-        protected override IEnumerable<IManagerSource> GetSources_UnSafe()
+        protected override IReadOnlyList<IManagerSource> GetSources_UnSafe()
         {
             return WinGetHelper.Instance.GetSources_UnSafe();
         }

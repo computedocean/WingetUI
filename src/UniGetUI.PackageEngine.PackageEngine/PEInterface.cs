@@ -30,7 +30,7 @@ namespace UniGetUI.PackageEngine
         public static readonly PowerShell PowerShell = new();
         public static readonly PowerShell7 PowerShell7 = new();
         public static readonly Cargo Cargo = new();
-		public static readonly Vcpkg Vcpkg = new();
+        public static readonly Vcpkg Vcpkg = new();
 
         public static readonly IPackageManager[] Managers = [WinGet, Scoop, Chocolatey, Npm, Pip, Cargo, Vcpkg, DotNet, PowerShell, PowerShell7];
 
@@ -45,7 +45,7 @@ namespace UniGetUI.PackageEngine
 
             foreach (IPackageManager manager in Managers)
             {
-                initializeTasks.Add(Task.Run(() => manager.Initialize()));
+                initializeTasks.Add(Task.Run(manager.Initialize));
             }
 
             Task ManagersMetaTask = Task.WhenAll(initializeTasks);
@@ -62,8 +62,8 @@ namespace UniGetUI.PackageEngine
                 Logger.Warn("Timeout: Not all package managers have finished initializing.");
             }
 
-            _ = UpgradablePackagesLoader.ReloadPackages();
             _ = InstalledPackagesLoader.ReloadPackages();
+            _ = UpgradablePackagesLoader.ReloadPackages();
         }
     }
 }

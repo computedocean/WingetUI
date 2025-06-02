@@ -7,9 +7,17 @@ namespace UniGetUI.PackageEngine.PackageLoader
 {
     public class PackageBundlesLoader : AbstractPackageLoader
     {
-        public PackageBundlesLoader(IEnumerable<IPackageManager> managers)
-        : base(managers, "PACKAGE_BUNDLES", AllowMultiplePackageVersions: true, DisableReload: true, CheckedBydefault: false)
+        public static PackageBundlesLoader Instance = null!;
+
+        public PackageBundlesLoader(IReadOnlyList<IPackageManager> managers)
+        : base(managers,
+            identifier: "PACKAGE_BUNDLES",
+            AllowMultiplePackageVersions: true,
+            DisableReload: true,
+            CheckedBydefault: false,
+            RequiresInternet: false)
         {
+            Instance = this;
         }
 
         protected override Task<bool> IsPackageValid(IPackage package)
@@ -17,20 +25,20 @@ namespace UniGetUI.PackageEngine.PackageLoader
             return Task.FromResult(true);
         }
 
-        protected override IEnumerable<IPackage> LoadPackagesFromManager(IPackageManager manager)
+        protected override IReadOnlyList<IPackage> LoadPackagesFromManager(IPackageManager manager)
         {
             return [];
         }
 
         protected override Task WhenAddingPackage(IPackage package)
         {
-            if(package.GetInstalledPackage() is not null)
+            if (package.GetInstalledPackage() is not null)
                 package.SetTag(PackageTag.AlreadyInstalled);
 
             return Task.CompletedTask;
         }
 
-        public async Task AddPackagesAsync(IEnumerable<IPackage> foreign_packages)
+        public async Task AddPackagesAsync(IReadOnlyList<IPackage> foreign_packages)
         {
             foreach (IPackage foreign in foreign_packages)
             {
@@ -63,19 +71,19 @@ namespace UniGetUI.PackageEngine.PackageLoader
                 {
                     Logger.Error($"An IPackage instance id={foreign.Id} did not match the types Package, ImportedPackage or InvalidImportedPackage. This should never be the case");
                 }
-                if(package is not null && !Contains(package)) AddPackage(package);
+                if (package is not null && !Contains(package)) AddPackage(package);
             }
-            InvokePackagesChangedEvent();
+            InvokePackagesChangedEvent(true, foreign_packages, []);
         }
 
-        public void RemoveRange(IEnumerable<IPackage> packages)
+        public void RemoveRange(IReadOnlyList<IPackage> packages)
         {
             foreach(IPackage package in packages)
             {
                 if (!Contains(package)) continue;
                 PackageReference.Remove(HashPackage(package), out IPackage? _);
             }
-            InvokePackagesChangedEvent();
+            InvokePackagesChangedEvent(true, [], packages);
         }
     }
 }

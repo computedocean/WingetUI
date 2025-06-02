@@ -14,7 +14,7 @@ using UniGetUI.PackageEngine.Structs;
 
 namespace UniGetUI.PackageEngine.PackageClasses
 {
-    public class Package : IPackage
+    public partial class Package : IPackage
     {
         // Internal properties
         private bool __is_checked;
@@ -51,9 +51,9 @@ namespace UniGetUI.PackageEngine.PackageClasses
         public string Name { get; }
         public string AutomationName { get; }
         public string Id { get; }
-        public virtual string Version { get; }
-        public double VersionAsFloat { get; }
-        public double NewVersionAsFloat { get; }
+        public virtual string VersionString { get; }
+        public CoreTools.Version NormalizedVersion { get; }
+        public CoreTools.Version NormalizedNewVersion { get; }
         public bool IsPopulated { get; set; }
         public IManagerSource Source { get; }
 
@@ -61,7 +61,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
         /// IPackageManager is guaranteed to be PackageManager, but C# doesn't allow covariant attributes
         /// </summary>
         public IPackageManager Manager { get; }
-        public string NewVersion { get; }
+        public string NewVersionString { get; }
         public virtual bool IsUpgradable { get; }
 
         /// <summary>
@@ -77,8 +77,8 @@ namespace UniGetUI.PackageEngine.PackageClasses
         {
             Name = name;
             Id = id;
-            Version = version;
-            VersionAsFloat = CoreTools.GetVersionStringAsFloat(version);
+            VersionString = version;
+            NormalizedVersion = CoreTools.VersionStringToStruct(version);
             Source = source;
             Manager = manager;
 
@@ -87,20 +87,28 @@ namespace UniGetUI.PackageEngine.PackageClasses
                 _overriden_options = (OverridenInstallationOptions)options;
             }
 
-            NewVersion = "";
+            NewVersionString = "";
             Tag = PackageTag.Default;
             AutomationName = CoreTools.Translate("Package {name} from {manager}",
                 new Dictionary<string, object?> { { "name", Name }, { "manager", Source.AsString_DisplayName } });
 
             __hash = CoreTools.HashStringAsLong(Manager.Name + "\\" + Source.AsString_DisplayName + "\\" + Id);
-            __versioned_hash = CoreTools.HashStringAsLong(Manager.Name + "\\" + Source.AsString_DisplayName + "\\" + Id + "\\" + (this as Package).Version);
+            __versioned_hash = CoreTools.HashStringAsLong(Manager.Name + "\\" + Source.AsString_DisplayName + "\\" + Id + "\\" + (this as Package).VersionString);
             IsUpgradable = false;
 
             ignoredId = IgnoredUpdatesDatabase.GetIgnoredIdForPackage(this);
 
             _iconId = Manager.Name switch
             {
-                "Winget" => string.Join('.', id.ToLower().Split(".")[1..]),
+                "Winget" => Source.Name switch
+                {
+                    "Steam" => id.ToLower().Split("\\")[^1].Replace("steam app ", "steam-").Trim(),
+                    "Local PC" => id.ToLower().Split("\\")[^1],
+                    "Microsoft Store" => id.IndexOf('_') < id.IndexOf('.') ? // If the first underscore is before the period, this ID has no publisher
+                        string.Join('_', id.ToLower().Split("\\")[1].Split("_")[0..^4]) : // no publisher: remove `MSIX\`, then the standard ending _version_arch__{random id}
+                        string.Join('_', string.Join('.', id.ToLower().Split(".")[1..]).Split("_")[0..^4]), // remove the publisher (before the first .), then the standard _version_arch__{random id}
+                    _ => string.Join('.', id.ToLower().Split(".")[1..]),
+                },
                 "Scoop" => id.ToLower().Replace(".app", ""),
                 "Chocolatey" => id.ToLower().Replace(".install", "").Replace(".portable", ""),
                 "vcpkg" => id.ToLower().Split(":")[0].Split("[")[0],
@@ -122,8 +130,8 @@ namespace UniGetUI.PackageEngine.PackageClasses
             : this(name, id, installed_version, source, manager, options)
         {
             IsUpgradable = true;
-            NewVersion = new_version;
-            NewVersionAsFloat = CoreTools.GetVersionStringAsFloat(new_version);
+            NewVersionString = new_version;
+            NormalizedNewVersion = CoreTools.VersionStringToStruct(new_version);
         }
 
         public long GetHash()
@@ -185,7 +193,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
             }
         }
 
-        public virtual IEnumerable<Uri> GetScreenshots()
+        public virtual IReadOnlyList<Uri> GetScreenshots()
         {
             return Manager.DetailsHelper.GetScreenshots(this);
         }
@@ -285,17 +293,25 @@ namespace UniGetUI.PackageEngine.PackageClasses
             return PackageCacher.NewerVersionIsInstalled(this);
         }
 
-        public virtual SerializablePackage_v1 AsSerializable()
+        public virtual bool IsUpdateMinor()
         {
-            return new SerializablePackage_v1
+            if (!IsUpgradable) return false;
+
+            return NormalizedVersion.Major == NormalizedNewVersion.Major && NormalizedVersion.Minor == NormalizedNewVersion.Minor &&
+                   (NormalizedVersion.Patch != NormalizedNewVersion.Patch || NormalizedVersion.Remainder != NormalizedNewVersion.Remainder);
+        }
+
+        public virtual SerializablePackage AsSerializable()
+        {
+            return new SerializablePackage
             {
                 Id = Id,
                 Name = Name,
-                Version = Version,
+                Version = VersionString,
                 Source = Source.Name,
                 ManagerName = Manager.Name,
                 InstallationOptions = InstallationOptions.FromPackage(this).AsSerializable(),
-                Updates = new SerializableUpdatesOptions_v1
+                Updates = new SerializableUpdatesOptions
                 {
                     IgnoredVersion = GetIgnoredUpdatesVersionAsync().GetAwaiter().GetResult(),
                     UpdatesIgnored = HasUpdatesIgnoredAsync().GetAwaiter().GetResult(),
@@ -303,13 +319,13 @@ namespace UniGetUI.PackageEngine.PackageClasses
             };
         }
 
-        public SerializableIncompatiblePackage_v1 AsSerializable_Incompatible()
+        public SerializableIncompatiblePackage AsSerializable_Incompatible()
         {
-            return new SerializableIncompatiblePackage_v1
+            return new SerializableIncompatiblePackage
             {
                 Id = Id,
                 Name = Name,
-                Version = Version,
+                Version = VersionString,
                 Source = Source.Name,
             };
         }

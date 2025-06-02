@@ -14,7 +14,7 @@ public abstract class PackagePkgOperationHelper : IPackageOperationHelper
         Manager = manager;
     }
 
-    protected abstract IEnumerable<string> _getOperationParameters(
+    protected abstract IReadOnlyList<string> _getOperationParameters(
         IPackage package,
         IInstallationOptions options,
         OperationType operation);
@@ -22,53 +22,35 @@ public abstract class PackagePkgOperationHelper : IPackageOperationHelper
     protected abstract OperationVeredict _getOperationResult(
         IPackage package,
         OperationType operation,
-        IEnumerable<string> processOutput,
+        IReadOnlyList<string> processOutput,
         int returnCode);
 
-    public IEnumerable<string> GetParameters(
+    public IReadOnlyList<string> GetParameters(
         IPackage package,
         IInstallationOptions options,
         OperationType operation)
     {
-        try
-        {
-            var parameters = _getOperationParameters(package, options, operation);
-            Logger.Info(
-                $"Loaded operation parameters for package id={package.Id} on manager {Manager.Name} and operation {operation}: " +
-                string.Join(' ', parameters));
-            return parameters;
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(
-                $"A fatal error ocurred while loading operation parameters for package id={package.Id} on manager {Manager.Name} and operation {operation}");
-            Logger.Error(ex);
-            return [];
-        }
+        var parameters = _getOperationParameters(package, options, operation);
+        Logger.Info(
+            $"Loaded operation parameters for package id={package.Id} on manager {Manager.Name} and operation {operation}: " +
+            string.Join(' ', parameters));
+        return parameters;
+
     }
 
     public OperationVeredict GetResult(
         IPackage package,
         OperationType operation,
-        IEnumerable<string> processOutput,
+        IReadOnlyList<string> processOutput,
         int returnCode)
     {
-        try
-        {
-            if (returnCode is 999 && processOutput.Last() == "Error: The operation was canceled by the user.")
-            {
-                Logger.Warn("Elevator [or GSudo] UAC prompt was canceled, not showing error message...");
-                return OperationVeredict.Canceled;
-            }
 
-            return _getOperationResult(package, operation, processOutput, returnCode);
-        }
-        catch (Exception ex)
+        if (returnCode is 999 && (!processOutput.Any() || processOutput[processOutput.Count - 1] == "Error: The operation was canceled by the user."))
         {
-            Logger.Error(
-                $"A fatal error ocurred while loading operation parameters for package id={package.Id} on manager {Manager.Name} and operation {operation}");
-            Logger.Error(ex);
-            return OperationVeredict.Failed;
+            Logger.Warn("Elevator [or GSudo] UAC prompt was canceled, not showing error message...");
+            return OperationVeredict.Canceled;
         }
+
+        return _getOperationResult(package, operation, processOutput, returnCode);
     }
 }

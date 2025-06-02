@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq.Expressions;
 using Microsoft.Management.Deployment;
 using UniGetUI.Core.Logging;
 using UniGetUI.PackageEngine.Enums;
@@ -10,7 +11,7 @@ public static class NativePackageHandler
 {
     private static readonly ConcurrentDictionary<long, CatalogPackage> __nativePackages = new();
     private static readonly ConcurrentDictionary<long, CatalogPackageMetadata> __nativeDetails = new();
-    private static readonly ConcurrentDictionary<long, PackageInstallerInfo> __nativeInstallers_Install = new();
+    private static ConcurrentDictionary<long, PackageInstallerInfo> __nativeInstallers_Install = new();
     private static ConcurrentDictionary<long, PackageInstallerInfo> __nativeInstallers_Uninstall = new();
 
     /// <summary>
@@ -29,7 +30,7 @@ public static class NativePackageHandler
         // Rarely a package will not be available in cache (native WinGet helper should always call AddPackage)
         // so it makes no sense to add TaskRecycler.RunOrAttach() here. (Only imported packages may arrive at this point)
         catalogPackage = _findPackageOnCatalog(package);
-        if(catalogPackage is not null) AddPackage(package, catalogPackage);
+        if (catalogPackage is not null) AddPackage(package, catalogPackage);
 
         return catalogPackage;
     }
@@ -50,23 +51,35 @@ public static class NativePackageHandler
     //
     //private static CatalogPackageMetadata? _getDetails(IPackage package)
     {
-        if (__nativeDetails.TryGetValue(package.GetHash(), out CatalogPackageMetadata? metadata))
+        try
+        {
+            if (__nativeDetails.TryGetValue(package.GetHash(), out CatalogPackageMetadata? metadata))
+                return metadata;
+
+            CatalogPackage? catalogPackage = GetPackage(package);
+            if (catalogPackage is null) return null;
+
+            var availableVersions = catalogPackage.AvailableVersions?.ToArray() ?? [];
+            if (availableVersions.Length > 0)
+            {
+                metadata = catalogPackage.GetPackageVersionInfo(availableVersions[0]).GetCatalogPackageMetadata();
+            }
+
+            if (metadata is not null)
+                __nativeDetails[package.GetHash()] = metadata;
+
             return metadata;
-
-        CatalogPackage? catalogPackage = GetPackage(package);
-        metadata = catalogPackage?.DefaultInstallVersion?.GetCatalogPackageMetadata();
-        metadata ??= catalogPackage?.InstalledVersion?.GetCatalogPackageMetadata();
-
-        if (metadata is not null)
-            __nativeDetails[package.GetHash()] = metadata;
-
-        return metadata;
+        }
+        catch (Exception ex)
+        {
+            throw;
+        }
     }
 
     /// <summary>
     /// Get (cached or load) the native installer for the given package, if any. The operation type determines wether
     /// </summary>
-    public static PackageInstallerInfo? GetInstallationOptions(IPackage package, OperationType operation)
+    public static PackageInstallerInfo? GetInstallationOptions(IPackage package, IInstallationOptions unigetuiOptions, OperationType operation)
     //    =>  TaskRecycler<PackageInstallerInfo?>.RunOrAttach(_getInstallationOptions, package, operation);
     //
     //private static PackageInstallerInfo? _getInstallationOptions(IPackage package, OperationType operation)
@@ -76,22 +89,23 @@ public static class NativePackageHandler
 
         PackageInstallerInfo? installerInfo;
         if (operation is OperationType.Uninstall)
-            installerInfo = _getInstallationOptionsOnDict(package, ref __nativeInstallers_Uninstall, true);
+            installerInfo = _getInstallationOptionsOnDict(package, ref __nativeInstallers_Uninstall, true, unigetuiOptions);
         else
-            installerInfo = _getInstallationOptionsOnDict(package, ref __nativeInstallers_Uninstall, false);
+            installerInfo = _getInstallationOptionsOnDict(package, ref __nativeInstallers_Install, false, unigetuiOptions);
 
         return installerInfo;
     }
 
     public static void Clear()
     {
-        __nativePackages.Clear();;
-        __nativeDetails.Clear();;
-        __nativeInstallers_Install.Clear();;
+        __nativePackages.Clear();
+        __nativeDetails.Clear();
+        __nativeInstallers_Install.Clear();
         __nativeInstallers_Uninstall.Clear();
     }
 
-    private static PackageInstallerInfo? _getInstallationOptionsOnDict(IPackage package, ref ConcurrentDictionary<long, PackageInstallerInfo> source, bool installed)
+    private static PackageInstallerInfo? _getInstallationOptionsOnDict(IPackage package,
+        ref ConcurrentDictionary<long, PackageInstallerInfo> source, bool installed, IInstallationOptions unigetuiOptions)
     {
         if (source.TryGetValue(package.GetHash(), out PackageInstallerInfo? installerInfo))
             return installerInfo;
@@ -100,8 +114,26 @@ public static class NativePackageHandler
         if (installed) catalogPackage = GetPackage(package)?.InstalledVersion;
         else catalogPackage = GetPackage(package)?.DefaultInstallVersion;
 
-        InstallOptions? options = NativeWinGetHelper.ExternalFactory?.CreateInstallOptions();
-        installerInfo = catalogPackage?.GetApplicableInstaller(options);
+        InstallOptions? wingetOptions = NativeWinGetHelper.ExternalFactory?.CreateInstallOptions();
+        InstallOptions? wingetDefaultOptions = NativeWinGetHelper.ExternalFactory?.CreateInstallOptions();
+
+        if (wingetOptions is null)
+        {
+            Logger.Error("WinGetFactory.CreateInstallOptions returned null!");
+            return installerInfo;
+        }
+
+        if (unigetuiOptions.InstallationScope is PackageScope.Machine)
+        {
+            wingetOptions.PackageInstallScope = PackageInstallScope.System;
+        }
+        else if (unigetuiOptions.InstallationScope is PackageScope.User)
+        {
+            wingetOptions.PackageInstallScope = PackageInstallScope.User;
+        }
+
+        installerInfo = catalogPackage?.GetApplicableInstaller(wingetOptions);
+        installerInfo ??= catalogPackage?.GetApplicableInstaller(wingetDefaultOptions);
 
         if (installerInfo is not null)
             source[package.GetHash()] = installerInfo;
@@ -148,6 +180,6 @@ public static class NativePackageHandler
         }
 
         // Return the Native Package
-        return SearchResult.Result.Matches.First().CatalogPackage;
+        return SearchResult.Result.Matches[0].CatalogPackage;
     }
 }

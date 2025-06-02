@@ -28,10 +28,10 @@ namespace UniGetUI.Core.SettingsEngine
                     return null;
                 }
 
-                // Otherwhise, load the setting from disk and cache that setting
+                // Otherwise, load the setting from disk and cache that setting
                 List<T> value = [];
 
-                var file = Path.Join(CoreData.UniGetUIDataDirectory, $"{setting}.json");
+                var file = Path.Join(CoreData.UniGetUIUserConfigurationDirectory, $"{setting}.json");
                 if (File.Exists(file))
                 {
                     string result = File.ReadAllText(file);
@@ -39,7 +39,7 @@ namespace UniGetUI.Core.SettingsEngine
                     {
                         if (result != "")
                         {
-                            List<T>? item = JsonSerializer.Deserialize<List<T>>(result);
+                            List<T>? item = JsonSerializer.Deserialize<List<T>>(result, SerializationOptions);
                             if (item is not null)
                             {
                                 value = item;
@@ -60,7 +60,7 @@ namespace UniGetUI.Core.SettingsEngine
             {
                 Logger.Error($"Could not load list {setting} from settings");
                 Logger.Error(ex);
-                return new();
+                return [];
             }
         }
 
@@ -73,10 +73,10 @@ namespace UniGetUI.Core.SettingsEngine
         public static void SetList<T>(string setting, List<T> value)
         {
             listSettings[setting] = value.Cast<object>().ToList();
-            var file = Path.Join(CoreData.UniGetUIDataDirectory, $"{setting}.json");
+            var file = Path.Join(CoreData.UniGetUIUserConfigurationDirectory, $"{setting}.json");
             try
             {
-                if (value.Any()) File.WriteAllText(file, JsonSerializer.Serialize(value));
+                if (value.Count != 0) File.WriteAllText(file, JsonSerializer.Serialize(value, SerializationOptions));
                 else if (File.Exists(file)) File.Delete(file);
             }
             catch (Exception e)

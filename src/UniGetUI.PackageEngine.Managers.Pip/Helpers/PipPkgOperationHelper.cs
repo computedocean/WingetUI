@@ -7,7 +7,7 @@ internal sealed class PipPkgOperationHelper : PackagePkgOperationHelper
 {
     public PipPkgOperationHelper(Pip manager) : base(manager) { }
 
-    protected override IEnumerable<string> _getOperationParameters(
+    protected override IReadOnlyList<string> _getOperationParameters(
         IPackage package,
         IInstallationOptions options,
         OperationType operation)
@@ -19,10 +19,9 @@ internal sealed class PipPkgOperationHelper : PackagePkgOperationHelper
             _ => throw new InvalidDataException("Invalid package operation")
         }];
         parameters.AddRange([
-            options.Version != string.Empty? $"{package.Id}=={options.Version}" : package.Id,
+            options.Version.Any()? $"{package.Id}=={options.Version}" : package.Id,
             "--no-input",
             "--no-color",
-            "--no-python-version-warning",
             "--no-cache"
         ]);
 
@@ -43,18 +42,19 @@ internal sealed class PipPkgOperationHelper : PackagePkgOperationHelper
                 parameters.Add("--user");
         }
 
+        parameters.Add(Pip.GetProxyArgument());
         return parameters;
     }
 
     protected override OperationVeredict _getOperationResult(
         IPackage package,
         OperationType operation,
-        IEnumerable<string> processOutput,
+        IReadOnlyList<string> processOutput,
         int returnCode)
     {
         if (returnCode == 0)
         {
-            return OperationVeredict.Succeeded;
+            return OperationVeredict.Success;
         }
 
         string output_string = string.Join("\n", processOutput);
@@ -64,7 +64,7 @@ internal sealed class PipPkgOperationHelper : PackagePkgOperationHelper
             package.OverridenOptions.Scope = PackageScope.User;
             return OperationVeredict.AutoRetry;
         }
-        return OperationVeredict.Failed;
+        return OperationVeredict.Failure;
 
     }
 }

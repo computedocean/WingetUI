@@ -20,8 +20,11 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
             {
                 CanRunAsAdmin = true,
                 SupportsCustomVersions = true,
+                CanDownloadInstaller = true,
                 SupportsCustomScopes = true,
                 SupportsPreRelease = true,
+                SupportsProxy = ProxySupport.No,
+                SupportsProxyAuth = false
             };
 
             Properties = new ManagerProperties
@@ -44,9 +47,9 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
             OperationHelper = new NpmPkgOperationHelper(this);
         }
 
-        protected override IEnumerable<Package> FindPackages_UnSafe(string query)
+        protected override IReadOnlyList<Package> FindPackages_UnSafe(string query)
         {
-            Process p = new()
+            using Process p = new()
             {
                 StartInfo = new ProcessStartInfo
                 {
@@ -93,12 +96,12 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
             return Packages;
         }
 
-        protected override IEnumerable<Package> GetAvailableUpdates_UnSafe()
+        protected override IReadOnlyList<Package> GetAvailableUpdates_UnSafe()
         {
             List<Package> Packages = [];
             foreach (var options in new OverridenInstallationOptions[] { new(PackageScope.Local), new(PackageScope.Global) })
             {
-                Process p = new()
+                using Process p = new()
                 {
                     StartInfo = new ProcessStartInfo
                     {
@@ -119,8 +122,9 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
 
                 string strContents = p.StandardOutput.ReadToEnd();
                 logger.AddToStdOut(strContents);
-                JsonObject? contents = JsonNode.Parse(strContents) as JsonObject;
-                foreach (var (packageId, packageData) in contents?.ToDictionary() ?? new())
+                JsonObject? contents = null;
+                if (strContents.Any()) contents = JsonNode.Parse(strContents) as JsonObject;
+                foreach (var (packageId, packageData) in contents?.ToDictionary() ?? [])
                 {
                     string? version = packageData?["current"]?.ToString();
                     string? newVersion = packageData?["latest"]?.ToString();
@@ -138,12 +142,12 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
             return Packages;
         }
 
-        protected override IEnumerable<Package> GetInstalledPackages_UnSafe()
+        protected override IReadOnlyList<Package> GetInstalledPackages_UnSafe()
         {
             List<Package> Packages = [];
             foreach (var options in new OverridenInstallationOptions[] { new(PackageScope.Local), new(PackageScope.Global) })
             {
-                Process p = new()
+                using Process p = new()
                 {
                     StartInfo = new ProcessStartInfo
                     {
@@ -164,8 +168,9 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
 
                 string strContents = p.StandardOutput.ReadToEnd();
                 logger.AddToStdOut(strContents);
-                JsonObject? contents = (JsonNode.Parse(strContents) as JsonObject)?["dependencies"] as JsonObject;
-                foreach (var (packageId, packageData) in contents?.ToDictionary() ?? new())
+                JsonObject? contents = null;
+                if (strContents.Any()) contents = (JsonNode.Parse(strContents) as JsonObject)?["dependencies"] as JsonObject;
+                foreach (var (packageId, packageData) in contents?.ToDictionary() ?? [])
                 {
                     string? version = packageData?["version"]?.ToString();
                     if (version is not null)
