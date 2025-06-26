@@ -102,7 +102,7 @@ namespace UniGetUI.Interface.Dialogs
             UpgradablePackage = Package.GetUpgradablePackage();
             InstalledPackage = UpgradablePackage?.GetInstalledPackage() ?? Package.GetInstalledPackage();
 
-            var options = InstallationOptions.FromPackage(package).AsSerializable();
+            var options = InstallOptionsFactory.LoadForPackage(package);
             InstallOptionsPage = new InstallOptionsPage(package, OperationRole, options);
             InstallOptionsExpander.Content = InstallOptionsPage;
 
@@ -578,9 +578,8 @@ namespace UniGetUI.Interface.Dialogs
         {
             Close?.Invoke(this, EventArgs.Empty);
 
-            var newOptions = await InstallationOptions.FromPackageAsync(package);
-            newOptions.FromSerializable(await InstallOptionsPage.GetUpdatedOptions());
-            newOptions.SaveToDisk();
+            var newOptions = await InstallOptionsPage.GetUpdatedOptions();
+            await InstallOptionsFactory.SaveForPackageAsync(newOptions, package);
 
             if (AsAdmin is not null) newOptions.RunAsAdministrator = (bool)AsAdmin;
             if (Interactive is not null) newOptions.InteractiveInstallation = (bool)Interactive;

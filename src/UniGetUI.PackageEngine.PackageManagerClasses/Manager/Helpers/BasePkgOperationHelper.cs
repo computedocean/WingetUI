@@ -2,21 +2,21 @@ using UniGetUI.Core.Logging;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.PackageEngine.Interfaces.ManagerProviders;
+using UniGetUI.PackageEngine.Serializable;
 
 namespace UniGetUI.PackageEngine.Classes.Manager.BaseProviders;
 
-public abstract class PackagePkgOperationHelper : IPackageOperationHelper
+public abstract class BasePkgOperationHelper : IPackageOperationHelper
 {
     protected IPackageManager Manager;
 
-    public PackagePkgOperationHelper(IPackageManager manager)
+    public BasePkgOperationHelper(IPackageManager manager)
     {
         Manager = manager;
     }
 
-    protected abstract IReadOnlyList<string> _getOperationParameters(
-        IPackage package,
-        IInstallationOptions options,
+    protected abstract IReadOnlyList<string> _getOperationParameters(IPackage package,
+        InstallOptions options,
         OperationType operation);
 
     protected abstract OperationVeredict _getOperationResult(
@@ -25,16 +25,14 @@ public abstract class PackagePkgOperationHelper : IPackageOperationHelper
         IReadOnlyList<string> processOutput,
         int returnCode);
 
-    public IReadOnlyList<string> GetParameters(
-        IPackage package,
-        IInstallationOptions options,
+    public IReadOnlyList<string> GetParameters(IPackage package,
+        InstallOptions options,
         OperationType operation)
     {
         var parameters = _getOperationParameters(package, options, operation);
-        Logger.Info(
-            $"Loaded operation parameters for package id={package.Id} on manager {Manager.Name} and operation {operation}: " +
-            string.Join(' ', parameters));
-        return parameters;
+        Logger.Info($"Loaded operation parameters for package id={package.Id} on manager {Manager.Name} and operation {operation}: " +
+                    string.Join(' ', parameters));
+        return parameters.Where(x => x.Any()).ToArray();
 
     }
 

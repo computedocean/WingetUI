@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using UniGetUI.Core.Tools;
 using UniGetUI.Interface.Enums;
@@ -12,6 +11,7 @@ using UniGetUI.PackageEngine.Managers.Chocolatey;
 using UniGetUI.PackageEngine.Managers.PowerShellManager;
 using UniGetUI.PackageEngine.PackageClasses;
 using UniGetUI.PackageEngine.Structs;
+using Architecture = UniGetUI.PackageEngine.Enums.Architecture;
 
 namespace UniGetUI.PackageEngine.Managers.DotNetManager
 {
@@ -28,7 +28,7 @@ namespace UniGetUI.PackageEngine.Managers.DotNetManager
                 CanDownloadInstaller = true,
                 SupportsCustomScopes = true,
                 SupportsCustomArchitectures = true,
-                SupportedCustomArchitectures = [Architecture.X86, Architecture.X64, Architecture.Arm64, Architecture.Arm],
+                SupportedCustomArchitectures = [Architecture.x86, Architecture.x64, Architecture.arm64, Architecture.arm32],
                 SupportsPreRelease = true,
                 SupportsCustomLocations = true,
                 SupportsCustomPackageIcons = true,

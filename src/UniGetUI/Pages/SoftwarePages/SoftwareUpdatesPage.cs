@@ -34,6 +34,7 @@ namespace UniGetUI.Interface.SoftwarePages
             DisableFilterOnQueryChange = false,
             MegaQueryBlockEnabled = false,
             ShowLastLoadTime = true,
+            DisableReload = false,
             PackagesAreCheckedByDefault = true,
             DisableSuggestedResultsRadio = true,
             PageName = "Updates",
@@ -153,7 +154,7 @@ namespace UniGetUI.Interface.SoftwarePages
 
             MenuFlyoutSubItem menuPause = new()
             {
-                Text = "Pause updates for",
+                Text = CoreTools.Translate("Pause updates for"),
                 Icon = new FontIcon { Glyph = "\uE769" },
             };
             foreach (IgnoredUpdatesDatabase.PauseTime menuTime in new List<IgnoredUpdatesDatabase.PauseTime>{
@@ -339,18 +340,18 @@ namespace UniGetUI.Interface.SoftwarePages
                 if (upgradablePackages.Count == 0)
                     return;
 
-                bool EnableAutoUpdate = Settings.Get("AutomaticallyUpdatePackages");
+                bool EnableAutoUpdate = Settings.Get(Settings.K.AutomaticallyUpdatePackages);
 
                 if (EnableAutoUpdate)
                 {
                     var connectionCost = NetworkInformation.GetInternetConnectionProfile()?.GetConnectionCost().NetworkCostType;
-                    if (connectionCost is NetworkCostType.Fixed or NetworkCostType.Variable && Settings.Get("DisableAUPOnMeteredConnections"))
+                    if (connectionCost is NetworkCostType.Fixed or NetworkCostType.Variable && Settings.Get(Settings.K.DisableAUPOnMeteredConnections))
                     {
                         Logger.Warn("Updates will not be installed automatically because the current internet connection is metered.");
                         EnableAutoUpdate = false;
                     }
 
-                    if (PowerManager.EnergySaverStatus is EnergySaverStatus.On && Settings.Get("DisableAUPOnBatterySaver"))
+                    if (PowerManager.EnergySaverStatus is EnergySaverStatus.On && Settings.Get(Settings.K.DisableAUPOnBatterySaver))
                     {
                         Logger.Warn("Updates will not be installed automatically because battery saver is enabled.");
                         EnableAutoUpdate = false;
@@ -419,7 +420,7 @@ namespace UniGetUI.Interface.SoftwarePages
                     string attribution = "";
                     foreach (IPackage package in upgradablePackages)
                     {
-                        if (!Settings.GetDictionaryItem<string, bool>("DisabledPackageManagerNotifications", package.Manager.Name))
+                        if (!Settings.GetDictionaryItem<string, bool>(Settings.K.DisabledPackageManagerNotifications, package.Manager.Name))
                             attribution += package.Name + ", ";
                     }
 
@@ -464,7 +465,7 @@ namespace UniGetUI.Interface.SoftwarePages
                 bool SendNotification = false;
                 foreach (var Package in upgradablePackages)
                 {
-                    if (!Settings.GetDictionaryItem<string, bool>("DisabledPackageManagerNotifications", Package.Manager.Name))
+                    if (!Settings.GetDictionaryItem<string, bool>(Settings.K.DisabledPackageManagerNotifications, Package.Manager.Name))
                     {
                         SendNotification = true;
                         break;
@@ -494,11 +495,8 @@ namespace UniGetUI.Interface.SoftwarePages
         private void MenuAsAdmin_Invoked(object sender, RoutedEventArgs e)
             => _ = MainApp.Operations.Update(SelectedItem, elevated: true);
 
-        private async void MenuUpdateAfterUninstall_Invoked(object sender, RoutedEventArgs e)
-        {
-            var op = await MainApp.Operations.Uninstall(SelectedItem);
-            _ = MainApp.Operations.Install(SelectedItem, TEL_InstallReferral.ALREADY_INSTALLED, req: op);
-        }
+        private void MenuUpdateAfterUninstall_Invoked(object sender, RoutedEventArgs e)
+            => _ = MainApp.Operations.UninstallThenUpdate(SelectedItem);
 
         private void MenuUninstall_Invoked(object sender, RoutedEventArgs e)
             => _ = MainApp.Operations.Uninstall(SelectedItem);

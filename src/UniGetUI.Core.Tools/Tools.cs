@@ -16,10 +16,10 @@ namespace UniGetUI.Core.Tools
     public static class CoreTools
     {
 
-        public static readonly HttpClientHandler HttpClientConfig = new()
+        public static HttpClientHandler HttpClientConfig
         {
-            AutomaticDecompression = DecompressionMethods.All
-        };
+            get => new HttpClientHandler() { AutomaticDecompression = DecompressionMethods.All };
+        }
 
         public static HttpClientHandler GenericHttpClientParameters
         {
@@ -29,8 +29,8 @@ namespace UniGetUI.Core.Tools
                 IWebProxy? proxy = null;
                 ICredentials? creds = null;
 
-                if (Settings.Get("EnableProxy")) proxyUri = Settings.GetProxyUrl();
-                if (Settings.Get("EnableProxyAuth")) creds = Settings.GetProxyCredentials();
+                if (Settings.Get(Settings.K.EnableProxy)) proxyUri = Settings.GetProxyUrl();
+                if (Settings.Get(Settings.K.EnableProxyAuth)) creds = Settings.GetProxyCredentials();
                 if (proxyUri is not null) proxy = new WebProxy()
                 {
                     Address = proxyUri,
@@ -449,25 +449,38 @@ namespace UniGetUI.Core.Tools
         /// <summary>
         /// Enables GSudo cache for the current process
         /// </summary>
+        private static bool _isCaching;
         public static async Task CacheUACForCurrentProcess()
         {
-            Logger.Info("Caching admin rights for process id " + Environment.ProcessId);
-            using Process p = new()
+            while (_isCaching) await Task.Delay(100);
+
+            try
             {
-                StartInfo = new ProcessStartInfo
+                _isCaching = true;
+                Logger.Info("Caching admin rights for process id " + Environment.ProcessId);
+                using Process p = new()
                 {
-                    FileName = CoreData.ElevatorPath,
-                    Arguments = "cache on --pid " + Environment.ProcessId + " -d 1",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    RedirectStandardInput = true,
-                    CreateNoWindow = true,
-                    StandardOutputEncoding = Encoding.UTF8,
-                }
-            };
-            p.Start();
-            await p.WaitForExitAsync();
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = CoreData.ElevatorPath,
+                        Arguments = "cache on --pid " + Environment.ProcessId + " -d 1",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        RedirectStandardInput = true,
+                        CreateNoWindow = true,
+                        StandardOutputEncoding = Encoding.UTF8,
+                    }
+                };
+                p.Start();
+                await p.WaitForExitAsync();
+                _isCaching = false;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex);
+                _isCaching = false;
+            }
         }
 
         /// <summary>
@@ -595,7 +608,7 @@ namespace UniGetUI.Core.Tools
 
         public static void _waitForInternetConnection()
         {
-            if (Settings.Get("DisableWaitForInternetConnection")) return;
+            if (Settings.Get(Settings.K.DisableWaitForInternetConnection)) return;
 
             Logger.Debug("Checking for internet connectivity...");
             bool internetLost = false;
@@ -681,5 +694,9 @@ namespace UniGetUI.Core.Tools
         {
             return LanguageEngine?.Locale ?? "Unset/Unknown";
         }
+
+        private static readonly HashSet<char> illegalPathChars = Path.GetInvalidFileNameChars().ToHashSet();
+        public static string MakeValidFileName(string name)
+            => string.Concat(name.Where(x => !illegalPathChars.Contains(x)));
     }
 }

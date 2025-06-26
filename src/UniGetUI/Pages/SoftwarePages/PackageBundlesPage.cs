@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Xml;
 using System.Xml.Serialization;
 using ExternalLibraries.Pickers;
 using Microsoft.UI.Text;
@@ -10,6 +9,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
+using UniGetUI.Core.SettingsEngine.SecureSettings;
 using UniGetUI.Core.Tools;
 using UniGetUI.Interface.Enums;
 using UniGetUI.Interface.Telemetry;
@@ -55,6 +55,7 @@ namespace UniGetUI.Interface.SoftwarePages
             DisableFilterOnQueryChange = false,
             MegaQueryBlockEnabled = false,
             ShowLastLoadTime = false,
+            DisableReload = true,
             PackagesAreCheckedByDefault = false,
             DisableSuggestedResultsRadio = true,
             PageName = "Bundles",
@@ -76,8 +77,6 @@ namespace UniGetUI.Interface.SoftwarePages
             {
                 HasUnsavedChanges = true;
             };
-
-            ReloadButton.Visibility = Visibility.Collapsed;
         }
 
         public override BetterMenu GenerateContextMenu()
@@ -595,7 +594,7 @@ namespace UniGetUI.Interface.SoftwarePages
             foreach (IPackage package in packages)
             {
                 if (package is Package && !package.Source.IsVirtualManager)
-                    exportable.packages.Add(await Task.Run(package.AsSerializable));
+                    exportable.packages.Add(await package.AsSerializableAsync());
                 else
                     exportable.incompatible_packages.Add(package.AsSerializable_Incompatible());
             }
@@ -651,18 +650,102 @@ namespace UniGetUI.Interface.SoftwarePages
 
             DeserializedData = await Task.Run(() =>
             {
-                return new SerializableBundle(JsonNode.Parse(content) ?? throw new Exception("Could not parse JSON object"));
+                return new SerializableBundle(JsonNode.Parse(content) ?? throw new JsonException("Could not parse JSON object"));
             });
 
             List<IPackage> packages = [];
 
+
+            bool showReport = false;
+            var packageReport = new Dictionary<string, List<BundleReportEntry>>();
+            bool AllowCLIParameters =
+                SecureSettings.Get(SecureSettings.K.AllowCLIArguments) &&
+                SecureSettings.Get(SecureSettings.K.AllowImportingCLIArguments);
+
+            bool AllowPrePostOps =
+                SecureSettings.Get(SecureSettings.K.AllowPrePostOpCommand) &&
+                SecureSettings.Get(SecureSettings.K.AllowImportPrePostOpCommands);
+
+
             foreach (var pkg in DeserializedData.packages)
+            {
+                var opts = pkg.InstallationOptions;
+
+                if (opts.CustomParameters_Install.Where(x => x.Any()).Any())
+                {
+                    showReport = true;
+                    if (!packageReport.ContainsKey(pkg.Id)) packageReport[pkg.Id] = new();
+                    packageReport[pkg.Id].Add(new($"Custom install arguments: [{string.Join(", ", opts.CustomParameters_Install)}]", AllowCLIParameters));
+                    if(!AllowCLIParameters) opts.CustomParameters_Install.Clear();
+                }
+                if (opts.CustomParameters_Update.Where(x => x.Any()).Any())
+                {
+                    showReport = true;
+                    if (!packageReport.ContainsKey(pkg.Id)) packageReport[pkg.Id] = new();
+                    packageReport[pkg.Id].Add(new($"Custom update arguments: [{string.Join(", ", opts.CustomParameters_Update)}]", AllowCLIParameters));
+                    if(!AllowCLIParameters) opts.CustomParameters_Update.Clear();
+                }
+                if (opts.CustomParameters_Uninstall.Where(x => x.Any()).Any())
+                {
+                    showReport = true;
+                    if (!packageReport.ContainsKey(pkg.Id)) packageReport[pkg.Id] = new();
+                    packageReport[pkg.Id].Add(new($"Custom uninstall arguments: [{string.Join(", ", opts.CustomParameters_Uninstall)}]", AllowCLIParameters));
+                    if(!AllowCLIParameters) opts.CustomParameters_Uninstall.Clear();
+                }
+
+                if (opts.PreInstallCommand.Any())
+                {
+                    showReport = true;
+                    if (!packageReport.ContainsKey(pkg.Id)) packageReport[pkg.Id] = new();
+                    packageReport[pkg.Id].Add(new($"Pre-install command: {opts.PreInstallCommand}", AllowPrePostOps));
+                    if (!AllowPrePostOps) opts.PreInstallCommand = "";
+                }
+                if (opts.PostInstallCommand.Any())
+                {
+                    showReport = true;
+                    if (!packageReport.ContainsKey(pkg.Id)) packageReport[pkg.Id] = new();
+                    packageReport[pkg.Id].Add(new($"Post-install command: {opts.PostInstallCommand}", AllowPrePostOps));
+                    if (!AllowPrePostOps) opts.PostInstallCommand = "";
+                }
+                if (opts.PreUpdateCommand.Any())
+                {
+                    showReport = true;
+                    if (!packageReport.ContainsKey(pkg.Id)) packageReport[pkg.Id] = new();
+                    packageReport[pkg.Id].Add(new($"Pre-update command: {opts.PreUpdateCommand}", AllowPrePostOps));
+                    if (!AllowPrePostOps) opts.PreUpdateCommand = "";
+                }
+                if (opts.PostUpdateCommand.Any())
+                {
+                    showReport = true;
+                    if (!packageReport.ContainsKey(pkg.Id)) packageReport[pkg.Id] = new();
+                    packageReport[pkg.Id].Add(new($"Post-update command: {opts.PostUpdateCommand}", AllowPrePostOps));
+                    if (!AllowPrePostOps) opts.PostUpdateCommand = "";
+                }
+                if (opts.PreUninstallCommand.Any())
+                {
+                    showReport = true;
+                    if (!packageReport.ContainsKey(pkg.Id)) packageReport[pkg.Id] = new();
+                    packageReport[pkg.Id].Add(new($"Pre-uninstall command: {opts.PreUninstallCommand}", AllowPrePostOps));
+                    if (!AllowPrePostOps) opts.PreUninstallCommand = "";
+                }
+                if (opts.PostUninstallCommand.Any())
+                {
+                    showReport = true;
+                    if (!packageReport.ContainsKey(pkg.Id)) packageReport[pkg.Id] = new();
+                    packageReport[pkg.Id].Add(new($"Post-uninstall command: {opts.PostUninstallCommand}", AllowPrePostOps));
+                    if (!AllowPrePostOps) opts.PostUninstallCommand = "";
+                }
+
+                pkg.InstallationOptions = opts;
                 packages.Add(DeserializePackage(pkg));
+            }
 
             foreach (var pkg in DeserializedData.incompatible_packages)
                 packages.Add(DeserializeIncompatiblePackage(pkg, NullSource.Instance));
 
             await PEInterface.PackageBundlesLoader.AddPackagesAsync(packages);
+
+            if(showReport) _ = DialogHelper.ShowBundleSecurityReport(packageReport);
             return DeserializedData.export_version;
         }
 

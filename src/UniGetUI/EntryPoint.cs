@@ -3,7 +3,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.Windows.AppLifecycle;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
-using UniGetUI.Core.Tools;
 
 namespace UniGetUI
 {
@@ -53,6 +52,26 @@ namespace UniGetUI
                 else if (args.Contains(CLIHandler.SET_SETTING_VAL))
                 {
                     int ret = CLIHandler.SetSettingsValue();
+                    Environment.Exit(ret);
+                }
+                else if (args.Contains(CLIHandler.ENABLE_SECURE_SETTING))
+                {
+                    int ret = CLIHandler.EnableSecureSetting();
+                    Environment.Exit(ret);
+                }
+                else if (args.Contains(CLIHandler.DISABLE_SECURE_SETTING))
+                {
+                    int ret = CLIHandler.DisableSecureSetting();
+                    Environment.Exit(ret);
+                }
+                else if (args.Contains(CLIHandler.ENABLE_SECURE_SETTING_FOR_USER))
+                {
+                    int ret = CLIHandler.EnableSecureSettingForUser();
+                    Environment.Exit(ret);
+                }
+                else if (args.Contains(CLIHandler.DISABLE_SECURE_SETTING_FOR_USER))
+                {
+                    int ret = CLIHandler.DisableSecureSettingForUser();
                     Environment.Exit(ret);
                 }
                 else

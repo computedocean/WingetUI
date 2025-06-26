@@ -12,10 +12,11 @@
 | `--help` | Opens this page | 3.2.0+ |
 | `--import-settings file` | Imports UniGetUI settings from json file _file_. The file must exist. The old settings will be lost* | 3.2.0+ |
 | `--export-settings file` |  Exports UniGetUI settings to json file _file_. The file will be created or overwritten* | 3.2.0+ |
-| `--enable-setting key` | Enables the boolean setting _key_* | 3.2.0+ |
-| `--disable-setting key` |  Disables the boolean setting _key_* | 3.2.0+ |
+| `--[enable\|disable]-setting key` | Enables/disables the boolean setting _key_* | 3.2.0+ |
 | `--set-setting-value key value` | Sets the value _value_ to the non-boolean setting _key_. To clear a non-boolean setting, `--disable-setting` can be used* | 3.2.0+ |
 | `--no-corrupt-dialog` | Will show a verbose error message (the error report) instead of a simplified message dialog | 3.2.1+ |
+| `--[enable\|disable]-secure-setting-for-user username key` | Enables/disables the given secure setting for the given username. Requires administrator rights.  | 3.2.1+ | 
+| `--[enable\|disable]-secure-setting key` | Enables/disables the given secure setting for current user. This will generate a UAC prompt  | 3.2.1+ | 
 
 
 \*After modifying the settings, you must ensure that any running instance of UniGetUI is restarted for the changes to take effect
@@ -35,7 +36,7 @@ On a system where UniGetUI 3.1.2+ is installed, the following deep links can be 
 <br><br>
 
 # Installer command-line parameters 
-The installer is inno-setup based. It supports all Inno Setup command-line parameters as well as the following:
+The installer is inno-setup based. It supports [all Inno Setup command-line parameters](https://jrsoftware.org/ishelp/index.php?topic=setupcmdline), as well as the following custom ones:
 
 | Parameter                                           | Description |
 | --------------------------------------------------- | ---------- |

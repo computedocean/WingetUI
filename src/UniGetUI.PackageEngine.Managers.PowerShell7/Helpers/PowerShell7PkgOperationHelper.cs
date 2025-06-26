@@ -1,13 +1,15 @@
 using UniGetUI.PackageEngine.Classes.Manager.BaseProviders;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.Serializable;
 
 namespace UniGetUI.PackageEngine.Managers.PowerShell7Manager;
-internal sealed class PowerShell7PkgOperationHelper : PackagePkgOperationHelper
+internal sealed class PowerShell7PkgOperationHelper : BasePkgOperationHelper
 {
     public PowerShell7PkgOperationHelper(PowerShell7 manager) : base(manager) { }
 
-    protected override IReadOnlyList<string> _getOperationParameters(IPackage package, IInstallationOptions options, OperationType operation)
+    protected override IReadOnlyList<string> _getOperationParameters(IPackage package,
+        InstallOptions options, OperationType operation)
     {
         List<string> parameters = [operation switch {
             OperationType.Install => Manager.Properties.InstallVerb,
@@ -16,10 +18,20 @@ internal sealed class PowerShell7PkgOperationHelper : PackagePkgOperationHelper
             _ => throw new InvalidDataException("Invalid package operation")
         }];
         parameters.AddRange(["-Name", package.Id, "-Confirm:$false"]);
-        if (operation is OperationType.Update) parameters.Add("-Force");
 
-        if (options.CustomParameters is not null)
-            parameters.AddRange(options.CustomParameters);
+        if (operation is OperationType.Install)
+        {
+            if(options.Version != "")
+                parameters.AddRange(["-Version", options.Version]);
+        }
+        else if (operation is OperationType.Update)
+        {
+            parameters.Add("-Force");
+        }
+        else if (operation is OperationType.Uninstall)
+        {
+            parameters.AddRange(["-Version", package.VersionString]);
+        }
 
         if (operation is not OperationType.Uninstall)
         {
@@ -28,18 +40,19 @@ internal sealed class PowerShell7PkgOperationHelper : PackagePkgOperationHelper
             if (options.PreRelease)
                 parameters.Add("-Prerelease");
 
-            if (package.OverridenOptions.Scope == PackageScope.Global ||
-                (package.OverridenOptions.Scope is null && options.InstallationScope == PackageScope.Global))
+            if (package.OverridenOptions.Scope is PackageScope.Global ||
+                (package.OverridenOptions.Scope is null && options.InstallationScope is PackageScope.Global))
                 parameters.AddRange(["-Scope", "AllUsers"]);
             else
                 parameters.AddRange(["-Scope", "CurrentUser"]);
         }
 
-        if (operation is OperationType.Install)
+        parameters.AddRange(operation switch
         {
-            if (options.Version != "")
-                parameters.AddRange(["-Version", options.Version]);
-        }
+            OperationType.Update => options.CustomParameters_Update,
+            OperationType.Uninstall => options.CustomParameters_Uninstall,
+            _ => options.CustomParameters_Install,
+        });
 
         return parameters;
     }

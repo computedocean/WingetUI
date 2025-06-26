@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
@@ -13,6 +12,7 @@ using UniGetUI.PackageEngine.ManagerClasses.Manager;
 using UniGetUI.PackageEngine.Managers.Choco;
 using UniGetUI.PackageEngine.Managers.PowerShellManager;
 using UniGetUI.PackageEngine.PackageClasses;
+using Architecture = UniGetUI.PackageEngine.Enums.Architecture;
 
 namespace UniGetUI.PackageEngine.Managers.ChocolateyManager
 {
@@ -31,7 +31,7 @@ namespace UniGetUI.PackageEngine.Managers.ChocolateyManager
                 CanRunInteractively = true,
                 SupportsCustomVersions = true,
                 SupportsCustomArchitectures = true,
-                SupportedCustomArchitectures = [Architecture.X86],
+                SupportedCustomArchitectures = [Architecture.x86],
                 SupportsPreRelease = true,
                 SupportsCustomSources = true,
                 SupportsCustomPackageIcons = true,
@@ -67,11 +67,11 @@ namespace UniGetUI.PackageEngine.Managers.ChocolateyManager
 
         public static string GetProxyArgument()
         {
-            if (!Settings.Get("EnableProxy")) return "";
+            if (!Settings.Get(Settings.K.EnableProxy)) return "";
             var proxyUri = Settings.GetProxyUrl();
             if (proxyUri is null) return "";
 
-            if (Settings.Get("EnableProxyAuth") is false)
+            if (Settings.Get(Settings.K.EnableProxyAuth) is false)
                 return $"--proxy {proxyUri.ToString()}";
 
             var creds = Settings.GetProxyCredentials();
@@ -205,7 +205,7 @@ namespace UniGetUI.PackageEngine.Managers.ChocolateyManager
             {
                 Logger.ImportantInfo("Old chocolatey path is a symbolic link, not migrating Chocolatey...");
             }
-            else if (Settings.Get("ChocolateySymbolicLinkCreated"))
+            else if (Settings.Get(Settings.K.ChocolateySymbolicLinkCreated))
             {
                 Logger.Warn("The Choco path symbolic link has already been set to created!");
             }
@@ -273,7 +273,7 @@ namespace UniGetUI.PackageEngine.Managers.ChocolateyManager
                     }
 
                     CoreTools.CreateSymbolicLinkDir(old_choco_path, new_choco_path);
-                    Settings.Set("ChocolateySymbolicLinkCreated", true);
+                    Settings.Set(Settings.K.ChocolateySymbolicLinkCreated, true);
                     Logger.Info($"Symbolic link created successfully from {old_choco_path} to {new_choco_path}.");
 
                 }
@@ -284,7 +284,7 @@ namespace UniGetUI.PackageEngine.Managers.ChocolateyManager
                 }
             }
 
-            if (Settings.Get("UseSystemChocolatey"))
+            if (Settings.Get(Settings.K.UseSystemChocolatey))
             {
                 status.ExecutablePath = CoreTools.Which("choco.exe").Item2;
             }
@@ -322,9 +322,9 @@ namespace UniGetUI.PackageEngine.Managers.ChocolateyManager
             status.Version = process.StandardOutput.ReadToEnd().Trim();
 
             // If the user is running bundled chocolatey and chocolatey is not in path, add chocolatey to path
-            if (!Settings.Get("UseSystemChocolatey")
+            if (!Settings.Get(Settings.K.UseSystemChocolatey)
                 && !File.Exists("C:\\ProgramData\\Chocolatey\\bin\\choco.exe"))
-                /* && Settings.Get("ShownWelcomeWizard")) */
+                /* && Settings.Get(Settings.K.ShownWelcomeWizard)) */
             {
                 string? path = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User);
                 if (!path?.Contains(status.ExecutablePath.Replace("\\choco.exe", "\\bin")) ?? false)

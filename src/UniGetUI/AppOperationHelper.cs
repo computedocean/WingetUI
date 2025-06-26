@@ -68,14 +68,14 @@ public partial class MainApp
                         Content = CoreTools.Translate("No applicable installer was found for the package {0}", package.Name),
                         PrimaryButtonText = CoreTools.Translate("Ok"),
                         DefaultButton = ContentDialogButton.Primary,
-                        XamlRoot = MainApp.Instance.MainWindow.Content.XamlRoot,
+                        XamlRoot = Instance.MainWindow.Content.XamlRoot,
                     };
-                    await MainApp.Instance.MainWindow.ShowDialogAsync(dialog);
+                    await Instance.MainWindow.ShowDialogAsync(dialog);
                     return null;
                 }
 
                 FileSavePicker savePicker = new();
-                MainWindow window = MainApp.Instance.MainWindow;
+                MainWindow window = Instance.MainWindow;
                 IntPtr hWnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
                 WinRT.Interop.InitializeWithWindow.Initialize(savePicker, hWnd);
                 savePicker.SuggestedStartLocation = PickerLocationId.Downloads;
@@ -116,7 +116,11 @@ public partial class MainApp
         }
 
         /*
+         *
+         *
          * PACKAGE INSTALLATION
+         *
+         *
          */
         public static async Task<AbstractOperation?> Install(IPackage? package, TEL_InstallReferral referral,
             bool? elevated = null, bool? interactive = null, bool? no_integrity = null, bool ignoreParallel = false,
@@ -124,13 +128,13 @@ public partial class MainApp
         {
             if (package is null) return null;
 
-            var options = await InstallationOptions.FromPackageAsync(package, elevated, interactive, no_integrity);
-            var op = new InstallPackageOperation(package, options, ignoreParallel, req);
-            op.OperationSucceeded += (_, _) => TelemetryHandler.InstallPackage(package, TEL_OP_RESULT.SUCCESS, referral);
-            op.OperationFailed += (_, _) => TelemetryHandler.InstallPackage(package, TEL_OP_RESULT.FAILED, referral);
-            Add(op);
+            var options = await InstallOptionsFactory.LoadApplicableAsync(package, elevated, interactive, no_integrity);
+            var operation = new InstallPackageOperation(package, options, ignoreParallel, req);
+            operation.OperationSucceeded += (_, _) => TelemetryHandler.InstallPackage(package, TEL_OP_RESULT.SUCCESS, referral);
+            operation.OperationFailed += (_, _) => TelemetryHandler.InstallPackage(package, TEL_OP_RESULT.FAILED, referral);
+            Add(operation);
             Instance.MainWindow.UpdateSystemTrayStatus();
-            return op;
+            return operation;
         }
 
         public static void Install(IReadOnlyList<IPackage> packages, TEL_InstallReferral referral, bool? elevated = null, bool? interactive = null, bool? no_integrity = null)
@@ -141,20 +145,43 @@ public partial class MainApp
             }
         }
 
+        public static async Task<AbstractOperation?> UninstallThenReinstall(IPackage? package, TEL_InstallReferral referral)
+        {
+            if (package is null) return null;
+
+            var options = await InstallOptionsFactory.LoadApplicableAsync(package);
+
+            var uninstallOp = new UninstallPackageOperation(package, options);
+            uninstallOp.OperationSucceeded += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.SUCCESS);
+            uninstallOp.OperationFailed += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.FAILED);
+
+            var installOp = new InstallPackageOperation(package, options, req: uninstallOp);
+            installOp.OperationSucceeded += (_, _) => TelemetryHandler.InstallPackage(package, TEL_OP_RESULT.SUCCESS, referral);
+            installOp.OperationFailed += (_, _) => TelemetryHandler.InstallPackage(package, TEL_OP_RESULT.FAILED, referral);
+
+            Add(installOp);
+            Instance.MainWindow.UpdateSystemTrayStatus();
+            return installOp;
+        }
+
         /*
+         *
+         *
          * PACKAGE UPDATE
+         *
+         *
          */
         public static async Task<AbstractOperation?> Update(IPackage? package, bool? elevated = null, bool? interactive = null, bool? no_integrity = null, bool ignoreParallel = false, AbstractOperation? req = null)
         {
             if (package is null) return null;
 
-            var options = await InstallationOptions.FromPackageAsync(package, elevated, interactive, no_integrity);
-            var op = new UpdatePackageOperation(package, options, ignoreParallel, req);
-            op.OperationSucceeded += (_, _) => TelemetryHandler.UpdatePackage(package, TEL_OP_RESULT.SUCCESS);
-            op.OperationFailed += (_, _) => TelemetryHandler.UpdatePackage(package, TEL_OP_RESULT.FAILED);
-            Add(op);
+            var options = await InstallOptionsFactory.LoadApplicableAsync(package, elevated, interactive, no_integrity);
+            var operation = new UpdatePackageOperation(package, options, ignoreParallel, req);
+            operation.OperationSucceeded += (_, _) => TelemetryHandler.UpdatePackage(package, TEL_OP_RESULT.SUCCESS);
+            operation.OperationFailed += (_, _) => TelemetryHandler.UpdatePackage(package, TEL_OP_RESULT.FAILED);
+            Add(operation);
             Instance.MainWindow.UpdateSystemTrayStatus();
-            return op;
+            return operation;
         }
 
         public static void Update(IReadOnlyList<IPackage> packages, bool? elevated = null, bool? interactive = null, bool? no_integrity = null)
@@ -197,8 +224,31 @@ public partial class MainApp
             Logger.Warn($"[WIDGETS] No package with id={packageId} was found");
         }
 
+        public static async Task<AbstractOperation?> UninstallThenUpdate(IPackage? package)
+        {
+            if (package is null) return null;
+
+            var options = await InstallOptionsFactory.LoadApplicableAsync(package);
+
+            var uninstallOp = new UninstallPackageOperation(package, options);
+            uninstallOp.OperationSucceeded += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.SUCCESS);
+            uninstallOp.OperationFailed += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.FAILED);
+
+            var installOp = new UpdatePackageOperation(package, options, req: uninstallOp);
+            installOp.OperationSucceeded += (_, _) => TelemetryHandler.UpdatePackage(package, TEL_OP_RESULT.SUCCESS);
+            installOp.OperationFailed += (_, _) => TelemetryHandler.UpdatePackage(package, TEL_OP_RESULT.FAILED);
+
+            Add(installOp);
+            Instance.MainWindow.UpdateSystemTrayStatus();
+            return installOp;
+        }
+
         /*
+         *
+         *
          * PACKAGE UNINSTALL
+         *
+         *
          */
 
         public static async void ConfirmAndUninstall(IReadOnlyList<IPackage> packages, bool? elevated = null, bool? interactive = null, bool? remove_data = null)
@@ -221,13 +271,13 @@ public partial class MainApp
         {
             if (package is null) return null;
 
-            var options = await InstallationOptions.FromPackageAsync(package, elevated, interactive, remove_data: remove_data);
-            var op = new UninstallPackageOperation(package, options, ignoreParallel, req);
-            op.OperationSucceeded += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.SUCCESS);
-            op.OperationFailed += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.FAILED);
-            Add(op);
+            var options = await InstallOptionsFactory.LoadApplicableAsync(package, elevated, interactive, remove_data: remove_data);
+            var operation = new UninstallPackageOperation(package, options, ignoreParallel, req);
+            operation.OperationSucceeded += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.SUCCESS);
+            operation.OperationFailed += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.FAILED);
+            Add(operation);
             Instance.MainWindow.UpdateSystemTrayStatus();
-            return op;
+            return operation;
         }
 
         public static void Uninstall(IReadOnlyList<IPackage> packages, bool? elevated = null, bool? interactive = null, bool? remove_data = null)
