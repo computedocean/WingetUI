@@ -9,8 +9,11 @@ using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.PackageEngine.PackageLoader;
 using Windows.System;
+using Windows.UI.Text;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using UniGetUI.Interface.Telemetry;
 using UniGetUI.Pages.DialogPages;
+using Microsoft.UI.Xaml.Input;
 
 namespace UniGetUI.Interface.SoftwarePages
 {
@@ -48,11 +51,14 @@ namespace UniGetUI.Interface.SoftwarePages
             InstantSearchCheckbox.IsEnabled = false;
             InstantSearchCheckbox.Visibility = Visibility.Collapsed;
 
-            FindButton.Click += Event_SearchPackages;
             MegaFindButton.Click += Event_SearchPackages;
-
-            QueryBlock.KeyUp += (s, e) => { if (e.Key == VirtualKey.Enter) { Event_SearchPackages(s, e); } };
             MegaQueryBlock.KeyUp += (s, e) => { if (e.Key == VirtualKey.Enter) { Event_SearchPackages(s, e); } };
+        }
+
+        public override void SearchBox_QuerySubmitted(object? sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+        {
+            base.SearchBox_QuerySubmitted(sender, args);
+            Event_SearchPackages(sender, new());
         }
 
         public override BetterMenu GenerateContextMenu()
@@ -72,7 +78,7 @@ namespace UniGetUI.Interface.SoftwarePages
 
             BetterMenuItem menuInstallSettings = new()
             {
-                Text = CoreTools.AutoTranslated("Installation options"),
+                Text = CoreTools.AutoTranslated("Install options"),
                 IconName = IconType.Options,
                 KeyboardAcceleratorTextOverride = "Alt+Enter"
             };
@@ -137,10 +143,24 @@ namespace UniGetUI.Interface.SoftwarePages
 
         public override void GenerateToolBar()
         {
-            AppBarButton InstallSelected = new();
-            AppBarButton InstallAsAdmin = new();
-            AppBarButton InstallSkipHash = new();
-            AppBarButton InstallInteractive = new();
+            BetterMenuItem InstallAsAdmin = new();
+            BetterMenuItem InstallSkipHash = new();
+            BetterMenuItem InstallInteractive = new();
+            BetterMenuItem DownloadInstallers = new();
+
+            MainToolbarButtonDropdown.Flyout = new BetterMenu()
+            {
+                Items = {
+                    InstallAsAdmin,
+                    InstallSkipHash,
+                    InstallInteractive,
+                    new MenuFlyoutSeparator(),
+                    DownloadInstallers,
+                    },
+                Placement = FlyoutPlacementMode.Bottom
+            };
+            MainToolbarButtonIcon.Icon = IconType.Download;
+            MainToolbarButtonText.Text = CoreTools.Translate("Install selection");
 
             AppBarButton InstallationSettings = new();
 
@@ -151,10 +171,6 @@ namespace UniGetUI.Interface.SoftwarePages
 
             AppBarButton HelpButton = new();
 
-            ToolBar.PrimaryCommands.Add(InstallSelected);
-            ToolBar.PrimaryCommands.Add(InstallAsAdmin);
-            ToolBar.PrimaryCommands.Add(InstallSkipHash);
-            ToolBar.PrimaryCommands.Add(InstallInteractive);
             ToolBar.PrimaryCommands.Add(new AppBarSeparator());
             ToolBar.PrimaryCommands.Add(InstallationSettings);
             ToolBar.PrimaryCommands.Add(new AppBarSeparator());
@@ -165,62 +181,47 @@ namespace UniGetUI.Interface.SoftwarePages
             ToolBar.PrimaryCommands.Add(new AppBarSeparator());
             ToolBar.PrimaryCommands.Add(HelpButton);
 
-            Dictionary<AppBarButton, string> Labels = new()
+            Dictionary<DependencyObject, string> Labels = new()
             {   // Entries with a trailing space are collapsed
                 // Their texts will be used as the tooltip
-                { InstallSelected,        CoreTools.Translate("Install selected packages") },
-                { InstallAsAdmin,         " " + CoreTools.Translate("Install as administrator") },
-                { InstallSkipHash,        " " + CoreTools.Translate("Skip integrity checks") },
-                { InstallInteractive,     " " + CoreTools.Translate("Interactive installation") },
-                { InstallationSettings,   CoreTools.Translate("Installation options") },
+                { InstallAsAdmin,         CoreTools.Translate("Install as administrator") },
+                { InstallSkipHash,        CoreTools.Translate("Skip integrity checks") },
+                { InstallInteractive,     CoreTools.Translate("Interactive installation") },
+                { DownloadInstallers,     CoreTools.Translate("Download selected installers") },
+                { InstallationSettings,   CoreTools.Translate("Install options") },
                 { PackageDetails,         " " + CoreTools.Translate("Package details") },
                 { SharePackage,           " " + CoreTools.Translate("Share") },
                 { ExportSelection,        CoreTools.Translate("Add selection to bundle") },
                 { HelpButton,             CoreTools.Translate("Help") }
             };
 
-            foreach (AppBarButton toolButton in Labels.Keys)
+            Dictionary<DependencyObject, IconType> Icons = new()
             {
-                toolButton.IsCompact = Labels[toolButton][0] == ' ';
-                if (toolButton.IsCompact)
-                {
-                    toolButton.LabelPosition = CommandBarLabelPosition.Collapsed;
-                }
-
-                string text = Labels[toolButton].Trim();
-                toolButton.Label = text;
-                ToolTipService.SetToolTip(toolButton, text);
-            }
-
-            Dictionary<AppBarButton, IconType> Icons = new()
-            {
-                { InstallSelected,      IconType.Download },
                 { InstallAsAdmin,       IconType.UAC },
                 { InstallSkipHash,      IconType.Checksum },
-                { InstallInteractive,   IconType.Interactive },
                 { InstallationSettings, IconType.Options },
+                { DownloadInstallers,   IconType.Download },
+                { InstallInteractive,   IconType.Interactive },
                 { PackageDetails,       IconType.Info_Round },
                 { SharePackage,         IconType.Share },
                 { ExportSelection,      IconType.AddTo },
                 { HelpButton,           IconType.Help }
             };
 
-            foreach (AppBarButton toolButton in Icons.Keys)
-            {
-                toolButton.Icon = new LocalIcon(Icons[toolButton]);
-            }
+            ApplyTextAndIconsToToolbar(Labels, Icons);
 
             PackageDetails.Click += (_, _) => ShowDetailsForPackage(SelectedItem, TEL_InstallReferral.DIRECT_SEARCH);
             ExportSelection.Click += ExportSelection_Click;
             HelpButton.Click += (_, _) => MainApp.Instance.MainWindow.NavigationPage.ShowHelp();
-            InstallationSettings.Click += (_, _) => ShowInstallationOptionsForPackage(SelectedItem);
+            InstallationSettings.Click += (_, _) => _ = ShowInstallationOptionsForPackage(SelectedItem);
 
-            InstallSelected.Click += (_, _) => MainApp.Operations.Install(FilteredPackages.GetCheckedPackages(), TEL_InstallReferral.DIRECT_SEARCH);
+            MainToolbarButton.Click += (_, _) => MainApp.Operations.Install(FilteredPackages.GetCheckedPackages(), TEL_InstallReferral.DIRECT_SEARCH);
             InstallAsAdmin.Click += (_, _) => MainApp.Operations.Install(FilteredPackages.GetCheckedPackages(), TEL_InstallReferral.DIRECT_SEARCH, elevated: true);
             InstallSkipHash.Click += (_, _) => MainApp.Operations.Install(FilteredPackages.GetCheckedPackages(), TEL_InstallReferral.DIRECT_SEARCH, no_integrity: true);
             InstallInteractive.Click += (_, _) => MainApp.Operations.Install(FilteredPackages.GetCheckedPackages(), TEL_InstallReferral.DIRECT_SEARCH, interactive: true);
+            DownloadInstallers.Click += (_, _) => _ = MainApp.Operations.Download(FilteredPackages.GetCheckedPackages(), TEL_InstallReferral.DIRECT_SEARCH);
 
-            SharePackage.Click += (_, _) => MainApp.Instance.MainWindow.SharePackage(SelectedItem);
+            SharePackage.Click += (_, _) => DialogHelper.SharePackage(SelectedItem);
         }
 
         public override async Task LoadPackages()
@@ -263,12 +264,13 @@ namespace UniGetUI.Interface.SoftwarePages
             MenuDownloadInstaller.IsEnabled = package.Manager.Capabilities.CanDownloadInstaller;
         }
 
-        private async void ExportSelection_Click(object sender, RoutedEventArgs e)
+        private void ExportSelection_Click(object sender, RoutedEventArgs e) => _ = _exportSelection_Click();
+        private async Task _exportSelection_Click()
         {
             MainApp.Instance.MainWindow.NavigationPage.NavigateTo(PageType.Bundles);
-            DialogHelper.ShowLoadingDialog(CoreTools.Translate("Please wait..."));
+            int loadingId = DialogHelper.ShowLoadingDialog(CoreTools.Translate("Please wait..."));
             await PEInterface.PackageBundlesLoader.AddPackagesAsync(FilteredPackages.GetCheckedPackages());
-            DialogHelper.HideLoadingDialog();
+            DialogHelper.HideLoadingDialog(loadingId);
         }
 
         private void MenuDetails_Invoked(object sender, RoutedEventArgs e)
@@ -281,7 +283,7 @@ namespace UniGetUI.Interface.SoftwarePages
             if (SelectedItem is null)
                 return;
 
-            MainApp.Instance.MainWindow.SharePackage(SelectedItem);
+            DialogHelper.SharePackage(SelectedItem);
         }
 
         private void MenuInstall_Invoked(object sender, RoutedEventArgs e)
@@ -297,7 +299,7 @@ namespace UniGetUI.Interface.SoftwarePages
             => _ = MainApp.Operations.Install(SelectedItem, TEL_InstallReferral.DIRECT_SEARCH, elevated: true);
 
         private void MenuInstallSettings_Invoked(object sender, RoutedEventArgs e)
-            => ShowInstallationOptionsForPackage(SelectedItem);
+            => _ = ShowInstallationOptionsForPackage(SelectedItem);
 
     }
 }

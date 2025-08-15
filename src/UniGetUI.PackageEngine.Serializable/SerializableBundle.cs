@@ -8,7 +8,7 @@ namespace UniGetUI.PackageEngine.Classes.Serializable
     {
         public const double ExpectedVersion = 3;
         public const string IncompatMessage = "Incompatible packages cannot be installed from UniGetUI, " +
-                                              "either because they came from a local source (for example Local PC)" +
+                                              "either because they came from a local source (for example Local PC) " +
                                               "or because the package manager was unavailable. " +
                                               "Nevertheless, they have been listed here for logging purposes.";
 
@@ -56,6 +56,16 @@ namespace UniGetUI.PackageEngine.Classes.Serializable
                 if (inc_pkg is null) throw new InvalidDataException("JsonNode? inc_pkg was null, when it shouldn't");
                 incompatible_packages.Add(new SerializableIncompatiblePackage(inc_pkg));
             }
+        }
+
+        public override JsonObject AsJsonNode()
+        {
+            JsonObject obj = new();
+            obj.Add(nameof(export_version), export_version);
+            obj.Add(nameof(packages), new JsonArray(packages.Select(p => p.AsJsonNode()).ToArray()));
+            obj.Add(nameof(incompatible_packages_info), incompatible_packages_info);
+            obj.Add(nameof(incompatible_packages), new JsonArray(incompatible_packages.Select(p => p.AsJsonNode()).ToArray()));
+            return obj;
         }
 
         public SerializableBundle() : base()

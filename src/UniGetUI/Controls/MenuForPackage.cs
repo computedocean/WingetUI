@@ -1,6 +1,7 @@
 
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using UniGetUI.Core.Tools;
 using UniGetUI.Interface.Enums;
 
@@ -28,10 +29,8 @@ namespace UniGetUI.Interface.Widgets
             }
         }
 
-        public new string Text
-        {
-            set => base.Text = CoreTools.Translate(value);
-        }
+        public string UntranslatedText { set => base.Text = value; }
+        public new string Text { set => base.Text = CoreTools.Translate(value); }
 
         public BetterMenuItem()
         {
@@ -89,4 +88,15 @@ namespace UniGetUI.Interface.Widgets
             Header = text;
         }
     }
+
+    public partial class BetterFlyout: Flyout
+    {
+        public BetterFlyout() : base()
+        {
+            ShouldConstrainToRootBounds = false;
+            SystemBackdrop = new DesktopAcrylicBackdrop();
+            FlyoutPresenterStyle = (Style)Application.Current.Resources["BetterFlyoutPresenterStyle"];
+        }
+    }
+
 }

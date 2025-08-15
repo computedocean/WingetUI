@@ -23,7 +23,10 @@ using UniGetUI.Core.Classes;
 using UniGetUI.Interface.Enums;
 using UniGetUI.PackageEngine.PackageClasses;
 using UniGetUI.Pages.DialogPages;
-using TitleBar = WinUIEx.TitleBar;
+// using TitleBar = WinUIEx.TitleBar;
+using WindowExtensions = H.NotifyIcon.WindowExtensions;
+using System.Diagnostics;
+using Windows.UI.Text.Core;
 
 namespace UniGetUI.Interface
 {
@@ -40,82 +43,31 @@ namespace UniGetUI.Interface
 
         public MainView NavigationPage = null!;
         public bool BlockLoading;
-        public readonly TextBlock LoadingSthDalogText;
-        public readonly ContentDialog LoadingSthDalog;
+        private string _currentSubtitle = "";
+        private int _currentSubtitlePxLength;
 
         public int LoadingDialogCount;
-
-        public List<ContentDialog> DialogQueue = [];
 
         public static readonly ObservableQueue<string> ParametersToProcess = new();
 
         public MainWindow()
         {
             DialogHelper.Window = this;
-
             InitializeComponent();
+
             DismissableNotification.CloseButtonContent = CoreTools.Translate("Close");
 
+            SetMinimizable(false);
             ExtendsContentIntoTitleBar = true;
-            try
-            {
-                SetTitleBar(MainContentGrid);
-            } catch
-            {
-                Logger.Warn("Could not set the title bar to the content root");
-                MainApp.Instance.DisposeAndQuit(-1);
-            }
-
-            SizeChanged += (_, _) => { SaveGeometry(); };
+            AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
+            SetTitleBar(MainContentGrid);
             AppWindow.SetIcon(Path.Join(CoreData.UniGetUIExecutableDirectory, "Assets", "Images", "icon.ico"));
+
 
             LoadTrayMenu();
             ApplyTheme();
-
-            if (Settings.Get(Settings.K.ShowVersionNumberOnTitlebar))
-            {
-                AddToSubtitle(CoreTools.Translate("version {0}", CoreData.VersionName));
-            }
-
-            if (CoreTools.IsAdministrator())
-            {
-                AddToSubtitle(CoreTools.Translate("[RAN AS ADMINISTRATOR]"));
-            }
-
-            if (CoreData.IsPortable)
-            {
-                AddToSubtitle(CoreTools.Translate("Portable mode"));
-            }
-
-#if DEBUG
-            AddToSubtitle(CoreTools.Translate("DEBUG BUILD"));
-#endif
-
             ApplyProxyVariableToProcess();
-
-            var panel = new StackPanel
-            {
-                Width = 400,
-                Orientation = Orientation.Vertical,
-                VerticalAlignment = VerticalAlignment.Stretch,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                Spacing = 20
-            };
-
-            LoadingSthDalogText = new()
-            {
-                HorizontalAlignment = HorizontalAlignment.Stretch, TextWrapping = TextWrapping.Wrap
-            };
-
-            LoadingSthDalog = new ContentDialog
-            {
-                Style = Application.Current.Resources["DefaultContentDialogStyle"] as Style,
-                Title = CoreTools.Translate("Please wait"),
-                Content = panel
-            };
-
-            panel.Children.Add(LoadingSthDalogText);
-            panel.Children.Add(new ProgressBar { IsIndeterminate = true, HorizontalAlignment = HorizontalAlignment.Stretch});
+            _applySubtitleToWindow();
 
             foreach (var arg in Environment.GetCommandLineArgs())
             {
@@ -124,9 +76,7 @@ namespace UniGetUI.Interface
 
             _ = AutoUpdater.UpdateCheckLoop(this, UpdatesBanner);
 
-
-            TransferOldSettingsFormats();
-
+            SizeChanged += (_, _) => _ = SaveGeometry();
             Activated += (_, e) =>
             {
                 if (e.WindowActivationState is WindowActivationState.CodeActivated
@@ -165,6 +115,36 @@ namespace UniGetUI.Interface
             {
                 Activate();
             }
+        }
+
+        private void SetMinimizable(bool enabled)
+        {
+            if (AppWindow.Presenter is OverlappedPresenter presenter)
+            {
+                presenter.IsMinimizable = enabled;
+            }
+        }
+
+        private void _applySubtitleToWindow()
+        {
+            if (Settings.Get(Settings.K.ShowVersionNumberOnTitlebar))
+            {
+                AddToSubtitle(CoreTools.Translate("version {0}", CoreData.VersionName));
+            }
+
+            if (CoreTools.IsAdministrator())
+            {
+                AddToSubtitle(CoreTools.Translate("[RAN AS ADMINISTRATOR]"));
+            }
+
+            if (CoreData.IsPortable)
+            {
+                AddToSubtitle(CoreTools.Translate("Portable mode"));
+            }
+
+#if DEBUG
+            AddToSubtitle(CoreTools.Translate("DEBUG BUILD"));
+#endif
         }
 
         public static void ApplyProxyVariableToProcess()
@@ -209,55 +189,20 @@ namespace UniGetUI.Interface
 
         private void AddToSubtitle(string line)
         {
-            if (TitleBar.Subtitle.Length > 0)
-                TitleBar.Subtitle += " - ";
-            TitleBar.Subtitle += line;
-            Title = "UniGetUI - " + TitleBar.Subtitle;
+            if (_currentSubtitle.Length > 0)
+                _currentSubtitle += " - ";
+            _currentSubtitle += line;
+            _currentSubtitlePxLength = _currentSubtitle.Length * 4;
+            Title = "UniGetUI - " + _currentSubtitle;
+            TitleBar.Subtitle = subtitleCollapsed is true? "": _currentSubtitle;
         }
 
         private void ClearSubtitle()
         {
             TitleBar.Subtitle = "";
+            _currentSubtitle = "";
+            _currentSubtitlePxLength = 0;
             Title = "UniGetUI";
-        }
-
-        private static void TransferOldSettingsFormats()
-        {
-            /*if (!Settings.Get(Settings.K.TransferredOldSettings))
-            {
-                foreach (IPackageManager Manager in PEInterface.Managers)
-                {
-                    string SettingName = "Disable" + Manager.Name;
-                    if (Settings.Get(SettingName))
-                    {
-                        Settings.SetDictionaryItem(Settings.K.DisabledManagers, Manager.Name, true);
-                        Settings.Set(SettingName, false);
-                    }
-                }
-
-                // Dependency checks don't need to be transferred, because the worst case scenario is the user has to click the "don't show again" again
-
-                foreach (string Page in new[]{ "Discover", "Installed", "Bundles", "Updates"})
-                {
-                    if (Settings.Get($"HideToggleFilters{Page}Page"))
-                    {
-                        Settings.SetDictionaryItem(Settings.K.HideToggleFilters, Page, true);
-                        Settings.Set($"HideToggleFilters{Page}Page", false);
-                    }
-
-                    if (Settings.Get($"DisableInstantSearch{Page}Tab"))
-                    {
-                        Settings.SetDictionaryItem(Settings.K.DisableInstantSearch, Page, true);
-                        Settings.Set($"DisableInstantSearch{Page}Tab", false);
-                    }
-
-                    if (!int.TryParse(Settings.GetValue($"SidepanelWidth{Page}Page"), out int sidepanelWidth)) sidepanelWidth = 250;
-                    Settings.SetDictionaryItem(Settings.K.SidepanelWidths, Page, sidepanelWidth);
-                    Settings.Set($"SidepanelWidth{Page}Page", false);
-                }
-
-                Settings.Set(Settings.K.TransferredOldSettings, true);
-            }*/
         }
 
         public void HandleNotificationActivation(AppNotificationActivatedEventArgs args)
@@ -267,7 +212,7 @@ namespace UniGetUI.Interface
 
             if (action == NotificationArguments.UpdateAllPackages)
             {
-                MainApp.Operations.UpdateAll();
+                _ = MainApp.Operations.UpdateAll();
             }
             else if (action == NotificationArguments.ShowOnUpdatesTab)
             {
@@ -294,52 +239,54 @@ namespace UniGetUI.Interface
         /// <summary>
         /// Handle the window closing event, and divert it when the window must be hidden.
         /// </summary>
-        public async void HandleClosingEvent(AppWindow sender, AppWindowClosingEventArgs args)
+        public void HandleClosingEvent(AppWindow sender, AppWindowClosingEventArgs args)
         {
-            AutoUpdater.ReleaseLockForAutoupdate_Window = true;
-            SaveGeometry(Force: true);
-            if (!Settings.Get(Settings.K.DisableSystemTray) || AutoUpdater.UpdateReadyToBeInstalled)
+            try
             {
-                args.Cancel = true;
-                DWMThreadHelper.ChangeState_DWM(true);
-                DWMThreadHelper.ChangeState_XAML(true);
-
-                try
-                {
-                    EfficiencyModeUtilities.SetEfficiencyMode(true);
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error("Could not disable efficiency mode");
-                    Logger.Error(ex);
-                }
-
-                MainContentFrame.Content = null;
-                AppWindow.Hide();
-            }
-            else
-            {
-                if (MainApp.Operations.AreThereRunningOperations())
+                AutoUpdater.ReleaseLockForAutoupdate_Window = true;
+                _ = SaveGeometry(Force: true);
+                if (!Settings.Get(Settings.K.DisableSystemTray) || AutoUpdater.UpdateReadyToBeInstalled)
                 {
                     args.Cancel = true;
-                    ContentDialog d = new()
-                    {
-                        XamlRoot = NavigationPage.XamlRoot,
-                        Title = CoreTools.Translate("Operation in progress"),
-                        Content =
-                            CoreTools.Translate(
-                                "There are ongoing operations. Quitting WingetUI may cause them to fail. Do you want to continue?"),
-                        PrimaryButtonText = CoreTools.Translate("Quit"),
-                        SecondaryButtonText = CoreTools.Translate("Cancel"),
-                        DefaultButton = ContentDialogButton.Secondary
-                    };
+                    DWMThreadHelper.ChangeState_DWM(true);
+                    DWMThreadHelper.ChangeState_XAML(true);
 
-                    ContentDialogResult result = await ShowDialogAsync(d);
-                    if (result == ContentDialogResult.Primary)
+                    try
                     {
-                        MainApp.Instance.DisposeAndQuit();
+                        EfficiencyModeUtilities.SetEfficiencyMode(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("Could not disable efficiency mode");
+                        Logger.Error(ex);
+                    }
+
+                    MainContentFrame.Content = null;
+                    AppWindow.Hide();
+                }
+                else
+                {
+                    if (MainApp.Operations.AreThereRunningOperations())
+                    {
+                        args.Cancel = true;
+                        _ = _askUserToQuit();
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex);
+            }
+        }
+
+        /// <summary>
+        /// Ask the user if it wants to quit, and quit should this be the case
+        /// </summary>
+        private static async Task _askUserToQuit()
+        {
+            if (await DialogHelper.AskContinueClosing_RunningOps())
+            {
+                MainApp.Instance.DisposeAndQuit();
             }
         }
 
@@ -439,7 +386,7 @@ namespace UniGetUI.Interface
                     {
                         // Handle potential JSON files
                         Logger.ImportantInfo("Begin attempt to open the package bundle " + param);
-                        NavigationPage.LoadBundleFile(param);
+                        NavigationPage.LoadBundleFromFile(param);
                     }
                     else if (param.EndsWith("UniGetUI.exe") || param.EndsWith("UniGetUI.dll"))
                     {
@@ -493,7 +440,7 @@ namespace UniGetUI.Interface
 
         public void HideWindow()
         {
-            this.Hide();
+            WindowExtensions.Hide(this);
         }
 
         private void LoadTrayMenu()
@@ -684,7 +631,7 @@ namespace UniGetUI.Interface
             TitleBar.Visibility = Visibility.Visible;
             SetTitleBar(TitleBar);
 
-            NavigationPage = new MainView();
+            NavigationPage = new MainView(GlobalSearchBox);
             NavigationPage.CanGoBackChanged += (_, can) => TitleBar.IsBackButtonVisible = can;
 
             object? control = MainContentFrame.Content as Grid;
@@ -704,6 +651,8 @@ namespace UniGetUI.Interface
                 if(e.WindowActivationState is WindowActivationState.CodeActivated or WindowActivationState.PointerActivated)
                     MainContentFrame.Content = NavigationPage;
             };
+
+            SetMinimizable(true);
         }
 
         public void ApplyTheme()
@@ -750,89 +699,9 @@ namespace UniGetUI.Interface
             }
         }
 
-        public void SharePackage(IPackage? package)
-        {
-            if (package is null)
-                return;
-
-            if (package.Source.IsVirtualManager || package is InvalidImportedPackage)
-            {
-                DialogHelper.ShowDismissableBalloon(
-                    CoreTools.Translate("Something went wrong"),
-                    CoreTools.Translate("\"{0}\" is a local package and can't be shared", package.Name)
-                );
-                return;
-            }
-
-            IntPtr hWnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-
-            NativeHelpers.IDataTransferManagerInterop interop =
-                DataTransferManager.As<NativeHelpers.IDataTransferManagerInterop>();
-
-            IntPtr result = interop.GetForWindow(hWnd, NativeHelpers._dtm_iid);
-            DataTransferManager dataTransferManager = WinRT.MarshalInterface
-                <DataTransferManager>.FromAbi(result);
-
-            dataTransferManager.DataRequested += (_, args) =>
-            {
-                DataRequest dataPackage = args.Request;
-                Uri ShareUrl = new("https://marticliment.com/unigetui/share?"
-                                   + "name=" + HttpUtility.UrlEncode(package.Name)
-                                   + "&id=" + HttpUtility.UrlEncode(package.Id)
-                                   + "&sourceName=" + HttpUtility.UrlEncode(package.Source.Name)
-                                   + "&managerName=" + HttpUtility.UrlEncode(package.Manager.DisplayName));
-
-                dataPackage.Data.SetWebLink(ShareUrl);
-                dataPackage.Data.Properties.Title = "Sharing " + package.Name;
-                dataPackage.Data.Properties.ApplicationName = "WingetUI";
-                dataPackage.Data.Properties.ContentSourceWebLink = ShareUrl;
-                dataPackage.Data.Properties.Description = "Share " + package.Name + " with your friends";
-                dataPackage.Data.Properties.PackageFamilyName = "WingetUI";
-            };
-
-            interop.ShowShareUIForWindow(hWnd);
-
-        }
-
         public IntPtr GetWindowHandle()
         {
             return WinRT.Interop.WindowNative.GetWindowHandle(this);
-        }
-
-        public async Task<ContentDialogResult> ShowDialogAsync(ContentDialog dialog, bool HighPriority = false)
-        {
-            try
-            {
-                if (HighPriority && DialogQueue.Count >= 1)
-                {
-                    DialogQueue.Insert(1, dialog);
-                }
-                else
-                {
-                    DialogQueue.Add(dialog);
-                }
-
-                while (DialogQueue[0] != dialog)
-                {
-                    await Task.Delay(100);
-                }
-
-                dialog.RequestedTheme = MainContentGrid.RequestedTheme;
-                ContentDialogResult result = await dialog.ShowAsync();
-                DialogQueue.Remove(dialog);
-                return result;
-            }
-            catch (Exception e)
-            {
-                Logger.Error("An error occurred while showing a ContentDialog via ShowDialogAsync()");
-                Logger.Error(e);
-                if (DialogQueue.Contains(dialog))
-                {
-                    DialogQueue.Remove(dialog);
-                }
-
-                return ContentDialogResult.None;
-            }
         }
 
         public async Task HandleMissingDependencies(IReadOnlyList<ManagerDependency> dependencies)
@@ -854,38 +723,45 @@ namespace UniGetUI.Interface
             LoadingIndicator.Visibility = Visibility.Visible;
         }
 
-        private async void SaveGeometry(bool Force = false)
+        private async Task SaveGeometry(bool Force = false)
         {
-            if (!Force)
+            try
             {
-                int old_width = AppWindow.Size.Width;
-                int old_height = AppWindow.Size.Height;
-                await Task.Delay(100);
-
-                if (old_height != AppWindow.Size.Height || old_width != AppWindow.Size.Width)
+                if (!Force)
                 {
-                    return;
-                }
-            }
+                    int old_width = AppWindow.Size.Width;
+                    int old_height = AppWindow.Size.Height;
+                    await Task.Delay(100);
 
-            int windowState = 0;
-            if (AppWindow.Presenter is OverlappedPresenter presenter)
-            {
-                if (presenter.State == OverlappedPresenterState.Maximized)
+                    if (old_height != AppWindow.Size.Height || old_width != AppWindow.Size.Width)
+                    {
+                        return;
+                    }
+                }
+
+                int windowState = 0;
+                if (AppWindow.Presenter is OverlappedPresenter presenter)
                 {
-                    windowState = 1;
+                    if (presenter.State == OverlappedPresenterState.Maximized)
+                    {
+                        windowState = 1;
+                    }
                 }
+                else
+                {
+                    Logger.Warn("MainWindow.AppWindow.Presenter is not OverlappedPresenter presenter!");
+                }
+
+                string geometry =
+                    $"{AppWindow.Position.X},{AppWindow.Position.Y},{AppWindow.Size.Width},{AppWindow.Size.Height},{windowState}";
+
+                Logger.Debug($"Saving window geometry {geometry}");
+                Settings.SetValue(Settings.K.WindowGeometry, geometry);
             }
-            else
+            catch (Exception ex)
             {
-                Logger.Warn("MainWindow.AppWindow.Presenter is not OverlappedPresenter presenter!");
+                Logger.Error(ex);
             }
-
-            string geometry =
-                $"{AppWindow.Position.X},{AppWindow.Position.Y},{AppWindow.Size.Width},{AppWindow.Size.Height},{windowState}";
-
-            Logger.Debug($"Saving window geometry {geometry}");
-            Settings.SetValue(Settings.K.WindowGeometry, geometry);
         }
 
         private void RestoreGeometry()
@@ -1011,6 +887,45 @@ namespace UniGetUI.Interface
         {
             NavigationPage?.NavigateBack();
         }
+
+
+        private bool? subtitleCollapsed;
+        private bool? titleCollapsed;
+        private const int DYNAMIC_SEARCHBOX_LIMIT = 800;
+        private const int HIDE_TITLE_LIMIT = 870;
+        private const int MIN_SEARCHBOX_W = 50;
+        private const int MAX_SEARCHBOX_W = 400;
+        private void TitleBar_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if(TitleBar.ActualWidth <= DYNAMIC_SEARCHBOX_LIMIT)
+            {
+                GlobalSearchBox.Width = Math.Max(MIN_SEARCHBOX_W, MAX_SEARCHBOX_W - (DYNAMIC_SEARCHBOX_LIMIT - TitleBar.ActualWidth));
+            }
+
+            if (titleCollapsed is not true && TitleBar.ActualWidth < HIDE_TITLE_LIMIT)
+            {
+                TitleBar.Title = "";
+                titleCollapsed = true;
+            }
+            else if (titleCollapsed is not false && TitleBar.ActualWidth > HIDE_TITLE_LIMIT)
+            {
+                TitleBar.Title = "UniGetUI";
+                GlobalSearchBox.Width = MAX_SEARCHBOX_W;
+                titleCollapsed = false;
+            }
+
+            if (subtitleCollapsed is not true && TitleBar.ActualWidth < (HIDE_TITLE_LIMIT + _currentSubtitlePxLength))
+            {
+                TitleBar.Subtitle = "";
+                subtitleCollapsed = true;
+            }
+            else if (subtitleCollapsed is not false && TitleBar.ActualWidth > (HIDE_TITLE_LIMIT + _currentSubtitlePxLength))
+            {
+                TitleBar.Subtitle = _currentSubtitle;
+                GlobalSearchBox.Width = MAX_SEARCHBOX_W;
+                subtitleCollapsed = false;
+            }
+        }
     }
 
     public static class NativeHelpers
@@ -1018,18 +933,6 @@ namespace UniGetUI.Interface
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool SetForegroundWindow(IntPtr hWnd);
-
-        [ComImport]
-        [Guid("3A3DCD6C-3EAB-43DC-BCDE-45671CE800C8")]
-        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-        public interface IDataTransferManagerInterop
-        {
-            IntPtr GetForWindow([In] IntPtr appWindow, [In] ref Guid riid);
-            void ShowShareUIForWindow(IntPtr appWindow);
-        }
-
-        public static readonly Guid _dtm_iid = new(0xa5caee9b, 0x8708, 0x49d1, 0x8d, 0x36, 0x67, 0xd2, 0x5a, 0x8d,
-            0xa0, 0x0c);
 
         public const int MONITORINFOF_PRIMARY = 0x00000001;
 
@@ -1061,5 +964,4 @@ namespace UniGetUI.Interface
         [DllImport("user32.dll")]
         public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
     }
-
 }

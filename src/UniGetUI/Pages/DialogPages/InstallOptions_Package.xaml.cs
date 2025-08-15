@@ -90,13 +90,14 @@ namespace UniGetUI.Interface.Dialogs
             PlaceholderText.Text = CoreTools.Translate("{0} Install options are currently locked because {0} follows the default install options.", package.Name);
 
             KillProcessesLabel.Text = CoreTools.Translate("Select the processes that should be closed before this package is installed, updated or uninstalled.");
-            KillProcessesBox.PlaceholderText = CoreTools.Translate("Write here the process names here, separed by commas (,)");
+            KillProcessesBox.PlaceholderText = CoreTools.Translate("Write here the process names here, separated by commas (,)");
 
             packageInstallLocation = Package.Manager.DetailsHelper.GetInstallLocation(package) ?? CoreTools.Translate("Unset or unknown");
 
             AdminCheckBox.IsChecked = Options.RunAsAdministrator;
             InteractiveCheckBox.IsChecked = Options.InteractiveInstallation;
             HashCheckbox.IsChecked = Options.SkipHashCheck;
+            UninstallPreviousOnUpdate.IsChecked = Options.UninstallPreviousVersionsOnUpdate;
 
             ArchitectureComboBox.Items.Add(CoreTools.Translate("Default"));
             ArchitectureComboBox.SelectedIndex = 0;
@@ -187,7 +188,7 @@ namespace UniGetUI.Interface.Dialogs
 
             _uiLoaded = true;
             EnableDisableControls(operation);
-            LoadIgnoredUpdates();
+            _ = LoadIgnoredUpdates();
             _ = _loadProcesses();
         }
 
@@ -225,6 +226,9 @@ namespace UniGetUI.Interface.Dialogs
                 HashCheckbox.IsEnabled =
                     operation is not OperationType.Uninstall
                     && Package.Manager.Capabilities.CanSkipIntegrityChecks;
+
+                UninstallPreviousOnUpdate.IsEnabled = Package.Manager.Capabilities.CanUninstallPreviousVersionsAfterUpdate;
+                UninstallPreviousOnUpdate.Visibility = Package.Manager.Capabilities.CanUninstallPreviousVersionsAfterUpdate? Visibility.Visible: Visibility.Collapsed;
 
                 ArchitectureComboBox.IsEnabled =
                     operation is not OperationType.Uninstall
@@ -268,10 +272,10 @@ namespace UniGetUI.Interface.Dialogs
             GoToPrePostSettings.Visibility = IsPrePostOpEnabled ? Visibility.Collapsed : Visibility.Visible;
             PrePostDisabled.Visibility = IsPrePostOpEnabled ? Visibility.Collapsed : Visibility.Visible;
 
-            GenerateCommand();
+            _ = GenerateCommand();
         }
 
-        private async void LoadIgnoredUpdates()
+        private async Task LoadIgnoredUpdates()
         {
             IgnoreUpdatesCheckbox.IsChecked = await Package.GetIgnoredUpdatesVersionAsync() == "*";
         }
@@ -291,63 +295,64 @@ namespace UniGetUI.Interface.Dialogs
                 }
             }
 
-            VersionComboBox.IsEnabled =
-                Operation is OperationType.Install or OperationType.None
-                && (Package.Manager.Capabilities.SupportsCustomVersions || Package.Manager.Capabilities.SupportsPreRelease);
+            VersionComboBox.IsEnabled = Operation is OperationType.Install or OperationType.None
+                                        && (Package.Manager.Capabilities.SupportsCustomVersions || Package.Manager.Capabilities.SupportsPreRelease);
             VersionProgress.Visibility = Visibility.Collapsed;
         }
 
         public async Task<InstallOptions> GetUpdatedOptions(bool updateDetachedOptions = true)
         {
-            Options.RunAsAdministrator = AdminCheckBox?.IsChecked ?? false;
-            Options.InteractiveInstallation = InteractiveCheckBox?.IsChecked ?? false;
-            Options.SkipHashCheck = HashCheckbox?.IsChecked ?? false;
-            Options.OverridesNextLevelOpts = !FollowGlobalOptionsSwitch.IsOn;
+            InstallOptions options = new();
+            options.RunAsAdministrator = AdminCheckBox?.IsChecked ?? false;
+            options.InteractiveInstallation = InteractiveCheckBox?.IsChecked ?? false;
+            options.SkipHashCheck = HashCheckbox?.IsChecked ?? false;
+            options.UninstallPreviousVersionsOnUpdate = UninstallPreviousOnUpdate?.IsChecked ?? false;
+            options.OverridesNextLevelOpts = !FollowGlobalOptionsSwitch.IsOn;
 
-            Options.Architecture = "";
+            options.Architecture = "";
             var userSelection = ArchitectureComboBox.SelectedValue?.ToString() ?? "";
             if (Architecture.ValidValues.Contains(userSelection))
             {
-                Options.Architecture = userSelection;
+                options.Architecture = userSelection;
             }
 
-            Options.InstallationScope = "";
+            options.InstallationScope = "";
             userSelection = ScopeCombo.SelectedValue?.ToString() ?? "";
             if (CommonTranslations.InvertedScopeNames.TryGetValue(userSelection, out string? value))
             {
-                Options.InstallationScope = value;
+                options.InstallationScope = value;
             }
 
-            if (CustomInstallLocation.Text == packageInstallLocation) Options.CustomInstallLocation = "";
-            else Options.CustomInstallLocation = CustomInstallLocation.Text;
+            if (CustomInstallLocation.Text == packageInstallLocation) options.CustomInstallLocation = "";
+            else options.CustomInstallLocation = CustomInstallLocation.Text;
 
-            Options.CustomParameters_Install = CustomParameters1.Text.Split(' ').ToList();
-            Options.CustomParameters_Update = CustomParameters2.Text.Split(' ').ToList();
-            Options.CustomParameters_Uninstall = CustomParameters3.Text.Split(' ').ToList();
-            Options.PreRelease = VersionComboBox.SelectedValue.ToString() == CoreTools.Translate("PreRelease");
+            options.CustomParameters_Install = CustomParameters1.Text.Split(' ').ToList();
+            options.CustomParameters_Update = CustomParameters2.Text.Split(' ').ToList();
+            options.CustomParameters_Uninstall = CustomParameters3.Text.Split(' ').ToList();
+            options.PreRelease = VersionComboBox.SelectedValue.ToString() == CoreTools.Translate("PreRelease");
 
-            Options.PreInstallCommand = PreInstallCommandBox.Text;
-            Options.PostInstallCommand = PostInstallCommandBox.Text;
-            Options.PreUpdateCommand = PreUpdateCommandBox.Text;
-            Options.PostUpdateCommand = PostUpdateCommandBox.Text;
-            Options.PreUninstallCommand = PreUninstallCommandBox.Text;
-            Options.PostUninstallCommand = PostUninstallCommandBox.Text;
-            Options.AbortOnPreInstallFail = AbortInsFailedCheck.IsChecked ?? true;
-            Options.AbortOnPreUpdateFail = AbortUpdFailedCheck.IsChecked ?? true;
-            Options.AbortOnPreUninstallFail = AbortUniFailedCheck.IsChecked ?? true;
+            options.PreInstallCommand = PreInstallCommandBox.Text;
+            options.PostInstallCommand = PostInstallCommandBox.Text;
+            options.PreUpdateCommand = PreUpdateCommandBox.Text;
+            options.PostUpdateCommand = PostUpdateCommandBox.Text;
+            options.PreUninstallCommand = PreUninstallCommandBox.Text;
+            options.PostUninstallCommand = PostUninstallCommandBox.Text;
+            options.AbortOnPreInstallFail = AbortInsFailedCheck.IsChecked ?? true;
+            options.AbortOnPreUpdateFail = AbortUpdFailedCheck.IsChecked ?? true;
+            options.AbortOnPreUninstallFail = AbortUniFailedCheck.IsChecked ?? true;
 
-            Options.KillBeforeOperation.Clear();
-            foreach(var p in ProcessesToKill) Options.KillBeforeOperation.Add(p.Name);
+            options.KillBeforeOperation.Clear();
+            foreach(var p in ProcessesToKill) options.KillBeforeOperation.Add(p.Name);
 
             if (VersionComboBox.SelectedValue.ToString() != CoreTools.Translate("PreRelease") && VersionComboBox.SelectedValue.ToString() != CoreTools.Translate("Latest"))
             {
-                Options.Version = VersionComboBox.SelectedValue.ToString() ?? "";
+                options.Version = VersionComboBox.SelectedValue.ToString() ?? "";
             }
             else
             {
-                Options.Version = "";
+                options.Version = "";
             }
-            Options.SkipMinorUpdates = SkipMinorUpdatesCheckbox?.IsChecked ?? false;
+            options.SkipMinorUpdates = SkipMinorUpdatesCheckbox?.IsChecked ?? false;
 
             if (updateDetachedOptions)
             {
@@ -365,7 +370,7 @@ namespace UniGetUI.Interface.Dialogs
                     }
                 }
             }
-            return Options;
+            return options;
         }
 
         private void SelectDir_Click(object sender, RoutedEventArgs e)
@@ -376,13 +381,13 @@ namespace UniGetUI.Interface.Dialogs
             {
                 CustomInstallLocation.Text = folder;
             }
-            GenerateCommand();
+            _ = GenerateCommand();
         }
 
         private void ResetDir_Click(object sender, RoutedEventArgs e)
         {
             CustomInstallLocation.Text = packageInstallLocation;
-            GenerateCommand();
+            _ = GenerateCommand();
         }
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)
@@ -390,15 +395,15 @@ namespace UniGetUI.Interface.Dialogs
             Close?.Invoke(this, EventArgs.Empty);
         }
 
-        private void CustomParameters_TextChanged(object sender, TextChangedEventArgs e) => GenerateCommand();
-        private void ScopeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) => GenerateCommand();
-        private void VersionComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e) => GenerateCommand();
-        private void AdminCheckBox_Click(object sender, RoutedEventArgs e) => GenerateCommand();
-        private void InteractiveCheckBox_Click(object sender, RoutedEventArgs e) => GenerateCommand();
-        private void HashCheckbox_Click(object sender, RoutedEventArgs e) => GenerateCommand();
-        private void ArchitectureComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e) => GenerateCommand();
+        private void CustomParameters_TextChanged(object sender, TextChangedEventArgs e) => _ = GenerateCommand();
+        private void ScopeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) => _ = GenerateCommand();
+        private void VersionComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e) => _ = GenerateCommand();
+        private void AdminCheckBox_Click(object sender, RoutedEventArgs e) => _ = GenerateCommand();
+        private void InteractiveCheckBox_Click(object sender, RoutedEventArgs e) => _ = GenerateCommand();
+        private void HashCheckbox_Click(object sender, RoutedEventArgs e) => _ = GenerateCommand();
+        private void ArchitectureComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e) => _ = GenerateCommand();
 
-        private async void GenerateCommand()
+        private async Task GenerateCommand()
         {
             if (!_uiLoaded) return;
             InstallOptions options = await GetUpdatedOptions(updateDetachedOptions: false);
@@ -447,7 +452,8 @@ namespace UniGetUI.Interface.Dialogs
             }
         }
 
-        private async void KillProcessesBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+        private void KillProcessesBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args) => _ = _killProcessesBox_TextChanged();
+        private async Task _killProcessesBox_TextChanged()
         {
             var text = KillProcessesBox.Text;
             await Task.Delay(100);
@@ -470,6 +476,17 @@ namespace UniGetUI.Interface.Dialogs
         private void SettingsTabBar_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             CommandLineViewBox.Visibility = SettingsTabBar.SelectedIndex < 3 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        public void HideCloseButton()
+        {
+            CloseButton.Visibility = Visibility.Collapsed;
+            CloseButton.IsEnabled = false;
+        }
+
+        internal void HideHeaderBar()
+        {
+            HeaderBar.Visibility = Visibility.Collapsed;
         }
     }
 

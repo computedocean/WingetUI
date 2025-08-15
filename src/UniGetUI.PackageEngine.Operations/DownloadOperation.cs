@@ -7,7 +7,7 @@ namespace UniGetUI.PackageEngine.Operations;
 public class DownloadOperation : AbstractOperation
 {
     private readonly IPackage _package;
-    private readonly string downloadLocation;
+    private string downloadLocation;
     public string DownloadLocation
     {
         get => downloadLocation;
@@ -59,8 +59,19 @@ public class DownloadOperation : AbstractOperation
                 return OperationVeredict.Failure;
             }
 
+            if (Directory.Exists(downloadLocation))
+            {
+                string? fileName = await _package.GetInstallerFileName();
+                if (fileName is null)
+                {
+                    Line("An error occurred while retrieving file name, default will be used!", LineType.Error);
+                    fileName = CoreTools.MakeValidFileName(_package.Name);
+                }
+                downloadLocation = Path.Join(downloadLocation, fileName);
+            }
+
             Line($"Download URL found at {downloadUrl} ", LineType.Information);
-            using var httpClient = new HttpClient(CoreTools.HttpClientConfig);
+            using var httpClient = new HttpClient(CoreTools.GenericHttpClientParameters);
             using var response = await httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
 
             response.EnsureSuccessStatusCode();

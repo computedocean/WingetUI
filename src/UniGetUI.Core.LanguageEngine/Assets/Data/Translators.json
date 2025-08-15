@@ -39,6 +39,12 @@
       "link": "https://github.com/mo9a7i"
     }
   ],
+  "be": [
+    {
+      "name": "bthos",
+      "link": "https://github.com/bthos"
+    }
+  ],
   "bg": [
     {
       "name": "Vasil Kolev",
@@ -316,6 +322,10 @@
   ],
   "hr": [
     {
+      "name": "AndrejFeher",
+      "link": "https://github.com/AndrejFeher"
+    },
+    {
       "name": "Stjepan Treger",
       "link": ""
     }
@@ -327,6 +337,10 @@
     }
   ],
   "id": [
+    {
+      "name": "agrinfauzi",
+      "link": "https://github.com/agrinfauzi"
+    },
     {
       "name": "arthackrc",
       "link": "https://github.com/arthackrc"
@@ -370,6 +384,10 @@
     {
       "name": "anmoti",
       "link": "https://github.com/anmoti"
+    },
+    {
+      "name": "BHCrusher1",
+      "link": "https://github.com/BHCrusher1"
     },
     {
       "name": "nob-swik",
@@ -475,6 +493,10 @@
       "link": "https://github.com/CateyeNL"
     },
     {
+      "name": "mia-riezebos",
+      "link": "https://github.com/mia-riezebos"
+    },
+    {
       "name": "Stephan-P",
       "link": "https://github.com/Stephan-P"
     }
@@ -489,6 +511,10 @@
     {
       "name": "GrzegorzKi",
       "link": "https://github.com/GrzegorzKi"
+    },
+    {
+      "name": "H4qu3r",
+      "link": "https://github.com/H4qu3r"
     },
     {
       "name": "ikarmus2001",
@@ -543,6 +569,10 @@
   ],
   "pt_PT": [
     {
+      "name": "100Nome",
+      "link": "https://github.com/100Nome"
+    },
+    {
       "name": "PoetaGA",
       "link": "https://github.com/PoetaGA"
     },
@@ -592,10 +622,6 @@
     },
     {
       "name": "Gleb Saygin",
-      "link": ""
-    },
-    {
-      "name": "Ilia Petrov",
       "link": ""
     },
     {
@@ -701,8 +727,16 @@
       "link": "https://github.com/dulapahv"
     },
     {
+      "name": "hanchain",
+      "link": "https://github.com/hanchain"
+    },
+    {
       "name": "rikoprushka",
       "link": "https://github.com/rikoprushka"
+    },
+    {
+      "name": "vestearth",
+      "link": "https://github.com/vestearth"
     }
   ],
   "tr": [

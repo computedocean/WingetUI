@@ -34,6 +34,7 @@ rmdir /Q /S unigetui_bin
 mkdir unigetui_bin
 robocopy src\UniGetUI\bin\x64\Release\net8.0-windows10.0.26100.0\win-x64\publish unigetui_bin *.* /MOVE /E
 
+
 set /p signfiles="Do you want to sign the files? [Y/n]: "
 if /i "%signfiles%" neq "n" (
     %signcommand% "unigetui_bin/UniGetUI.exe" "unigetui_bin/UniGetUI.dll" "unigetui_bin/UniGetUI.*.dll" "unigetui_bin/ExternalLibraries.*.dll"
@@ -48,17 +49,35 @@ pushd unigetui_bin
 copy UniGetUI.exe WingetUI.exe
 popd
 
+
+rem Generate integrity
+python3 scripts\generate_integrity_tree.py %cd%\unigetui_bin
+
+rmdir /q /s output
+mkdir output
+cd unigetui_bin
+7z a -tzip "..\output\UniGetUI.x64.zip" "*"
+cd ..
+if %errorlevel% neq 0 (
+    echo "Compression of unigetui_bin into output/UniGetUI.x64.zip has failed!"
+    pause
+)
+
 set INSTALLATOR="%SYSTEMDRIVE%\Program Files (x86)\Inno Setup 6\ISCC.exe"
 if exist %INSTALLATOR% (
     %INSTALLATOR% "UniGetUI.iss"
-    rem %signcommand% "UniGetUI Installer.exe"
-    del "WingetUI Installer.exe"
-    copy "UniGetUI Installer.exe" "WingetUI Installer.exe" 
-    pause
-    echo Hash: 
-    pwsh.exe -Command "(Get-FileHash '.\UniGetUI Installer.exe').Hash"
+    move "UniGetUI Installer.exe" "UniGetUI.Installer.exe"
+    del "WingetUI.Installer.exe"
+    copy "UniGetUI.Installer.exe" "WingetUI.Installer.exe" 
+    move "UniGetUI.Installer.exe" output\
+    move "WingetUI.Installer.exe" output\
+    rmdir /q /s unigetui_bin
+    
+    pwsh.exe -Command echo """UniGetUI.Installer.exe SHA256: ``$((Get-FileHash 'output\UniGetUI.Installer.exe').Hash)``"""
+    pwsh.exe -Command echo """UniGetUI.x64.zip SHA256: ``$((Get-FileHash 'output\UniGetUI.x64.zip').Hash)``"""
     echo .
-    "UniGetUI Installer.exe"
+    pause
+    "output\UniGetUI.Installer.exe"
 ) else (
     echo "Make installer was skipped, because the installer is missing."
 )
