@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using UniGetUI.Core.Logging;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.PackageEngine.Managers.CargoManager;
@@ -10,6 +11,7 @@ using UniGetUI.PackageEngine.Managers.PowerShellManager;
 using UniGetUI.PackageEngine.Managers.ScoopManager;
 using UniGetUI.PackageEngine.Managers.WingetManager;
 using UniGetUI.PackageEngine.Managers.VcpkgManager;
+using UniGetUI.PackageEngine.PackageClasses;
 using UniGetUI.PackageEngine.PackageLoader;
 
 namespace UniGetUI.PackageEngine
@@ -34,12 +36,15 @@ namespace UniGetUI.PackageEngine
 
         public static readonly IPackageManager[] Managers = [WinGet, Scoop, Chocolatey, Npm, Pip, Cargo, Vcpkg, DotNet, PowerShell, PowerShell7];
 
-        public static readonly DiscoverablePackagesLoader DiscoveredPackagesLoader = new(Managers);
-        public static readonly UpgradablePackagesLoader UpgradablePackagesLoader = new(Managers);
-        public static readonly InstalledPackagesLoader InstalledPackagesLoader = new(Managers);
-        public static readonly PackageBundlesLoader PackageBundlesLoader = new(Managers);
+        public static void LoadLoaders()
+        {
+            DiscoverablePackagesLoader.Instance = new DiscoverablePackagesLoader(Managers);
+            InstalledPackagesLoader.Instance = new InstalledPackagesLoader(Managers);
+            UpgradablePackagesLoader.Instance = new UpgradablePackagesLoader(Managers);
+            PackageBundlesLoader.Instance = new PackageBundlesLoader_I(Managers);
+        }
 
-        public static void Initialize()
+        public static void LoadManagers()
         {
             try
             {
@@ -50,28 +55,72 @@ namespace UniGetUI.PackageEngine
                     initializeTasks.Add(Task.Run(manager.Initialize));
                 }
 
-                Task ManagersMetaTask = Task.WhenAll(initializeTasks);
-                try
-                {
-                    ManagersMetaTask.Wait(TimeSpan.FromSeconds(ManagerLoadTimeout));
-                }
-                catch (Exception e)
-                {
-                    Logger.Error(e);
-                }
+                Task ManagersMegaTask = Task.WhenAll(initializeTasks);
 
-                if (ManagersMetaTask.IsCompletedSuccessfully == false)
+                if (!ManagersMegaTask.Wait(TimeSpan.FromSeconds(ManagerLoadTimeout)))
                 {
                     Logger.Warn("Timeout: Not all package managers have finished initializing.");
                 }
 
-                _ = InstalledPackagesLoader.ReloadPackages();
-                _ = UpgradablePackagesLoader.ReloadPackages();
+                _ = InstalledPackagesLoader.Instance.ReloadPackages();
+                _ = UpgradablePackagesLoader.Instance.ReloadPackages();
             }
             catch (Exception ex)
             {
                 Logger.Error(ex);
             }
+        }
+    }
+
+
+    public class PackageBundlesLoader_I : PackageBundlesLoader
+    {
+        public PackageBundlesLoader_I(IReadOnlyList<IPackageManager> managers): base(managers)
+        {
+        }
+
+        public override async Task AddPackagesAsync(IReadOnlyList<IPackage> foreign_packages)
+        {
+            List<IPackage> added = new();
+            foreach (IPackage foreign in foreign_packages)
+            {
+                IPackage? package = null;
+
+                if (foreign is not ImportedPackage && foreign is Package native)
+                {
+                    if (native.Source.IsVirtualManager)
+                    {
+                        Logger.Debug($"Adding native package with id={native.Id} to bundle as an INVALID package...");
+                        package = new InvalidImportedPackage(native.AsSerializable_Incompatible(), NullSource.Instance);
+                    }
+                    else
+                    {
+                        Logger.Debug($"Adding native package with id={native.Id} to bundle as a VALID package...");
+                        package = new ImportedPackage(await native.AsSerializableAsync(), native.Manager, native.Source);
+                    }
+                }
+                else if (foreign is ImportedPackage imported)
+                {
+                    Logger.Debug($"Adding loaded imported package with id={imported.Id} to bundle...");
+                    package = imported;
+                }
+                else if (foreign is InvalidImportedPackage invalid)
+                {
+                    Logger.Debug($"Adding loaded incompatible package with id={invalid.Id} to bundle...");
+                    package = invalid;
+                }
+                else
+                {
+                    Logger.Error($"An IPackage instance id={foreign.Id} did not match the types Package, ImportedPackage or InvalidImportedPackage. This should never be the case");
+                }
+
+                if (package is not null)
+                {   // Here, AddForeign is not used so a single PackagesChangedEvent can be invoked.
+                    await AddPackage(package);
+                    added.Add(package);
+                }
+            }
+            InvokePackagesChangedEvent(true, added, []);
         }
     }
 }

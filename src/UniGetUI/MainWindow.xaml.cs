@@ -23,10 +23,10 @@ using UniGetUI.Core.Classes;
 using UniGetUI.Interface.Enums;
 using UniGetUI.PackageEngine.PackageClasses;
 using UniGetUI.Pages.DialogPages;
-// using TitleBar = WinUIEx.TitleBar;
 using WindowExtensions = H.NotifyIcon.WindowExtensions;
 using System.Diagnostics;
 using Windows.UI.Text.Core;
+using UniGetUI.PackageEngine.PackageLoader;
 
 namespace UniGetUI.Interface
 {
@@ -430,9 +430,9 @@ namespace UniGetUI.Interface
             }
 
             NativeHelpers.SetForegroundWindow(GetWindowHandle());
-            if (!PEInterface.InstalledPackagesLoader.IsLoading)
+            if (!InstalledPackagesLoader.Instance.IsLoading)
             {
-                _ = PEInterface.InstalledPackagesLoader.ReloadPackagesSilently();
+                _ = InstalledPackagesLoader.Instance.ReloadPackagesSilently();
             }
 
             (this as Window).Activate();
@@ -883,11 +883,8 @@ namespace UniGetUI.Interface
             NavigationPage.NavView.IsPaneOpen = !NavigationPage.NavView.IsPaneOpen;
         }
 
-        private void TitleBar_OnBackRequested(TitleBar sender, object args)
-        {
-            NavigationPage?.NavigateBack();
-        }
-
+        private void TitleBar_OnBackRequested(TitleBar sender, object args) => GoBack();
+        public void GoBack() => NavigationPage?.NavigateBack();
 
         private bool? subtitleCollapsed;
         private bool? titleCollapsed;

@@ -21,6 +21,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using UniGetUI.Interface.Telemetry;
 using UniGetUI.PackageEngine;
+using UniGetUI.PackageEngine.PackageLoader;
 
 namespace UniGetUI.Controls.OperationWidgets;
 
@@ -573,7 +574,7 @@ public partial class OperationControl: INotifyPropertyChanged
                 {
                     callback();
                     await packageOp.Package.AddToIgnoredUpdatesAsync(packageOp.Package.VersionString);
-                    PEInterface.UpgradablePackagesLoader.Remove(packageOp.Package);
+                    UpgradablePackagesLoader.Instance.Remove(packageOp.Package);
                     Close();
                 };
                 retryOptionsMenu.Add(skipThisVersion);
@@ -584,7 +585,7 @@ public partial class OperationControl: INotifyPropertyChanged
                 {
                     callback();
                     await packageOp.Package.AddToIgnoredUpdatesAsync();
-                    PEInterface.UpgradablePackagesLoader.Remove(packageOp.Package);
+                    UpgradablePackagesLoader.Instance.Remove(packageOp.Package);
                     Close();
                 };
                 retryOptionsMenu.Add(ignoreUpdates);
@@ -628,14 +629,7 @@ public partial class OperationControl: INotifyPropertyChanged
                 Text = CoreTools.Translate("Open install location"),
                 IconName = IconType.OpenFolder,
             };
-            openLocation.Click += (_, _) =>
-            {
-                Process.Start(new ProcessStartInfo {
-                    FileName = location ?? "",
-                    UseShellExecute = true,
-                    Verb = "open"
-                });
-            };
+            openLocation.Click += (_, _) => CoreTools.Launch(location);
             openLocation.IsEnabled = location is not null && Directory.Exists(location);
             optionsMenu.Add(openLocation);
         }
@@ -646,22 +640,7 @@ public partial class OperationControl: INotifyPropertyChanged
                 Text = CoreTools.Translate("Open"),
                 IconName = IconType.Launch,
             };
-            launchInstaller.Click += (_, _) =>
-            {
-                try
-                {
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = downloadOp.DownloadLocation,
-                        UseShellExecute = true
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error($"An error occurred while attempting to launch the file {downloadOp.DownloadLocation}.");
-                    Logger.Error(ex);
-                }
-            };
+            launchInstaller.Click += (_, _) => CoreTools.Launch(downloadOp.DownloadLocation);
             launchInstaller.IsEnabled = downloadOp.Status is OperationStatus.Succeeded;
             optionsMenu.Add(launchInstaller);
 
@@ -669,18 +648,7 @@ public partial class OperationControl: INotifyPropertyChanged
                 Text = CoreTools.Translate("Show in explorer"),
                 IconName = IconType.OpenFolder,
             };
-            showFileInExplorer.Click += (_, _) =>
-            {
-                try
-                {
-                    Process.Start("explorer.exe", "/select," + $"\"{downloadOp.DownloadLocation}\"");
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error($"An error occurred while attempting to show the file {downloadOp.DownloadLocation} on explorer.");
-                    Logger.Error(ex);
-                }
-            };
+            showFileInExplorer.Click += (_, _) => _ = CoreTools.ShowFileOnExplorer(downloadOp.DownloadLocation);
             showFileInExplorer.IsEnabled = downloadOp.Status is OperationStatus.Succeeded;
             optionsMenu.Add(showFileInExplorer);
         }

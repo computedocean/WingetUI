@@ -2,7 +2,7 @@ name: Tolgee CI
 
 on:
   schedule:
-    - cron: 0 0 * * *
+    - cron: 0 0 */2 * *
   workflow_dispatch:
 jobs:
   load-translations:
@@ -11,7 +11,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         
       - name: Download Tolgee translations
         env:
