@@ -1,10 +1,10 @@
 {
     "package_count": {
-        "total": 12014,
-        "done": 5537,
-        "packages_with_icon": 5537,
-        "packages_with_screenshot": 1008,
-        "total_screenshots": 3253
+        "total": 12121,
+        "done": 5640,
+        "packages_with_icon": 5640,
+        "packages_with_screenshot": 1084,
+        "total_screenshots": 3561
     },
     "icons_and_screenshots": {
         "__test_entry_DO_NOT_EDIT_PLEASE": {
@@ -1419,7 +1419,6 @@
             "images": [
                 "https://startupstash.com/wp-content/uploads/2022/07/adventure-game-studio.jpg",
                 "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/AGS_SCI_template_Room_1.png/1200px-AGS_SCI_template_Room_1.png",
-                "https://www.adventuregamestudio.co.uk/images/editorscreen1large.png",
                 "https://www.adventuregamestudio.co.uk/images/editorscreen2large.png",
                 "https://www.adventuregamestudio.co.uk/images/editorscreen3large.png",
                 "https://www.adventuregamestudio.co.uk/images/editorscreen4large.png"
@@ -2083,8 +2082,9 @@
         "ambie": {
             "icon": "https://github.com/jenius-apps/ambie/raw/main/images/logo_transparent.png",
             "images": [
-                "https://raw.githubusercontent.com/jenius-apps/ambie/main/images/ambie_hero_v3.png",
-                "https://github.com/jenius-apps/ambie/raw/main/images/toolkit-translate.png"
+                "https://i.postimg.cc/4NyXvSRF/image.png",
+                "https://i.postimg.cc/B6NGHxY0/image.png",
+                "https://i.postimg.cc/Bb6fgXk1/image.png"
             ]
         },
         "amcacheparser": {
@@ -2098,9 +2098,10 @@
         "amethyst": {
             "icon": "https://i.imgur.com/bbjCj4v.png",
             "images": [
-                "https://private-user-images.githubusercontent.com/43046474/440988353-91798ae7-96b7-4986-8c3b-ca5d5b4cec7d.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDY2MjExODksIm5iZiI6MTc0NjYyMDg4OSwicGF0aCI6Ii80MzA0NjQ3NC80NDA5ODgzNTMtOTE3OThhZTctOTZiNy00OTg2LThjM2ItY2E1ZDViNGNlYzdkLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA1MDclMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwNTA3VDEyMjgwOVomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTAyNDEwNTY0NzM1ZDc2YjJmODQ2MGVlMGMwYzgyMDcwNjRlMWUwOWEyNTA0YjI3YjEyM2VmYTYwOWYzZDc4MTYmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.PvUfJaVITt_qiEWLfbLFeRAOwV-W-LFGWIIaAfQCGE4",
-                "https://private-user-images.githubusercontent.com/43046474/440988448-ea1dacbf-ab7e-4fda-af27-1db9e04d4e21.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDY2MjExODksIm5iZiI6MTc0NjYyMDg4OSwicGF0aCI6Ii80MzA0NjQ3NC80NDA5ODg0NDgtZWExZGFjYmYtYWI3ZS00ZmRhLWFmMjctMWRiOWUwNGQ0ZTIxLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA1MDclMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwNTA3VDEyMjgwOVomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTQ4NjViMGZiY2NmMTM3ZmJjZGE5NTlhZjFmZGVkNDY2OTEwODY5M2FkOGExYWQ0ZjY2MGQ1ZjNhZDFkZTg2ZmYmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.PXt3XldsbHxNGF8Lzj8ZN23XMk-uX0rr9w8_FWU2H4E",
-                "https://private-user-images.githubusercontent.com/43046474/440988403-e56e953d-7851-4722-b721-ec30e5630054.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDY2MjExODksIm5iZiI6MTc0NjYyMDg4OSwicGF0aCI6Ii80MzA0NjQ3NC80NDA5ODg0MDMtZTU2ZTk1M2QtNzg1MS00NzIyLWI3MjEtZWMzMGU1NjMwMDU0LnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA1MDclMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwNTA3VDEyMjgwOVomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTIyYTkxYzQxMGFlNDM2N2NmMDMzZGJiNTI2NDc5NTdjOWFiYzFmMmNjY2YyYzJiZjJiYmIyYWM5MTA2Yzk2NGYmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.L09gRou7hMPcaYh7b4_ejAv822Yh1FvTezABsn_0vU4"
+                "https://i.postimg.cc/0QkpmCBB/image.png",
+                "https://i.postimg.cc/gc5ZkdGF/image.png",
+                "https://i.postimg.cc/DwQJgXLL/image.png",
+                "https://i.postimg.cc/rmsDMZbz/image.png"
             ]
         },
         "amfora": {
@@ -10281,7 +10282,7 @@
             "images": []
         },
         "deno": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Deno_Logo_2024.svg/250px-Deno_Logo_2024.svg.png",
             "images": []
         },
         "dep": {
@@ -11163,7 +11164,7 @@
             "images": []
         },
         "dnsjumper": {
-            "icon": "https://community.chocolatey.org/content/packageimages/dnsjumper.2.2.png",
+            "icon": "https://i.postimg.cc/T1HzqkRh/dnsjmp.png",
             "images": [
                 "https://i.postimg.cc/N0WkXr0Z/image.png",
                 "https://i.postimg.cc/XJdck7Gq/image.png",
@@ -12451,7 +12452,13 @@
         },
         "dumeter": {
             "icon": "https://community.chocolatey.org/content/packageimages/dumeter.6.40.20141201.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/3W5RwdTK/image.png",
+                "https://i.postimg.cc/SKNW4td8/image.png",
+                "https://i.postimg.cc/htMd21nJ/image.png",
+                "https://i.postimg.cc/LsbZp4np/image.png",
+                "https://i.postimg.cc/D0qWLq6D/image.png"
+            ]
         },
         "dumo": {
             "icon": "https://community.chocolatey.org/content/packageimages/dumo.2.25.2.122.png",
@@ -14074,7 +14081,7 @@
             "images": []
         },
         "express": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/y6pDCFC4/grminexp.png",
             "images": [
                 "https://i.postimg.cc/HxFgvsq2/image.png"
             ]
@@ -14274,8 +14281,10 @@
             ]
         },
         "fastcopy": {
-            "icon": "https://community.chocolatey.org/content/packageimages/fastcopy.install.4.2.1.png",
-            "images": []
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/59HZpDLn/image.png"
+            ]
         },
         "fastest-mouse-clicker": {
             "icon": "https://community.chocolatey.org/content/packageimages/fastest-mouse-clicker.2.6.1.0.png",
@@ -14985,7 +14994,15 @@
         },
         "flashfxp": {
             "icon": "",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/SsdYFhH6/image.png",
+                "https://i.postimg.cc/MHrcHY6X/image.png",
+                "https://i.postimg.cc/rFK0b7j4/image.png",
+                "https://i.postimg.cc/7Ly55hk1/image.png",
+                "https://i.postimg.cc/1X4tkNGS/image.png",
+                "https://i.postimg.cc/9F6Mk0r3/image.png",
+                "https://i.postimg.cc/Gmv2nRy4/image.png"
+            ]
         },
         "flashplayer-sa": {
             "icon": "",
@@ -15989,7 +16006,9 @@
         "g-helper": {
             "icon": "",
             "images": [
-                "https://private-user-images.githubusercontent.com/5920850/241183841-4d98465a-63a5-4498-ae14-afb3e67e7e82.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3Mjg1NTQxMTgsIm5iZiI6MTcyODU1MzgxOCwicGF0aCI6Ii81OTIwODUwLzI0MTE4Mzg0MS00ZDk4NDY1YS02M2E1LTQ0OTgtYWUxNC1hZmIzZTY3ZTdlODIucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI0MTAxMCUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNDEwMTBUMDk1MDE4WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9NmNhOTRlOTQ3ZTgwNjQ5ZTM1YmJjM2FmNWE5MTU5ZTQ2ZTVjNDI0YjEzNTc1ZTY2YThmYzgzYzI4MjY2MDU5NSZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QifQ.c88Zx0dUZDaqK2jFI_5_9UpAT16ofUH90AAmYR5c9ew"
+                "https://i.postimg.cc/7ZLhgWHV/image.png",
+                "https://i.postimg.cc/BbsQth7T/image.png",
+                "https://i.postimg.cc/0yr56KnL/image.png"
             ]
         },
         "g14controlv2": {
@@ -16089,7 +16108,6 @@
             "images": [
                 "https://m.media-amazon.com/images/G/01/sm/shared/166979982420469/social_image._CB409110150_.jpg",
                 "https://theculturednerd.org/wp-content/uploads/2020/10/Crucible-Featured.png",
-                "https://www.allcitycanvas.com/wp-content/uploads/2021/07/new-world-amazon-games-h-1280x720.jpg",
                 "https://www.howtogeek.com/wp-content/uploads/2020/06/0-amazon-games-header.jpg",
                 "https://www.androidheadlines.com/wp-content/uploads/2021/01/Prime-Gaming-Amazon-Games-Launcher.jpg"
             ]
@@ -16255,19 +16273,24 @@
             "images": []
         },
         "gedkeeper": {
-            "icon": "",
-            "images": []
+            "icon": "https://i.postimg.cc/T3VXdqJ9/GEDKeeper-48.png",
+            "images": [
+                "https://i.postimg.cc/XJtq0YQy/image.png",
+                "https://i.postimg.cc/j5HmR8hQ/image.png",
+                "https://i.postimg.cc/bv3S4P7Q/image.png",
+                "https://i.postimg.cc/JzX9T4B2/image.png"
+            ]
         },
         "geekbench": {
             "icon": "",
             "images": []
         },
         "geekbench-4": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/BnRGNY1Y/Geekbench6.png",
             "images": []
         },
         "geekbench-5": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/BnRGNY1Y/Geekbench6.png",
             "images": []
         },
         "geekbench-6": {
@@ -16293,7 +16316,7 @@
             "images": []
         },
         "geekbench6": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/BnRGNY1Y/Geekbench6.png",
             "images": []
         },
         "geekuninstaller": {
@@ -17062,7 +17085,7 @@
             "images": []
         },
         "glpi-agent": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/JhrM5cBw/glpi-agent.png",
             "images": []
         },
         "glpk": {
@@ -18491,7 +18514,7 @@
             "images": []
         },
         "hdcleaner": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/T2FY9Szj/HDCleaner.png",
             "images": []
         },
         "hddexpert": {
@@ -19559,7 +19582,10 @@
         },
         "iconworkshop": {
             "icon": "",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/NMrF1Pt9/image.png",
+                "https://i.postimg.cc/fycbPtJz/image.png"
+            ]
         },
         "icopy": {
             "icon": "https://community.chocolatey.org/content/packageimages/icopy.install.1.7.0.png",
@@ -21066,7 +21092,7 @@
         "jdk-25": {
             "icon": "https://cdn-icons-png.flaticon.com/256/226/226777.png",
             "images": [
-                "https://www.oracle.com/a/pr/img/rc24-java24.jpg"
+                "https://www.oracle.com/a/pr/img/rc24-java-25-release.jpg"
             ]
         },
         "jdminecraftlauncher": {
@@ -22483,8 +22509,15 @@
             "images": []
         },
         "klavaro": {
-            "icon": "",
-            "images": []
+            "icon": "https://i.postimg.cc/2yp3v5nk/image.png",
+            "images": [
+                "https://i.postimg.cc/NFyL2Hyc/image.png",
+                "https://i.postimg.cc/15qf9DhB/image.png",
+                "https://i.postimg.cc/xCZ1Q16N/image.png",
+                "https://i.postimg.cc/h4J9dzRv/image.png",
+                "https://i.postimg.cc/fbTdTkfp/image.png",
+                "https://i.postimg.cc/W3xqn8cv/image.png"
+            ]
         },
         "klayout": {
             "icon": "https://community.chocolatey.org/content/packageimages/klayout.0.28.5.png",
@@ -27531,6 +27564,148 @@
                 "https://i.postimg.cc/02SVS9qB/image.png"
             ]
         },
+        "navicatpremiumlite": {
+            "icon": "https://i.postimg.cc/1RprsTC3/navicatlite.png",
+            "images": [
+                "https://i.postimg.cc/25snfFnf/image.png",
+                "https://i.postimg.cc/Hn2M5qRr/image.png",
+                "https://i.postimg.cc/JztXDdqw/image.png",
+                "https://i.postimg.cc/Ls1ZvYw7/image.png"
+            ]
+        },
+        "navicatmysql": {
+            "icon": "https://i.postimg.cc/7Y26p28r/navsql.png",
+            "images": [
+                "https://i.postimg.cc/Nj7008hK/image.png",
+                "https://i.postimg.cc/76bPXp5g/image.png",
+                "https://i.postimg.cc/nVjBhW3J/image.png",
+                "https://i.postimg.cc/J7fJDQF6/image.png",
+                "https://i.postimg.cc/DwFX5wnn/image.png",
+                "https://i.postimg.cc/kgctHPgy/image.png"
+            ]
+        },
+        "navicatmongodb": {
+            "icon": "https://i.postimg.cc/KYJ2gJvs/navicatmongo.png",
+            "images": [
+                "https://i.postimg.cc/JnyDtycf/image.png",
+                "https://i.postimg.cc/tJWstLcs/image.png",
+                "https://i.postimg.cc/wT5ttYL6/image.png",
+                "https://i.postimg.cc/DwB8gQx9/image.png",
+                "https://i.postimg.cc/zBRv8sqY/image.png",
+                "https://i.postimg.cc/tCbJGvf3/image.png"
+            ]
+        },
+        "navicatpostgresql": {
+            "icon": "https://i.postimg.cc/QtmwztWv/navicatpost.png",
+            "images": [
+                "https://i.postimg.cc/x1m72gzN/image.png",
+                "https://i.postimg.cc/mDmpw50p/image.png",
+                "https://i.postimg.cc/vTjqR680/image.png",
+                "https://i.postimg.cc/xTJpvggp/image.png",
+                "https://i.postimg.cc/k5cTJHX4/image.png"
+            ]
+        },
+        "navicatoracle": {
+            "icon": "https://i.postimg.cc/PqPCJpdy/navicatora.png",
+            "images": [
+                "https://i.postimg.cc/gcq2Yq35/image.png",
+                "https://i.postimg.cc/MpX6bCN4/image.png",
+                "https://i.postimg.cc/Ssbm4Jsw/image.png",
+                "https://i.postimg.cc/Y23tc2wX/image.png",
+                "https://i.postimg.cc/QxdhjL8W/image.png",
+                "https://i.postimg.cc/SxX4zWzy/image.png",
+                "https://i.postimg.cc/3RhQ6VfG/image.png"
+            ]
+        },
+        "navicatredis": {
+            "icon": "https://i.postimg.cc/W4X7LJXT/navicatredis.png",
+            "images": [
+                "https://i.postimg.cc/15w2xJ6N/image.png",
+                "https://i.postimg.cc/PqrRwH7d/image.png",
+                "https://i.postimg.cc/7LsQ1c8w/image.png",
+                "https://i.postimg.cc/Y9TnZWCF/image.png",
+                "https://i.postimg.cc/2jBXv20t/image.png",
+                "https://i.postimg.cc/vHrq2DFQ/image.png"
+            ]
+        },
+        "navicatmariadb": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/sgXV3kJc/image.png",
+                "https://i.postimg.cc/8CfN6L94/image.png",
+                "https://i.postimg.cc/DwFX5wnn/image.png",
+                "https://i.postimg.cc/T2JGgd7B/image.png",
+                "https://i.postimg.cc/2yzs2WcB/image.png"
+            ]
+        },
+        "navicatsnowflake": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/ZnKQrSnF/image.png",
+                "https://i.postimg.cc/BZMkJX7r/image.png",
+                "https://i.postimg.cc/13Nj0MRP/image.png",
+                "https://i.postimg.cc/qqRmNxZq/image.png",
+                "fv"
+            ]
+        },
+        "navicatsqlite": {
+            "icon": "https://i.postimg.cc/C1456jNJ/navicatsqlite.png",
+            "images": [
+                "https://i.postimg.cc/Y982xt2q/image.png",
+                "https://i.postimg.cc/rFDyS6vf/image.png",
+                "https://i.postimg.cc/DzT2kS80/image.png",
+                "https://i.postimg.cc/0Q5PjhGs/image.png",
+                "https://i.postimg.cc/0Q5PjhGs/image.png"
+            ]
+        },
+        "navicatmonitor": {
+            "icon": "https://i.postimg.cc/NGPRxcPP/navicatmon.png",
+            "images": [
+                "https://i.postimg.cc/tgPBKg8q/image.png",
+                "https://i.postimg.cc/c4HXshVs/image.png",
+                "https://i.postimg.cc/DzVgPTmn/image.png",
+                "https://i.postimg.cc/bJp949x8/image.png",
+                "https://i.postimg.cc/KjYr8csh/image.png",
+                "https://i.postimg.cc/Yqhzc9WW/image.png"
+            ]
+        },
+        "navicatdatamodeler": {
+            "icon": "https://i.postimg.cc/vHhVPnWM/navdatamod.png",
+            "images": [
+                "https://i.postimg.cc/FsjwLDTC/image.png",
+                "https://i.postimg.cc/C1BQLNZj/image.png",
+                "https://i.postimg.cc/wTdGgD98/image.png",
+                "https://i.postimg.cc/RZSpn932/image.png"
+            ]
+        },
+        "navicatdatamodelerlite": {
+            "icon": "https://i.postimg.cc/qMx4TJHd/modelerlite.png",
+            "images": [
+                "https://i.postimg.cc/FsjwLDTC/image.png",
+                "https://i.postimg.cc/C1BQLNZj/image.png",
+                "https://i.postimg.cc/wTdGgD98/image.png",
+                "https://i.postimg.cc/RZSpn932/image.png"
+            ]
+        },
+        "navicatonpremserver": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/d3nrMMq0/image.png",
+                "https://i.postimg.cc/Y02LzX17/image.png",
+                "https://i.postimg.cc/9MCDcxg4/image.png",
+                "https://i.postimg.cc/mkh2rKYy/image.png"
+            ]
+        },
+        "navicatsqlserver": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/d3b8J2bx/image.png",
+                "https://i.postimg.cc/PrDW27D0/image.png",
+                "https://i.postimg.cc/HLYbWshB/image.png",
+                "https://i.postimg.cc/G29YYgrN/image.png",
+                "https://i.postimg.cc/2jVgGnxK/image.png"
+            ]
+        },
         "nbfc": {
             "icon": "",
             "images": []
@@ -28103,7 +28278,12 @@
         },
         "networx": {
             "icon": "https://community.chocolatey.org/content/packageimages/networx.6.2.5.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/sxWybn53/image.png",
+                "https://i.postimg.cc/X7Mn9b0F/image.png",
+                "https://i.postimg.cc/MGGwzZ1P/image.png",
+                "https://i.postimg.cc/j5pY6zmP/image.png"
+            ]
         },
         "newfield": {
             "icon": "https://community.chocolatey.org/content/packageimages/newfield.install.1.03.png",
@@ -28300,6 +28480,12 @@
                 "https://nilesoft.org/images/screenshots/light/goto.png",
                 "https://nilesoft.org/images/screenshots/light/ss1.png",
                 "https://nilesoft.org/images/screenshots/light/file-manage.png"
+            ]
+        },
+        "Winget.Nilesoft.Shell": {
+            "icon": "https://nilesoft.org/images/favicon.png",
+            "images": [
+                "https://nilesoft.org/images/screenshots/light/ss2.png"
             ]
         },
         "nilesoft-shell": {
@@ -31789,9 +31975,14 @@
         "picpick": {
             "icon": "",
             "images": [
-                "https://picpick.app/static/screenshot_6-5e1b3ae39deaa0e864db567987191881.png",
-                "https://picpick.app/static/screenshot_5-ce960495e0e30e97d983172f9e9b0e7a.png",
-                "https://picpick.app/static/screenshot_2-fa50c1e8d5b5bdcafdd5e647d467cfac.png"
+                "https://i.postimg.cc/ZYHQDcfg/image.png",
+                "https://i.postimg.cc/Qts6f9ch/image.png",
+                "https://i.postimg.cc/yxpv6Lt8/image.png",
+                "https://i.postimg.cc/CxqmYHNw/image.png",
+                "https://i.postimg.cc/j5Zhv8s4/image.png",
+                "https://i.postimg.cc/D0NP384W/image.png",
+                "https://i.postimg.cc/nVSkDwSH/image.png",
+                "https://i.postimg.cc/rFvNhRL3/image.png"
             ]
         },
         "pictoselector": {
@@ -32215,7 +32406,7 @@
         "poedit": {
             "icon": "https://poedit.net/images/icons/poedit/icon_128x128@2x.png",
             "images": [
-                "https://poedit.net/screenshots/mainwin_mac.png"
+                "https://i.postimg.cc/NGJJKCNf/image.png"
             ]
         },
         "poetry": {
@@ -32489,8 +32680,13 @@
             "images": []
         },
         "postimage": {
-            "icon": "https://community.chocolatey.org/content/packageimages/postimage.1.0.1.png",
-            "images": []
+            "icon": "https://i.postimg.cc/rwzVQQKG/image.png",
+            "images": [
+                "https://postimgs.org/img/app_2.png",
+                "https://postimgs.org/img/app_1.png",
+                "https://postimgs.org/img/app_3.png",
+                "https://postimgs.org/img/app_5.png"
+            ]
         },
         "postman": {
             "icon": "https://assets.getpostman.com/common-share/postman-logo.png",
@@ -32706,7 +32902,7 @@
             "images": []
         },
         "powertoys": {
-            "icon": "https://i.postimg.cc/Rq5CRqGj/pticon.png",
+            "icon": "https://i.postimg.cc/DfmW7XGy/pticon.png",
             "images": [
                 "https://i.postimg.cc/KjdjH0cp/pt1.png",
                 "https://i.postimg.cc/KYZzwkFb/pt2.png",
@@ -33628,7 +33824,12 @@
         },
         "pvs-studio": {
             "icon": "https://community.chocolatey.org/content/packageimages/pvs-studio.7.23.68542.86.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/rwz0mx25/image.png",
+                "https://i.postimg.cc/bwGr8P1v/image.png",
+                "https://i.postimg.cc/3RZJ9xHk/image.png",
+                "https://i.postimg.cc/9XJQ70pz/image.png"
+            ]
         },
         "pwgen": {
             "icon": "https://community.chocolatey.org/content/packageimages/pwgen.install.3.4.5.png",
@@ -35440,8 +35641,15 @@
             "images": []
         },
         "reicon": {
-            "icon": "",
-            "images": []
+            "icon": "https://i.postimg.cc/PqnFnC2f/reicon.png",
+            "images": [
+                "https://i.postimg.cc/BvSC429S/image.png",
+                "https://i.postimg.cc/PfgzNgnN/image.png",
+                "https://i.postimg.cc/PfgzNgnN/image.png",
+                "https://i.postimg.cc/CKrb0t4Y/image.png",
+                "https://i.postimg.cc/sfh5FTQH/image.png",
+                "https://i.postimg.cc/3wq0VGKQ/image.png"
+            ]
         },
         "reko": {
             "icon": "",
@@ -38774,6 +38982,10 @@
             "icon": "https://blogs.swarthmore.edu/its/wp-content/uploads/2020/05/Snagit-1024x768.jpg",
             "images": []
         },
+        "snagit-2024": {
+            "icon": "https://assets.techsmith.com/Images/content/snagit_icon.svg",
+            "images": []
+        },
         "snailfm": {
             "icon": "",
             "images": []
@@ -41307,7 +41519,39 @@
         },
         "systeminformer-nightlybuilds": {
             "icon": "https://community.chocolatey.org/content/packageimages/systeminformer-nightlybuilds.3.0.5727.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/fyYvYt64/image.png",
+                "https://i.postimg.cc/vmP2mndg/image.png",
+                "https://i.postimg.cc/V6p7qcvS/image.png",
+                "https://i.postimg.cc/44H2Jn2P/image.png",
+                "https://i.postimg.cc/NjBd7DsK/image.png",
+                "https://i.postimg.cc/HLL3FL7V/image.png",
+                "https://i.postimg.cc/xCJ5TF5f/image.png"
+            ]
+        },
+        "systeminformer": {
+            "icon": "https://community.chocolatey.org/content/packageimages/systeminformer-nightlybuilds.3.0.5727.png",
+            "images": [
+                "https://i.postimg.cc/fyYvYt64/image.png",
+                "https://i.postimg.cc/vmP2mndg/image.png",
+                "https://i.postimg.cc/V6p7qcvS/image.png",
+                "https://i.postimg.cc/44H2Jn2P/image.png",
+                "https://i.postimg.cc/NjBd7DsK/image.png",
+                "https://i.postimg.cc/HLL3FL7V/image.png",
+                "https://i.postimg.cc/xCJ5TF5f/image.png"
+            ]
+        },
+        "systeminformer-canary": {
+            "icon": "https://community.chocolatey.org/content/packageimages/systeminformer-nightlybuilds.3.0.5727.png",
+            "images": [
+                "https://i.postimg.cc/fyYvYt64/image.png",
+                "https://i.postimg.cc/vmP2mndg/image.png",
+                "https://i.postimg.cc/V6p7qcvS/image.png",
+                "https://i.postimg.cc/44H2Jn2P/image.png",
+                "https://i.postimg.cc/NjBd7DsK/image.png",
+                "https://i.postimg.cc/HLL3FL7V/image.png",
+                "https://i.postimg.cc/xCJ5TF5f/image.png"
+            ]
         },
         "systemmonitor": {
             "icon": "",
@@ -41730,6 +41974,12 @@
             "images": []
         },
         "teams": {
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c9/Microsoft_Office_Teams_(2018%E2%80%93present).svg/258px-Microsoft_Office_Teams_(2018%E2%80%93present).svg.png",
+            "images": [
+                "https://upload.wikimedia.org/wikipedia/en/f/f1/Microsoft_Teams_Desktop_Application_Screenshot.png"
+            ]
+        },
+        "teams-free": {
             "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c9/Microsoft_Office_Teams_(2018%E2%80%93present).svg/258px-Microsoft_Office_Teams_(2018%E2%80%93present).svg.png",
             "images": [
                 "https://upload.wikimedia.org/wikipedia/en/f/f1/Microsoft_Teams_Desktop_Application_Screenshot.png"
@@ -44115,7 +44365,7 @@
             "images": []
         },
         "unigetui": {
-            "icon": "https://raw.githubusercontent.com/marticliment/UniGetUI/main/media/icon.pngg\n",
+            "icon": "https://raw.githubusercontent.com/marticliment/UniGetUI/main/media/icon.png",
             "images": [
                 "http://raw.githubusercontent.com/marticliment/UniGetUI/main/media/UniGetUI_1.png",
                 "http://raw.githubusercontent.com/marticliment/UniGetUI/main/media/UniGetUI_3.png",
@@ -48118,8 +48368,15 @@
             "images": []
         },
         "winbox": {
-            "icon": "",
-            "images": []
+            "icon": "https://i.postimg.cc/8CKZvh7N/winbox.png",
+            "images": [
+                "https://i.postimg.cc/DZPRRWZs/image.png",
+                "https://i.postimg.cc/gjc1pYLp/image.png",
+                "https://i.postimg.cc/D0CHyt1B/image.png",
+                "https://i.postimg.cc/YqsTcBpb/image.png",
+                "https://i.postimg.cc/nLtRZH6F/image.png",
+                "https://i.postimg.cc/dtk4ykYm/image.png"
+            ]
         },
         "winbtrfs": {
             "icon": "",
@@ -50128,7 +50385,11 @@
         },
         "XPFFTQ032PTPHF": {
             "icon": "https://raw.githubusercontent.com/marticliment/UniGetUI/main/media/icon.png",
-            "images": []
+            "images": [
+                "http://raw.githubusercontent.com/marticliment/UniGetUI/main/media/UniGetUI_1.png",
+                "http://raw.githubusercontent.com/marticliment/UniGetUI/main/media/UniGetUI_3.png",
+                "http://raw.githubusercontent.com/marticliment/UniGetUI/main/media/UniGetUI_6.png"
+            ]
         },
         "xpipe": {
             "icon": "https://raw.githubusercontent.com/xpipe-io/xpipe/refs/heads/master/dist/logo/logo.iconset/icon_512x512.png",
@@ -50680,7 +50941,7 @@
             "images": []
         },
         "zen-browser": {
-            "icon": "https://github.com/zen-browser/.github/raw/main/profile/logo-black.png",
+            "icon": "",
             "images": [
                 "https://i.postimg.cc/MTFqp5N4/browsers-i-Ox7z-S8-P-Z2u-WYk9.png",
                 "https://i.postimg.cc/9XDqtnmD/browser-workspaces-Cb-JPkzf-E-Ha2-Q.png",
@@ -50688,6 +50949,10 @@
                 "https://i.postimg.cc/qMCMzfkG/browser-sidebar-dj-YBVG-Z-rtpa-P.png",
                 "https://i.postimg.cc/7PjJBnhm/browser-compactmode-U4-Ir-AYin-26y.png"
             ]
+        },
+        "zen-browser-twilight": {
+            "icon": "https://i.ibb.co/LDSjdjNP/Image.png",
+            "images": []
         },
         "zenhan": {
             "icon": "",
@@ -50934,6 +51199,14 @@
             "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
             "images": []
         },
+        "zulu-10-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-10-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
         "zulu-11-jdk": {
             "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
             "images": []
@@ -50942,11 +51215,27 @@
             "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
             "images": []
         },
+        "zulu-12-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-12-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
         "zulu-13-jdk": {
             "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
             "images": []
         },
         "zulu-13-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-14-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-14-jre": {
             "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
             "images": []
         },
@@ -50983,6 +51272,62 @@
             "images": []
         },
         "zulu-19-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-19-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-20-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-20-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-21-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-21-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-22-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-22-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-23-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-23-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-24-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-24-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-25-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-25-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulu-6-jre": {
             "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
             "images": []
         },
@@ -51046,11 +51391,71 @@
             "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
             "images": []
         },
+        "zulufx-17-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
         "zulufx-18-jdk": {
             "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
             "images": []
         },
+        "zulufx-18-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
         "zulufx-19-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulufx-19-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulufx-20-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulufx-20-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulufx-21-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulufx-21-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulufx-22-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulufx-22-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulufx-23-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulufx-23-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulufx-24-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulufx-24-jre": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulufx-25-jdk": {
+            "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
+            "images": []
+        },
+        "zulufx-25-jre": {
             "icon": "https://i.postimg.cc/bwR9h2mZ/zulu-icon.png",
             "images": []
         },
@@ -51198,7 +51603,7 @@
                 "https://i.postimg.cc/FzTdHZHY/image.png"
             ]
         },
-        "viceversa-pro": {
+        "viceversapro": {
             "icon": "https://i.postimg.cc/VsFydCfY/Vice-Versa.png",
             "images": [
                 "https://i.postimg.cc/MKZCRpH1/Bitmap-665.png",
@@ -51709,7 +52114,7 @@
                 "https://i.postimg.cc/Njj0fctn/image.png"
             ]
         },
-        "sqliteexpertpers": {
+        "sqliteexpert-personal": {
             "icon": "https://i.postimg.cc/KzGKLMhZ/SQLite-Exp.png",
             "images": [
                 "https://i.postimg.cc/02BpscR7/image.png",
@@ -51719,7 +52124,7 @@
                 "https://i.postimg.cc/65yvYn2q/image.png"
             ]
         },
-        "sqliteexpertpro": {
+        "sqliteexpert-professional": {
             "icon": "https://i.postimg.cc/KzGKLMhZ/SQLite-Exp.png",
             "images": [
                 "https://i.postimg.cc/02BpscR7/image.png",
@@ -51850,7 +52255,7 @@
                 "https://i.postimg.cc/TwSqYdNZ/image.png"
             ]
         },
-        "futuremarksystemInfo": {
+        "futuremarksysteminfo": {
             "icon": "https://i.postimg.cc/q7FSWxjc/System-Info.png",
             "images": [
                 "https://i.postimg.cc/Y0HnwngF/image.png",
@@ -52222,6 +52627,397 @@
                 "https://i.postimg.cc/BQLG8K9F/image.png",
                 "https://i.postimg.cc/0y7Rn1N2/image.png",
                 "https://i.postimg.cc/J0sSB9g8/image.png"
+            ]
+        },
+        "nfsserver": {
+            "icon": "https://i.postimg.cc/Rh6wfGxf/nfsico.png",
+            "images": [
+                "https://i.postimg.cc/g2q8vnQM/image.png",
+                "https://i.postimg.cc/FR1S5GRq/image.png",
+                "https://i.postimg.cc/76c2x7JL/image.png",
+                "https://i.postimg.cc/zDV6DRcY/image.png",
+                "https://i.postimg.cc/9XKSDF6R/image.png"
+            ]
+        },
+        "dnsserver": {
+            "icon": "https://i.postimg.cc/wvdMxp9S/dnsico.png",
+            "images": [
+                "https://i.postimg.cc/fW9Cg7Py/image.png",
+                "https://i.postimg.cc/zXNCtsW2/image.png",
+                "https://i.postimg.cc/Bb0KzF8P/image.png",
+                "https://i.postimg.cc/NM1yR0Ns/image.png"
+            ]
+        },
+        "lldpagent": {
+            "icon": "https://i.postimg.cc/VLy83RLV/image.png",
+            "images": [
+                "https://i.postimg.cc/Prctrj42/image.png",
+                "https://i.postimg.cc/1RdxDKqz/image.png",
+                "https://i.postimg.cc/V6HhBY5h/image.png",
+                "https://i.postimg.cc/1569tdjS/image.png"
+            ]
+        },
+        "atlantiswordprocessorlite": {
+            "icon": "https://i.postimg.cc/zXV2wVqK/awp.png",
+            "images": [
+                "https://i.postimg.cc/85fsBRXx/image.png"
+            ]
+        },
+        "atlantiswordprocessor": {
+            "icon": "https://i.postimg.cc/zXV2wVqK/awp.png",
+            "images": [
+                "https://i.postimg.cc/15rXH5MR/image.png",
+                "https://i.postimg.cc/Gm32SwSF/image.png",
+                "https://i.postimg.cc/52DhQ8vX/image.png"
+            ]
+        },
+        "elcomsoftupdater": {
+            "icon": "https://i.postimg.cc/d0pGYtbP/UPD.png",
+            "images": [
+                "https://i.postimg.cc/pTmkfSHx/image.png"
+            ]
+        },
+        "jetscreenshot": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/FKLKd3Pz/image.png",
+                "https://i.postimg.cc/zBYGnvMj/image.png",
+                "https://i.postimg.cc/15XsVDXS/image.png",
+                "https://i.postimg.cc/Kv1h8Fpv/image.png",
+                "https://i.postimg.cc/15bhgTb0/image.png"
+            ]
+        },
+        "rcloneui": {
+            "icon": "https://i.postimg.cc/pXHmqzQj/image.png",
+            "images": [
+                "https://i.postimg.cc/dtPypzFL/image.png",
+                "https://i.postimg.cc/xTvz2tjg/image.png",
+                "https://i.postimg.cc/XYny7dpW/image.png"
+            ]
+        },
+        "alterphoto": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/BZcSZyD8/image.png",
+                "https://i.postimg.cc/7YHx5VMK/image.png",
+                "https://i.postimg.cc/X7sndCs4/image.png",
+                "https://i.postimg.cc/YCjM3CPg/image.png",
+                "https://i.postimg.cc/cHGW0MLM/image.png",
+                "https://i.postimg.cc/J01WBrJs/image.png",
+                "https://i.postimg.cc/GtqnFWJq/image.png",
+                "https://i.postimg.cc/Qt86QH4Z/image.png"
+            ]
+        },
+        "wondershare-filmora": {
+            "icon": "https://i.postimg.cc/dt1TdfW7/wondershare-1746013641.png",
+            "images": [
+                "https://i.postimg.cc/xd49wsvM/step2-pic.png"
+            ]
+        },
+        "xp89dcgq3k6vld": {
+            "icon": "https://i.postimg.cc/yYZ3vRzc/image.png",
+            "images": [
+                "https://i.postimg.cc/KjdjH0cp/pt1.png",
+                "https://i.postimg.cc/KYZzwkFb/pt2.png",
+                "https://i.postimg.cc/x1VqGp4c/pt3.png",
+                "https://i.postimg.cc/XYKqsKRx/pt4.png"
+            ]
+        },
+        "guru3d-afterburner": {
+            "icon": "https://i.postimg.cc/nzfnVXWr/images.jpg",
+            "images": [
+                "https://i.postimg.cc/43bStnd5/msi-afterburner.png"
+            ]
+        },
+        "guru3d-rtss": {
+            "icon": "https://i.postimg.cc/mD9NM5V0/rivatuner-thumb-megaupp.png",
+            "images": [
+                "https://i.postimg.cc/2jFnDvtB/2021-02-18-ts3-thumbs-831.png"
+            ]
+        },
+        "wargaming-gamecenter": {
+            "icon": "https://i.postimg.cc/tgkHbBFv/Wargaming-Game-Cente2.png",
+            "images": [
+                "https://i.postimg.cc/nhVykvyB/809-07.png",
+                "https://i.postimg.cc/X7Lhprrr/808-2.png"
+            ]
+        },
+        "sandisk-dashboard": {
+            "icon": "https://i.postimg.cc/MG5XLbHW/sandisk-dashboard-icon.png",
+            "images": [
+                "https://i.postimg.cc/J062YgV0/78-BA0-CB7-1-B00-4-F4-B-91-D3-36392-FC6572-B.png"
+            ]
+        },
+        "ubuntu": {
+            "icon": "https://i.postimg.cc/T3kT1MCf/image.png",
+            "images": []
+        },
+        "cursorworkshop": {
+            "icon": "https://i.postimg.cc/pXkWntjc/curwork.png",
+            "images": [
+                "https://i.postimg.cc/sX37KrnB/image.png"
+            ]
+        },
+        "icongenerator": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/NMPFTqZw/image.png"
+            ]
+        },
+        "iconvectors": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/t7GXtXkP/image.png",
+                "https://i.postimg.cc/k5JgpgmM/image.png",
+                "https://i.postimg.cc/SsjNm1jy/image.png",
+                "https://i.postimg.cc/fL63pQ5h/image.png"
+            ]
+        },
+        "screensaverproducer": {
+            "icon": "https://i.postimg.cc/LsLGLz7x/scrnprod.png",
+            "images": [
+                "https://i.postimg.cc/3N1TpgkV/image.png",
+                "https://i.postimg.cc/tCrb4NQP/image.png",
+                "https://i.postimg.cc/PqDnKGLQ/image.png",
+                "https://i.postimg.cc/sX9ddp4C/image.png",
+                "https://i.postimg.cc/sxjFVvTw/image.png"
+            ]
+        },
+        "kyno": {
+            "icon": "https://i.postimg.cc/FR3Z7svR/kyno.png",
+            "images": []
+        },
+        "dnslookupview": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/T3j7Mm4s/image.png"
+            ]
+        },
+        "pellesc": {
+            "icon": "https://i.postimg.cc/dV1TgSZ1/pelles.png",
+            "images": [
+                "https://i.postimg.cc/ZKqRqvb8/image.png",
+                "https://i.postimg.cc/vZJHXPrF/image.png",
+                "https://i.postimg.cc/sxH3WKjG/image.png",
+                "https://i.postimg.cc/DyD2yCpM/image.png",
+                "https://i.postimg.cc/25dmGCjR/image.png",
+                "https://i.postimg.cc/FRDvtGJ6/image.png",
+                "https://i.postimg.cc/NGCtpJtF/image.png",
+                "https://i.postimg.cc/9QZjXc7w/image.png"
+            ]
+        },
+        "gifmoviegear": {
+            "icon": "https://i.postimg.cc/MTcC4xqv/movgear.png",
+            "images": [
+                "https://i.postimg.cc/k4dNrvdN/image.png",
+                "https://i.postimg.cc/90gqfGvm/image.png",
+                "https://i.postimg.cc/T3gp8M2c/image.png"
+            ]
+        },
+        "navicatbiviewer": {
+            "icon": "https://i.postimg.cc/MH1KC1qc/navicatbiv.png",
+            "images": [
+                "https://i.postimg.cc/76WmFTmr/image.png",
+                "https://i.postimg.cc/sftRSBsr/image.png",
+                "https://i.postimg.cc/5tNc1LqL/image.png"
+            ]
+        },
+        "navicatbi": {
+            "icon": "https://i.postimg.cc/BQZr9xqR/navicatbi.png",
+            "images": [
+                "https://i.postimg.cc/pTqBD5gT/image.png",
+                "https://i.postimg.cc/y6pPx9hq/image.png",
+                "https://i.postimg.cc/d0FRp9FL/image.png",
+                "https://i.postimg.cc/W3bGbbhj/image.png",
+                "https://i.postimg.cc/8c7LMKdG/image.png"
+            ]
+        },
+        "pixplant": {
+            "icon": "https://i.postimg.cc/hjP8sbWs/PixPlant.png",
+            "images": [
+                "https://i.postimg.cc/VvZKnZJC/image.png",
+                "https://i.postimg.cc/T2t7z1tn/image.png",
+                "https://i.postimg.cc/vHjPmjRS/image.png",
+                "https://i.postimg.cc/VLT7NTQC/image.png",
+                "https://i.postimg.cc/7Z2KJVws/image.png",
+                "https://i.postimg.cc/1z0MJ3g1/image.png"
+            ]
+        },
+        "softroslanmessenger": {
+            "icon": "https://i.postimg.cc/DwPBcz4T/smm.png",
+            "images": [
+                "https://i.postimg.cc/gk9sFhvw/image.png",
+                "https://i.postimg.cc/XY4gX0HT/image.png",
+                "https://i.postimg.cc/g00qqHP6/image.png",
+                "https://i.postimg.cc/Bvw5hPSZ/image.png",
+                "https://i.postimg.cc/HxqwmG8B/image.png",
+                "https://i.postimg.cc/9FjdNhhV/image.png"
+            ]
+        },
+        "dbschema": {
+            "icon": "https://i.postimg.cc/wT7pPSQ3/DbSchema.png",
+            "images": [
+                "https://i.postimg.cc/QCCR2T5v/image.png",
+                "https://i.postimg.cc/c4VVz6Jn/image.png",
+                "https://i.postimg.cc/vmyCQjf6/image.png",
+                "https://i.postimg.cc/DZyDGXCZ/image.png",
+                "https://i.postimg.cc/90Dn8j5L/image.png",
+                "https://i.postimg.cc/L4W7qhLQ/image.png",
+                "https://i.postimg.cc/k57hrSPV/image.png"
+            ]
+        },
+        "fasm": {
+            "icon": "https://i.postimg.cc/gkHr44mX/fasm.png",
+            "images": [
+                "https://i.postimg.cc/sDmD5X40/image.png",
+                "https://i.postimg.cc/DwDhcbJm/image.png"
+            ]
+        },
+        "axisdevicecompatibilitytool": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/sDx7Btpj/image.png"
+            ]
+        },
+        "hotalarmclock": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/mrkgVsgw/image.png",
+                "https://i.postimg.cc/Y0K2pLf4/image.png",
+                "https://i.postimg.cc/fRTzTNX5/image.png",
+                "https://i.postimg.cc/Y9gkyqKj/image.png"
+            ]
+        },
+        "httpanalyzer": {
+            "icon": "https://i.postimg.cc/mgvH5jt1/httpanal.png",
+            "images": [
+                "https://i.postimg.cc/tT27pNC3/image.png",
+                "https://i.postimg.cc/wTSMqvgH/image.png",
+                "https://i.postimg.cc/gc7ksJw0/image.png",
+                "https://i.postimg.cc/dtTQxYrK/image.png",
+                "https://i.postimg.cc/1zy9XVTS/image.png",
+                "https://i.postimg.cc/XJJ4cS4P/image.png"
+            ]
+        },
+        "connectionqualitymonitor": {
+            "icon": "https://i.postimg.cc/Jh3rzYFm/image.png",
+            "images": [
+                "https://i.postimg.cc/Px2dmpTH/image.png",
+                "https://i.postimg.cc/QCzsy2Fp/image.png"
+            ]
+        },
+        "netgenius": {
+            "icon": "https://i.postimg.cc/yNTKHgJS/image.png",
+            "images": [
+                "https://i.postimg.cc/Sx6F62fW/image.png",
+                "https://i.postimg.cc/XqGtppvD/image.png",
+                "https://i.postimg.cc/v84mWhgK/image.png"
+            ]
+        },
+        "bandwidthmanager": {
+            "icon": "https://i.postimg.cc/XY7mCHXZ/image.png",
+            "images": [
+                "https://i.postimg.cc/7L5RB53Z/image.png",
+                "https://i.postimg.cc/XJFzbt1c/image.png",
+                "https://i.postimg.cc/Hn9vJXgy/image.png",
+                "https://i.postimg.cc/15MYsGMh/image.png",
+                "https://i.postimg.cc/cJtDRVSz/image.png"
+            ]
+        },
+        "connectionemulator": {
+            "icon": "https://i.postimg.cc/tJkDRb3S/image.png",
+            "images": [
+                "https://i.postimg.cc/NM7kbtzt/image.png"
+            ]
+        },
+        "ramdisk": {
+            "icon": "https://i.postimg.cc/zvGKjghB/image.png",
+            "images": [
+                "https://i.postimg.cc/3Nq4Fb7s/image.png",
+                "https://i.postimg.cc/SNXzxqfN/image.png",
+                "https://i.postimg.cc/Z5pB6cgZ/image.png"
+            ]
+        },
+        "switchportmapper": {
+            "icon": "https://i.postimg.cc/13GX8znf/image.png",
+            "images": [
+                "https://i.postimg.cc/XvxvgDks/image.png",
+                "https://i.postimg.cc/G25hW8Nx/image.png"
+            ]
+        },
+        "winget-softperfect-wifiguard": {
+            "icon": "https://i.postimg.cc/5Nxbsm6W/image.png",
+            "images": [
+                "https://i.postimg.cc/43hgYLFm/image.png"
+            ]
+        },
+        "winget-softperfect-networkscanner": {
+            "icon": "https://i.postimg.cc/brmMCkF7/image.png",
+            "images": [
+                "https://i.postimg.cc/Fsn80bS3/image.png",
+                "https://i.postimg.cc/2SbJGqFS/image.png",
+                "https://i.postimg.cc/5t8rcZRh/image.png",
+                "https://i.postimg.cc/B6sVJmW8/image.png"
+            ]
+        },
+        "cacherelocator": {
+            "icon": "https://i.postimg.cc/jS8RBnBZ/image.png",
+            "images": [
+                "https://i.postimg.cc/Pq9T5sXY/image.png"
+            ]
+        },
+        "zed": {
+            "icon": "https://i.postimg.cc/qgVTHhyZ/zed.png",
+            "images": [
+                "https://i.postimg.cc/cLWvQ62b/image.png",
+                "https://i.postimg.cc/Zq70tHnz/image.png",
+                "https://i.postimg.cc/Y2m0Z1wb/image.png",
+                "https://i.postimg.cc/3R0rMHzK/image.png"
+            ]
+        },
+        "zed-preview": {
+            "icon": "https://i.postimg.cc/8zd1DHyx/zed-prev.png",
+            "images": []
+        },
+        "worldmap": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/c4yGFzZd/image.png",
+                "https://i.postimg.cc/05C04M1f/image.png",
+                "https://i.postimg.cc/rwVbbXHc/image.png",
+                "https://i.postimg.cc/CLFmMCsj/image.png",
+                "https://i.postimg.cc/Df51g91G/image.png"
+            ]
+        },
+        "bluelifehostseditor": {
+            "icon": "https://i.postimg.cc/pdzPVtP0/hostedit.png",
+            "images": [
+                "https://i.postimg.cc/cCjRc3P6/image.png",
+                "https://i.postimg.cc/htYk7Z2Y/image.png",
+                "https://i.postimg.cc/8Crqdd3w/image.png",
+                "https://i.postimg.cc/0jZ35V6C/image.png",
+                "https://i.postimg.cc/hPywH3RP/image.png",
+                "https://i.postimg.cc/6pFPQ235/image.png"
+            ]
+        },
+        "hibernateenableordisable\n": {
+            "icon": "https://i.postimg.cc/BvrtNgvf/hibernate.png",
+            "images": [
+                "https://i.postimg.cc/V6fWsmXp/image.png",
+                "https://i.postimg.cc/4yh7sS2D/image.png",
+                "https://i.postimg.cc/ZY9VWYGF/image.png",
+                "https://i.postimg.cc/Njxx3KHp/image.png",
+                "https://i.postimg.cc/50XqQpkS/image.png"
+            ]
+        },
+        "folderpainter": {
+            "icon": "https://i.postimg.cc/7YTVPxCL/Folder-Painter.png",
+            "images": [
+                "https://i.postimg.cc/htL1xp1n/image.png",
+                "https://i.postimg.cc/jjv63217/image.png",
+                "https://i.postimg.cc/qRRsP0Vp/image.png",
+                "https://i.postimg.cc/2yL45wSJ/image.png",
+                "https://i.postimg.cc/59DrSKvT/image.png"
             ]
         }
     }
