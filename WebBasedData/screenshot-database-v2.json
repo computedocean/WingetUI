@@ -1,10 +1,10 @@
 {
     "package_count": {
-        "total": 12121,
-        "done": 5640,
-        "packages_with_icon": 5640,
-        "packages_with_screenshot": 1084,
-        "total_screenshots": 3561
+        "total": 12449,
+        "done": 5962,
+        "packages_with_icon": 5962,
+        "packages_with_screenshot": 1374,
+        "total_screenshots": 4246
     },
     "icons_and_screenshots": {
         "__test_entry_DO_NOT_EDIT_PLEASE": {
@@ -463,6 +463,16 @@
         "abc-update": {
             "icon": "https://community.chocolatey.org/content/packageimages/ABC-Update.3.0.1.png",
             "images": []
+        },
+        "abdownloadmanager": {
+            "icon": "https://i.postimg.cc/Px4yR0tL/abdownloadmanager.png",
+            "images": [
+                "https://raw.githubusercontent.com/amir1376/ab-download-manager/master/assets/banners/app_banner.png",
+                "https://raw.githubusercontent.com/amir1376/ab-download-manager/master/assets/screenshots/app-home_dark.png",
+                "https://raw.githubusercontent.com/amir1376/ab-download-manager/master/assets/screenshots/app-home_light.png",
+                "https://raw.githubusercontent.com/amir1376/ab-download-manager/master/assets/screenshots/app-download_dark.png",
+                "https://raw.githubusercontent.com/amir1376/ab-download-manager/master/assets/screenshots/app-download_light.png"
+            ]
         },
         "abilityoffice": {
             "icon": "https://i.postimg.cc/fbz5STZb/Ability-icon.png",
@@ -1372,12 +1382,11 @@
             ]
         },
         "advancedrenamer": {
-            "icon": "https://i.imgur.com/glf2Hgy.jpg",
+            "icon": "https://i.postimg.cc/kXb269CH/image.png",
             "images": [
-                "https://www.advancedrenamer.com/pic/screen_aren_3_87_002.png",
-                "https://static.filehorse.com/screenshots/file-transfer-and-networking/advanced-renamer-screenshot-01.png",
-                "https://www.portablefreeware.com/screenshots/scrUiOEc2.png",
-                "https://www.thewindowsclub.com/wp-content/uploads/2013/04/advanced-renamer-2.png"
+                "https://i.postimg.cc/k42bTSr9/image.png",
+                "https://i.postimg.cc/h47mxVb7/image.png",
+                "https://i.postimg.cc/kGtgbNkH/image.png"
             ]
         },
         "advancedrestclient": {
@@ -1389,7 +1398,9 @@
         },
         "advancedrun": {
             "icon": "https://community.chocolatey.org/content/packageimages/advancedrun.1.51.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/4xG4MGTv/image.png"
+            ]
         },
         "advancedsystemcare": {
             "icon": "https://upload.wikimedia.org/wikipedia/commons/8/89/Advanced_SystemCare_9_logo.png",
@@ -1981,7 +1992,9 @@
         },
         "alternatestreamview": {
             "icon": "https://community.chocolatey.org/content/packageimages/alternatestreamview.1.58.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/QtFj5xpK/image.png"
+            ]
         },
         "altium-designer": {
             "icon": "https://community.chocolatey.org/content/packageimages/altium-designer.21.1.0.24.png",
@@ -2215,7 +2228,7 @@
             ]
         },
         "androidmessages-desk\u2026": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/67/Google_Messages_icon_%282022%29.svg/128px-Google_Messages_icon_%282022%29.svg.png",
             "images": []
         },
         "androidstudio": {
@@ -2712,7 +2725,9 @@
         },
         "appcrashview": {
             "icon": "https://community.chocolatey.org/content/packageimages/appcrashview.1.31.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/ryt8wsVv/image.png"
+            ]
         },
         "appease-client-powershell": {
             "icon": "https://community.chocolatey.org/content/packageimages/appease.client.powershell.0.0.88.png",
@@ -2727,7 +2742,7 @@
             "images": []
         },
         "appflowy": {
-            "icon": "https://github.com/AppFlowy-IO/AppFlowy/blob/main/frontend/appflowy_tauri/src-tauri/icons/Square310x310Logo.png",
+            "icon": "https://raw.githubusercontent.com/AppFlowy-IO/AppFlowy/refs/heads/main/frontend/appflowy_flutter/macos/Runner/Assets.xcassets/AppIcon.appiconset/256.png",
             "images": [
                 "https://github.com/AppFlowy-IO/AppFlowy-Website/blob/main/assets/images/hero-section/desktop.png",
                 "https://github.com/AppFlowy-IO/AppFlowy/blob/main/doc/imgs/welcome.png"
@@ -3323,6 +3338,18 @@
             "icon": "https://community.chocolatey.org/content/packageimages/astah.6.6.4.png",
             "images": []
         },
+        "astral-sh.ruff": {
+            "icon": "https://i.postimg.cc/NfT3zPTq/astral-sh-ruff.png",
+            "images": []
+        },
+        "astral-sh.ty": {
+            "icon": "https://i.postimg.cc/7PpvXyCY/astral-sh-ty.png",
+            "images": []
+        },
+        "astral-sh.uv": {
+            "icon": "https://i.postimg.cc/PrZgRFZG/astral-sh-uv.png",
+            "images": []
+        },
         "asterie": {
             "icon": "https://community.chocolatey.org/content/packageimages/asterie.1.03.png",
             "images": []
@@ -3727,8 +3754,11 @@
             "images": []
         },
         "autoruns": {
-            "icon": "https://community.chocolatey.org/content/packageimages/AutoRuns.14.09.png",
-            "images": []
+            "icon": "https://i.ibb.co/hF170wpM/2021-12-16-ts3-thumbs-dfe-p-256.png",
+            "images": [
+                "https://i.ibb.co/x9YyC59/image.png",
+                "https://i.ibb.co/KptqgZ3r/image.png"
+            ]
         },
         "autoscreenrecorder": {
             "icon": "",
@@ -4368,7 +4398,7 @@
             "images": []
         },
         "bambustudio": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/BambuStudio.png",
+            "icon": "https://unigeticons.meowcat285.com/BambuStudio.png",
             "images": []
         },
         "banana-buchhaltung": {
@@ -4419,6 +4449,12 @@
                 "https://www.bandisoft.com/bandizip/screenshots/imgs.en/10_pr.png",
                 "https://www.bandisoft.com/bandizip/screenshots/imgs.en/11_preview.png",
                 "https://www.bandisoft.com/bandizip/screenshots/imgs.en/12_amsi.png"
+            ]
+        },
+        "bandiview": {
+            "icon": "",
+            "images": [
+                "https://en.bandisoft.com/bandiview/screenshots/imgs.en/01.png"
             ]
         },
         "banks": {
@@ -4624,8 +4660,10 @@
             ]
         },
         "batchimageconverter": {
-            "icon": "",
-            "images": []
+            "icon": "https://vovsoft.com/icons128/batch-image-converter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/batch-image-converter.png"
+            ]
         },
         "batchimageenhancer": {
             "icon": "https://i.imgur.com/REcnsis.png",
@@ -4640,11 +4678,13 @@
         "batchimageresizer": {
             "icon": "https://i.imgur.com/REcnsis.png",
             "images": [
-                "https://www.binarymark.com/img/screens/p2_main.png",
-                "https://www.binarymark.com/assets/batch-image-processor/screenshots/tour/act5.png",
-                "https://www.binarymark.com/assets/batch-image-processor/screenshots/tour/scr_manualmode2.jpg",
-                "https://www.binarymark.com/assets/batch-image-processor/screenshots/tour/fitto_resize.jpg",
-                "https://www.binarymark.com/assets/batch-image-processor/crop/scr_crop_ratio.jpg"
+                "https://i.postimg.cc/d1LxnhHH/image.png",
+                "https://i.postimg.cc/ZKrDftcX/image.png",
+                "https://i.postimg.cc/LsqtbjSP/image.png",
+                "https://i.postimg.cc/MZBsT2hQ/image.png",
+                "https://i.postimg.cc/6pMcS9vq/image.png",
+                "https://i.postimg.cc/N0V4spDV/image.png",
+                "https://i.postimg.cc/3r2Bhjvj/image.png"
             ]
         },
         "batchimages": {
@@ -4921,14 +4961,19 @@
             "images": []
         },
         "beekeeper-studio": {
-            "icon": "",
+            "icon": "https://i.ibb.co/TMZj4pS3/Image.png",
             "images": [
-                "https://www.beekeeperstudio.io/assets/img/blog/33/solarized-725bccb89ac412416ad89bad5424238aa85e57e0562f97ab430535021b94ccad.png",
-                "https://www.beekeeperstudio.io/assets/img/features/magics-6c2eb6f3466201c7ecb9a43e85caae7ce5a202859b88b7a056010899bbd3f64e.png"
+                "https://i.postimg.cc/xCfs8tb3/image.png",
+                "https://i.postimg.cc/C5dmH57K/image.png",
+                "https://i.postimg.cc/BZwhZ5Zg/image.png",
+                "https://i.postimg.cc/pLKkBgfm/image.png",
+                "https://i.postimg.cc/W3Y73jvQ/image.png",
+                "https://i.postimg.cc/KjdrPN46/image.png",
+                "https://i.postimg.cc/0N8G0r54/image.png"
             ]
         },
         "beeper": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/j5JbY4KV/beeper_512.png",
             "images": []
         },
         "beersmith": {
@@ -5020,7 +5065,7 @@
             "images": []
         },
         "betterbird": {
-            "icon": "https://cdn.meowcat285.com/public/betterbird/betterbird.png",
+            "icon": "https://unigeticons.meowcat285.com/betterbird.png",
             "images": []
         },
         "bettercrewlink": {
@@ -5162,7 +5207,7 @@
             "images": []
         },
         "bing": {
-            "icon": "",
+            "icon": "https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/bing-color.png",
             "images": []
         },
         "bingbar": {
@@ -5170,7 +5215,7 @@
             "images": []
         },
         "bingdesktop": {
-            "icon": "https://community.chocolatey.org/content/packageimages/BingDesktop.1.3.478.2019.png",
+            "icon": "https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/bing-color.png",
             "images": []
         },
         "binggpt": {
@@ -5178,7 +5223,7 @@
             "images": []
         },
         "bingwallpaper": {
-            "icon": "",
+            "icon": "https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/bing-color.png",
             "images": []
         },
         "binutils": {
@@ -5274,7 +5319,7 @@
             "images": []
         },
         "bitdefender": {
-            "icon": "https://cdn.meowcat285.com/public/bitdefender/bitdefendericon.png",
+            "icon": "https://unigeticons.meowcat285.com/bitdefendericon.png",
             "images": []
         },
         "bitdefender-usb-immunizer": {
@@ -5326,7 +5371,7 @@
             "images": []
         },
         "bitwarden": {
-            "icon": "https://raw.githubusercontent.com/bitwarden/clients/master/apps/desktop/resources/icons/512x512.png",
+            "icon": "https://raw.githubusercontent.com/bitwarden/brand/main/icons/256x256.png",
             "images": [
                 "https://tweakers.net/ext/i/2003879068.png"
             ]
@@ -5536,7 +5581,10 @@
         },
         "bluescreenview": {
             "icon": "https://community.chocolatey.org/content/packageimages/bluescreenview.portable.1.55.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/vmjpJ76p/image.png",
+                "https://i.postimg.cc/4d9rsK6m/image.png"
+            ]
         },
         "bluesherpa": {
             "icon": "",
@@ -6180,11 +6228,11 @@
             "images": []
         },
         "burpsuite-community": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/BurpSuite_Comunity_Edition.svg/512px-BurpSuite_Comunity_Edition.svg.png",
             "images": []
         },
         "burpsuite-professional": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/BurpSuite_Comunity_Edition.svg/512px-BurpSuite_Comunity_Edition.svg.png",
             "images": []
         },
         "businesscardmaker": {
@@ -6224,7 +6272,7 @@
             "images": []
         },
         "butterfly": {
-            "icon": "",
+            "icon": "https://raw.githubusercontent.com/LinwoodDev/Butterfly/refs/heads/develop/app/web/ios/128.png",
             "images": []
         },
         "butterfly-nightly": {
@@ -6472,7 +6520,7 @@
             "images": []
         },
         "camerahub": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/fTj3gLXs/camerahub_202512_128.png",
             "images": []
         },
         "camerasettings": {
@@ -6496,7 +6544,13 @@
             "images": []
         },
         "camtasia": {
-            "icon": "https://cdn.neowin.com/news/images/uploaded/2017/09/1506235786_camtasia_studio_story.jpg",
+            "icon": "https://i.postimg.cc/wvZkFLt4/camtasia-icon.png",
+            "images": [
+                "https://i.postimg.cc/L4kScTT7/image.png"
+            ]
+        },
+        "audiate": {
+            "icon": "https://i.postimg.cc/yNrhYcTg/audiate-icon.png",
             "images": []
         },
         "camunda-bpm-tomcat": {
@@ -6546,15 +6600,17 @@
             "images": []
         },
         "capcut": {
-            "icon": "",
-            "images": []
+            "icon": "https://i.imgur.com/KKlYzyU.png",
+            "images": [
+                "https://i.imgur.com/HEcgy42.png"
+            ]
         },
         "capframex": {
             "icon": "",
             "images": []
         },
         "caprine": {
-            "icon": "https://community.chocolatey.org/content/packageimages/caprine.2.57.0.png",
+            "icon": "https://raw.githubusercontent.com/sindresorhus/caprine/main/media/AppIcon-readme.png",
             "images": []
         },
         "capslockx": {
@@ -7335,8 +7391,11 @@
             "images": []
         },
         "choeazycopy": {
-            "icon": "",
-            "images": []
+            "icon": "https://unigeticons.meowcat285.com/ChoEazyCopy.png",
+            "images": [
+                "https://unigeticons.meowcat285.com/Screenshots/ChoEazyCopy/EazyCopyMain.PNG",
+                "https://unigeticons.meowcat285.com/Screenshots/ChoEazyCopy/EazyCopyMain1.PNG"
+            ]
         },
         "choosenim": {
             "icon": "",
@@ -7424,7 +7483,9 @@
         },
         "chromecacheview": {
             "icon": "https://community.chocolatey.org/content/packageimages/chromecacheview.2.41.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/28mPNSVk/image.png"
+            ]
         },
         "chromecookiebackup": {
             "icon": "https://community.chocolatey.org/content/packageimages/chromecookiebackup.1.0.0.png",
@@ -7545,7 +7606,7 @@
             "images": []
         },
         "citrix-workspace": {
-            "icon": "https://community.chocolatey.org/content/packageimages/citrix-workspace.22.12.0.48.png",
+            "icon": "https://imgur.com/a/rrJMWst",
             "images": []
         },
         "citrix-workspace-ltsr": {
@@ -7629,7 +7690,7 @@
             "images": []
         },
         "clashforwindows": {
-            "icon": "",
+            "icon": "https://community.chocolatey.org/content/packageimages/clash-for-windows.0.20.2.png",
             "images": []
         },
         "clashverge": {
@@ -7810,7 +7871,9 @@
         },
         "clipboardic": {
             "icon": "https://community.chocolatey.org/content/packageimages/clipboardic.1.15.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/Vvz4p5Dz/image.png"
+            ]
         },
         "clipboardsync": {
             "icon": "",
@@ -8005,7 +8068,7 @@
             "images": []
         },
         "clrtypessqlserver-2019": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/25/Microsoft_icon.svg/250px-Microsoft_icon.svg.png",
             "images": []
         },
         "clumsy": {
@@ -8315,7 +8378,11 @@
             "icon": "",
             "images": []
         },
-        "comicrack community edition": {
+        "comicrackce-nightly": {
+            "icon": "https://raw.githubusercontent.com/maforget/ComicRackCE/refs/heads/master/ComicRack/Resources/ComicRackApp256.png",
+            "images": []
+        },
+        "comicrack-community-edition": {
             "icon": "https://images.freeimages.com/fic/images/icons/2804/plex/512/comicrack.png",
             "images": []
         },
@@ -8413,7 +8480,7 @@
             "images": []
         },
         "compass-full": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/mongodb-compass-logo-stable.png",
+            "icon": "https://unigeticons.meowcat285.com/mongodb-compass-logo-stable.png",
             "images": [
                 "https://raw.githubusercontent.com/mongodb-js/compass/main/packages/compass/compass-screenshot.png"
             ]
@@ -8617,7 +8684,7 @@
             "images": []
         },
         "controlcenter": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/CLHZ61DY/controlcenter_202512_128.png",
             "images": []
         },
         "controller": {
@@ -8633,7 +8700,7 @@
             "images": []
         },
         "converseen": {
-            "icon": "",
+            "icon": "https://images.sftcdn.net/images/t_app-icon-m/p/2bb1d08a-9a63-11e6-b1e0-00163ec9f5fa/2428479783/converseen-icon.png",
             "images": []
         },
         "convert-net": {
@@ -8661,8 +8728,13 @@
             "images": []
         },
         "copilot": {
-            "icon": "https://i.postimg.cc/T31K2tXf/Brand-Logo-org-Microsoft-Copilot-Logo.png",
-            "images": []
+            "icon": "https://i.postimg.cc/5yPpc3Sd/copilot-cli.png",
+            "images": [
+                "https://i.postimg.cc/fW0xMMW3/Header-Image.png",
+                "https://i.postimg.cc/59Fwff9Q/1-Get-Started-0.png",
+                "https://i.postimg.cc/ZYyrJJYy/2-MCPsearch-Issues-0.png",
+                "https://i.postimg.cc/xjbK99jz/3-Change-Color-0.png"
+            ]
         },
         "coppeliasim": {
             "icon": "",
@@ -9034,7 +9106,7 @@
             ]
         },
         "cpufetch": {
-            "icon": "",
+            "icon": "https://res.cloudinary.com/canonical/image/fetch/f_auto,q_auto,fl_sanitize,w_120/https%3A%2F%2Fdashboard.snapcraft.io%2Fsite_media%2Fappmedia%2F2021%2F04%2Ficon_YRxn9Gn.png",
             "images": [
                 "https://i.postimg.cc/cC1SY7Df/image.png",
                 "https://i.postimg.cc/rwRLSw9Z/image.png",
@@ -9330,7 +9402,9 @@
         },
         "csvfileview": {
             "icon": "https://community.chocolatey.org/content/packageimages/csvfileview.2.63.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/yYQnp194/image.png"
+            ]
         },
         "csview": {
             "icon": "",
@@ -9836,11 +9910,11 @@
             "images": []
         },
         "dbbrowserforsqlite": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/DBBrowser.png",
+            "icon": "https://unigeticons.meowcat285.com/DBBrowser.png",
             "images": []
         },
         "dbeaver": {
-            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/DBeaver_logo.svg/2048px-DBeaver_logo.svg.png",
+            "icon": "https://unigeticons.meowcat285.com/DBeaver.png",
             "images": []
         },
         "dbeaver-ee": {
@@ -10092,7 +10166,7 @@
             "images": []
         },
         "deadlock": {
-            "icon": "",
+            "icon": "https://cdn2.steamgriddb.com/icon_thumb/497a029d45e44c8f9cfb18713bc133b4.png",
             "images": []
         },
         "debian": {
@@ -10250,7 +10324,7 @@
             "images": []
         },
         "deltarune": {
-            "icon": "",
+            "icon": "https://user-images.githubusercontent.com/35242550/147987895-053c724c-eefd-4cc0-ae20-a1502ab0120d.png",
             "images": []
         },
         "deluge": {
@@ -10350,8 +10424,11 @@
             "images": []
         },
         "deskflow": {
-            "icon": "https://raw.githubusercontent.com/deskflow/deskflow/refs/heads/master/deploy/linux/deskflow.png",
-            "images": []
+            "icon": "https://dl.flathub.org/media/org/deskflow/deskflow/d93533995feb3af980d1ee1ffc0bf6d6/icons/128x128/org.deskflow.deskflow.png",
+            "images": [
+                "https://i.ibb.co/WvkQ1Drx/image.png",
+                "https://i.ibb.co/wNXm9YWh/image.png"
+            ]
         },
         "deskgo": {
             "icon": "",
@@ -10534,7 +10611,7 @@
             "images": []
         },
         "devhome": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/DevHome.png",
+            "icon": "https://unigeticons.meowcat285.com/DevHome.png",
             "images": [
                 "https://github.com/microsoft/devhome/blob/main/src/Assets/Preview/StoreDisplay-150.png",
                 "https://i.postimg.cc/6qBmSkFB/devhome-machine-config.png",
@@ -10900,7 +10977,9 @@
         },
         "diskcountersview": {
             "icon": "https://community.chocolatey.org/content/packageimages/diskcountersview.1.27.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/Qdq7YSvk/image.png"
+            ]
         },
         "diskdefrag": {
             "icon": "https://www.auslogics.com/includes/software/disk-defrag/i/logo.png",
@@ -10966,6 +11045,12 @@
         "displaycal": {
             "icon": "https://community.chocolatey.org/content/packageimages/displaycal.portable.3.8.9.3.png",
             "images": []
+        },
+        "displaydriveruninstaller": {
+            "icon": "https://kr.new-version.app/wp-content/uploads/2022/11/DDU-Display-Driver-Uninstaller.png",
+            "images": [
+                "https://i.ibb.co/9HwQZpwt/image.png"
+            ]
         },
         "displayfusion": {
             "icon": "https://tweakers.net/ext/i/2004839352.png",
@@ -11669,19 +11754,23 @@
             "images": []
         },
         "dotnet-aspnetcore-3-1": {
-            "icon": "https://community.chocolatey.org/content/packageimages/dotnetcore-aspnetruntime.3.1.32.png",
+            "icon": "https://raw.githubusercontent.com/dotnetcore-chocolatey/dotnetcore-chocolateypackages/master/icons/dotnetcore.png",
             "images": []
         },
         "dotnet-aspnetcore-5": {
-            "icon": "https://community.chocolatey.org/content/packageimages/dotnet-5.0-aspnetruntime.5.0.17.png",
+            "icon": "https://raw.githubusercontent.com/dotnetcore-chocolatey/dotnetcore-chocolateypackages/master/icons/dotnetcore.png",
             "images": []
         },
         "dotnet-aspnetcore-6": {
-            "icon": "https://community.chocolatey.org/content/packageimages/dotnet-6.0-aspnetruntime.6.0.24.png",
+            "icon": "https://raw.githubusercontent.com/dotnetcore-chocolatey/dotnetcore-chocolateypackages/master/icons/dotnetcore.png",
             "images": []
         },
         "dotnet-aspnetcore-7": {
-            "icon": "https://community.chocolatey.org/content/packageimages/dotnet-7.0-aspnetruntime.7.0.13.png",
+            "icon": "https://raw.githubusercontent.com/dotnetcore-chocolatey/dotnetcore-chocolateypackages/master/icons/dotnetcore.png",
+            "images": []
+        },
+        "dotnet-aspnetcore-8": {
+            "icon": "https://raw.githubusercontent.com/dotnetcore-chocolatey/dotnetcore-chocolateypackages/master/icons/dotnetcore.png",
             "images": []
         },
         "dotnet-aspnetcore-preview": {
@@ -11697,27 +11786,35 @@
             "images": []
         },
         "dotnet-desktopruntime": {
-            "icon": "https://community.chocolatey.org/content/packageimages/dotnet-desktopruntime.7.0.3.png",
+            "icon": "https://raw.githubusercontent.com/dotnetcore-chocolatey/dotnetcore-chocolateypackages/master/icons/dotnetcore.png",
             "images": []
         },
-        "dotnet-desktopruntime-3-1": {
-            "icon": "",
+        "dotnet-desktopruntime-3_1": {
+            "icon": "https://raw.githubusercontent.com/dotnetcore-chocolatey/dotnetcore-chocolateypackages/master/icons/dotnetcore.png",
             "images": []
         },
         "dotnet-desktopruntime-5": {
-            "icon": "",
+            "icon": "https://raw.githubusercontent.com/dotnetcore-chocolatey/dotnetcore-chocolateypackages/master/icons/dotnetcore.png",
             "images": []
         },
         "dotnet-desktopruntime-6": {
-            "icon": "",
+            "icon": "https://raw.githubusercontent.com/dotnetcore-chocolatey/dotnetcore-chocolateypackages/master/icons/dotnetcore.png",
             "images": []
         },
         "dotnet-desktopruntime-7": {
-            "icon": "",
+            "icon": "https://raw.githubusercontent.com/dotnetcore-chocolatey/dotnetcore-chocolateypackages/master/icons/dotnetcore.png",
+            "images": []
+        },
+        "dotnet-desktopruntime-8": {
+            "icon": "https://raw.githubusercontent.com/dotnetcore-chocolatey/dotnetcore-chocolateypackages/master/icons/dotnetcore.png",
+            "images": []
+        },
+        "dotnet-desktopruntime-9": {
+            "icon": "https://raw.githubusercontent.com/dotnetcore-chocolatey/dotnetcore-chocolateypackages/master/icons/dotnetcore.png",
             "images": []
         },
         "dotnet-desktopruntime-pr\u2026": {
-            "icon": "",
+            "icon": "https://raw.githubusercontent.com/dotnetcore-chocolatey/dotnetcore-chocolateypackages/master/icons/dotnetcore.png",
             "images": []
         },
         "dotnet-framework-develop\u2026": {
@@ -12100,8 +12197,10 @@
             ]
         },
         "downtester": {
-            "icon": "https://community.chocolatey.org/content/packageimages/downtester.install.1.30.png",
-            "images": []
+            "icon": "https://i.postimg.cc/P5FDkNrP/image.png",
+            "images": [
+                "https://i.postimg.cc/90jTNSXc/image.png"
+            ]
         },
         "downzemall": {
             "icon": "https://community.chocolatey.org/content/packageimages/downzemall.3.0.2.png",
@@ -12216,7 +12315,7 @@
             "images": []
         },
         "driverstoreexplorer": {
-            "icon": "",
+            "icon": "https://i.ibb.co/dwC17cP4/icon2-upscayl-5x-ultramix-balanced-4x.png",
             "images": []
         },
         "driverview": {
@@ -12383,7 +12482,7 @@
             "images": []
         },
         "dualmonitortools": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/hj7BR1nL/dual-monitor-tools-176.png",
             "images": []
         },
         "dualsensefwupdater": {
@@ -12682,7 +12781,7 @@
             "images": []
         },
         "earthpro": {
-            "icon": "",
+            "icon": "https://images.icon-icons.com/188/PNG/256/Google_Earth_22883.png",
             "images": []
         },
         "earthview": {
@@ -12694,7 +12793,7 @@
             "images": []
         },
         "eartrumpet": {
-            "icon": "https://d4.alternativeto.net/tH4hl8zvvnkASZ8UIJYALlE3s-1-A6cPBiHta10oRgM/rs:fill:280:280:0/g:ce:0:0/YWJzOi8vZGlzdC9pY29ucy9lYXJ0cnVtcGV0XzE5NjAxMy5wbmc.png",
+            "icon": "https://raw.githubusercontent.com/File-New-Project/EarTrumpet/refs/heads/master/EarTrumpet/Assets/Logo-Light.png",
             "images": []
         },
         "easinote": {
@@ -13862,7 +13961,7 @@
             ]
         },
         "everything-alpha": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/EverythingAlpha.png",
+            "icon": "https://unigeticons.meowcat285.com/EverythingAlpha.png",
             "images": [
                 "https://i.postimg.cc/wvL9Cbp6/image.png"
             ]
@@ -14001,8 +14100,14 @@
             "images": []
         },
         "executor": {
-            "icon": "https://community.chocolatey.org/content/packageimages/Executor.1.0.11.png",
-            "images": []
+            "icon": "https://i.postimg.cc/qRnQRS1X/image.png",
+            "images": [
+                "https://i.postimg.cc/x1TsRsdf/image.png",
+                "https://i.postimg.cc/wxX0dKyH/image.png",
+                "https://i.postimg.cc/sDKmvp40/image.png",
+                "https://i.postimg.cc/B6WcdNJx/image.png",
+                "https://i.postimg.cc/02tG898M/image.png"
+            ]
         },
         "exeinfo": {
             "icon": "https://community.chocolatey.org/content/packageimages/exeinfo.1.01.png",
@@ -14163,7 +14268,7 @@
             "images": []
         },
         "f-lux": {
-            "icon": "https://community.chocolatey.org/content/packageimages/f.lux.portable.4.120.png",
+            "icon": "https://justgetflux.com/press/flux-icon-transparent.png",
             "images": []
         },
         "f2": {
@@ -14253,9 +14358,9 @@
             "images": []
         },
         "fancontrol": {
-            "icon": "https://postimg.cc/T5KzZ7NR",
+            "icon": "https://unigeticons.meowcat285.com/FanControl.png",
             "images": [
-                "https://github.com/Rem0o/FanControl.Releases/blob/master/Images/MainUI.png"
+                "https://unigeticons.meowcat285.com/Screenshots/FanControl/MainUI.png"
             ]
         },
         "far": {
@@ -14617,7 +14722,7 @@
             "images": []
         },
         "filelight": {
-            "icon": "",
+            "icon": "https://invent.kde.org/utilities/filelight/-/raw/master/logo.png",
             "images": []
         },
         "filelist": {
@@ -14629,8 +14734,15 @@
             ]
         },
         "filemenutools": {
-            "icon": "",
-            "images": []
+            "icon": "https://i.postimg.cc/52FyrzJ3/File-Menu-Tools.png",
+            "images": [
+                "https://i.postimg.cc/Y9ywkXfy/image.png",
+                "https://i.postimg.cc/jqmrFFjj/image.png",
+                "https://i.postimg.cc/ThMFYByw/image.png",
+                "https://i.postimg.cc/QMd83WZ3/image.png",
+                "https://i.postimg.cc/4yVZ56VQ/image.png",
+                "https://i.postimg.cc/t4Xy3VTT/image.png"
+            ]
         },
         "filen": {
             "icon": "https://community.chocolatey.org/content/packageimages/filen.2.0.16.png",
@@ -15384,9 +15496,19 @@
             "icon": "https://community.chocolatey.org/content/packageimages/fonts-poppins.1.1.png",
             "images": []
         },
+        "fontviewok": {
+            "icon": "https://i.postimg.cc/5NSK9JZ4/Font-View-OK-ico.png\n",
+            "images": [
+                "https://i.postimg.cc/SNf1Q4wx/Font-View-OK.png"
+            ]
+        },
         "foobar2000": {
-            "icon": "https://community.chocolatey.org/content/packageimages/foobar2000.1.6.16.png",
-            "images": []
+            "icon": "https://i.postimg.cc/3NV8dpy4/foobar2000-ico.png\n",
+            "images": [
+                "https://i.postimg.cc/PJ9XPZLC/foobar2000-1.png",
+                "https://i.postimg.cc/0jFkbm6d/foobar2000-3.png",
+                "https://i.postimg.cc/0jFkbm6d/foobar2000-3.png"
+            ]
         },
         "foobar2000-encoders": {
             "icon": "",
@@ -16004,7 +16126,7 @@
             "images": []
         },
         "g-helper": {
-            "icon": "",
+            "icon": "https://i.ibb.co/PvLShmHH/ghelper.png",
             "images": [
                 "https://i.postimg.cc/7ZLhgWHV/image.png",
                 "https://i.postimg.cc/BbsQth7T/image.png",
@@ -16595,7 +16717,7 @@
             "images": []
         },
         "gimp": {
-            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/The_GIMP_icon_-_gnome.svg/316px-The_GIMP_icon_-_gnome.svg.png",
+            "icon": "https://gitlab.gnome.org/GNOME/gimp/-/raw/f73c4ed397d797ec1b5175f27b5c0f3538a87714/data/images/gimp-logo.png",
             "images": [
                 "https://docs.gimp.org/2.10/en/images/using/multi-window.png",
                 "https://i.sooftcdn.com/screen/en/windows/gimp-1.png",
@@ -16623,7 +16745,7 @@
             "images": []
         },
         "git": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/git.2.46.2.png",
+            "icon": "https://unigeticons.meowcat285.com/git.2.46.2.png",
             "images": [
                 "https://i.postimg.cc/QMmHqPP9/git1.png",
                 "https://i.postimg.cc/cHJ6khyD/git2.png",
@@ -17219,7 +17341,7 @@
             "images": []
         },
         "go": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/Go-Logo_Blue.png",
+            "icon": "https://unigeticons.meowcat285.com/Go-Logo_Blue.png",
             "images": []
         },
         "go-contact-sync-mod": {
@@ -17261,6 +17383,12 @@
         "goauthing": {
             "icon": "",
             "images": []
+        },
+        "goawayedge": {
+            "icon": "https://dl.exploitox.de/goawayedge/GoAwayEdge_Logo.png",
+            "images": [
+                "https://dl.exploitox.de/goawayedge/GoAwayEdge_Screenshot2.png"
+            ]
         },
         "gobang": {
             "icon": "",
@@ -17443,7 +17571,7 @@
             "images": []
         },
         "google-chrome-x64": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/Google_Chrome_icon_%28February_2022%29.svg/32px-Google_Chrome_icon_%28February_2022%29.svg.png",
             "images": []
         },
         "google-dictionary-chrome": {
@@ -17456,6 +17584,10 @@
         },
         "google-drive-file-stream": {
             "icon": "https://community.chocolatey.org/content/packageimages/google-drive-file-stream.56.0.11.2022.png",
+            "images": []
+        },
+        "google-earth-pro": {
+            "icon": "https://images.icon-icons.com/188/PNG/256/Google_Earth_22883.png",
             "images": []
         },
         "google-hangouts-chrome": {
@@ -17523,7 +17655,7 @@
             "images": []
         },
         "googlechrome": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/Google_Chrome_icon_%28February_2022%29.svg/32px-Google_Chrome_icon_%28February_2022%29.svg.png",
             "images": []
         },
         "googlechrome-allusers": {
@@ -17919,7 +18051,7 @@
             "images": []
         },
         "greenshot": {
-            "icon": "https://community.chocolatey.org/content/packageimages/greenshot.1.2.10.6.png",
+            "icon": "https://secure.gravatar.com/avatar/a39fbcebe12b5f384ec729e86139ec39.png",
             "images": []
         },
         "grep": {
@@ -18441,7 +18573,10 @@
         },
         "hashmyfiles": {
             "icon": "https://community.chocolatey.org/content/packageimages/hashmyfiles.2.43.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/kMxgyG0B/image.png",
+                "https://i.postimg.cc/WbTbYjVm/image.png"
+            ]
         },
         "hashtab": {
             "icon": "https://community.chocolatey.org/content/packageimages/hashtab.6.0.0.3402.png",
@@ -18711,6 +18846,22 @@
         "helioworkstation": {
             "icon": "",
             "images": []
+        },
+        "helium": {
+            "icon": "https://raw.githubusercontent.com/imputnet/helium/main/resources/branding/app_icon/raw.png",
+            "images": [
+                "https://i.ibb.co/whfhQY9H/lead.png",
+                "https://i.ibb.co/SX023htv/split-view.png",
+                "https://i.ibb.co/849XG3C3/bangs.png"
+            ]
+        },
+        "helium-pre": {
+            "icon": "https://raw.githubusercontent.com/imputnet/helium/main/resources/branding/app_icon/raw.png",
+            "images": [
+                "https://i.ibb.co/whfhQY9H/lead.png",
+                "https://i.ibb.co/SX023htv/split-view.png",
+                "https://i.ibb.co/849XG3C3/bangs.png"
+            ]
         },
         "helix": {
             "icon": "",
@@ -19450,6 +19601,10 @@
             "icon": "",
             "images": []
         },
+        "hytale": {
+            "icon": "https://i.ibb.co/84gk48zK/hytale.png",
+            "images": []
+        },
         "i-am": {
             "icon": "",
             "images": []
@@ -20069,7 +20224,7 @@
             "images": []
         },
         "inimanager": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/iniManager.png",
+            "icon": "https://unigeticons.meowcat285.com/iniManager.png",
             "images": []
         },
         "inireloc": {
@@ -20115,8 +20270,7 @@
             "icon": "https://upload.wikimedia.org/wikipedia/commons/c/cc/Inno_Setup_icon.png",
             "images": [
                 "https://jazzteam.org/en/wp-content/uploads/2020/09/image1.png",
-                "https://i.stack.imgur.com/IXyKs.png",
-                "https://www.codeproject.com/KB/install/1172906/setuptest01.png"
+                "https://i.stack.imgur.com/IXyKs.png"
             ]
         },
         "innoextract": {
@@ -20131,12 +20285,11 @@
             "icon": "https://upload.wikimedia.org/wikipedia/commons/c/cc/Inno_Setup_icon.png",
             "images": [
                 "https://jazzteam.org/en/wp-content/uploads/2020/09/image1.png",
-                "https://i.stack.imgur.com/IXyKs.png",
-                "https://www.codeproject.com/KB/install/1172906/setuptest01.png"
+                "https://i.stack.imgur.com/IXyKs.png"
             ]
         },
         "innounp": {
-            "icon": "",
+            "icon": "https://cdn2.portableapps.com/InnoUnpackerPortable_128.png",
             "images": []
         },
         "inpixiophotostudio": {
@@ -20161,7 +20314,9 @@
         },
         "insideclipboard": {
             "icon": "https://community.chocolatey.org/content/packageimages/insideclipboard.1.15.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/TPLR53jf/image.png"
+            ]
         },
         "insomnia": {
             "icon": "https://community.chocolatey.org/content/packageimages/insomnia-rest-api-client.2023.9.2.png",
@@ -20600,7 +20755,9 @@
         },
         "ipnetinfo": {
             "icon": "https://community.chocolatey.org/content/packageimages/ipnetinfo.install.1.95.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/VvRSZkHG/image.png"
+            ]
         },
         "ipopt": {
             "icon": "",
@@ -20773,8 +20930,13 @@
             "images": []
         },
         "itch": {
-            "icon": "https://community.chocolatey.org/content/packageimages/itch.25.5.1.png",
-            "images": []
+            "icon": "https://raw.githubusercontent.com/itchio/itch/refs/heads/master/src/static/images/tray/itch.png",
+            "images": [
+                "https://static.itch.io/images/app/collections@1x.png",
+                "https://static.itch.io/images/app/gamepage@1x.png",
+                "https://static.itch.io/images/app/install@1x.png",
+                "https://static.itch.io/images/app/html5@1x.png"
+            ]
         },
         "itopdatarecovery": {
             "icon": "",
@@ -21594,25 +21756,25 @@
             "images": []
         },
         "k-litecodecpack-basic": {
-            "icon": "https://www.soft-4-free.com/wp-content/plugins/download-manager/cache/K-Lite-Mega-Codec-Pack-225x225.png",
+            "icon": "",
             "images": [
                 "https://www.leawo.org/entips/wp-content/uploads/2020/09/Windows-Media-Player-codec-04.png"
             ]
         },
         "k-litecodecpack-full": {
-            "icon": "https://www.soft-4-free.com/wp-content/plugins/download-manager/cache/K-Lite-Mega-Codec-Pack-225x225.png",
+            "icon": "",
             "images": [
                 "https://www.leawo.org/entips/wp-content/uploads/2020/09/Windows-Media-Player-codec-04.png"
             ]
         },
         "k-litecodecpack-mega": {
-            "icon": "https://www.soft-4-free.com/wp-content/plugins/download-manager/cache/K-Lite-Mega-Codec-Pack-225x225.png",
+            "icon": "",
             "images": [
                 "https://www.leawo.org/entips/wp-content/uploads/2020/09/Windows-Media-Player-codec-04.png"
             ]
         },
         "k-litecodecpack-standard": {
-            "icon": "https://www.soft-4-free.com/wp-content/plugins/download-manager/cache/K-Lite-Mega-Codec-Pack-225x225.png",
+            "icon": "",
             "images": [
                 "https://www.leawo.org/entips/wp-content/uploads/2020/09/Windows-Media-Player-codec-04.png"
             ]
@@ -21712,7 +21874,7 @@
             "images": []
         },
         "kalilinux": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/KaliLinux.png",
+            "icon": "https://unigeticons.meowcat285.com/KaliLinux.png",
             "images": []
         },
         "kalk": {
@@ -23028,7 +23190,9 @@
         },
         "landrop": {
             "icon": "",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/QxPB4C8d/image.png"
+            ]
         },
         "languagetool": {
             "icon": "https://community.chocolatey.org/content/packageimages/languagetool.6.0.png",
@@ -23103,8 +23267,10 @@
             "images": []
         },
         "lastactivityview": {
-            "icon": "https://community.chocolatey.org/content/packageimages/lastactivityview.1.36.png",
-            "images": []
+            "icon": "https://i.postimg.cc/QMLzSNLy/image.png",
+            "images": [
+                "https://i.postimg.cc/vBbNFPZz/image.png"
+            ]
         },
         "lastfmdesktopscrobbler": {
             "icon": "",
@@ -23163,7 +23329,7 @@
             "images": []
         },
         "launcher": {
-            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7f/Python_Windows_setup_icon_2016.svg/512px-Python_Windows_setup_icon_2016.svg.png",
+            "icon": "https://i.ibb.co/PZ4CGyXW/rockstar-games-1536-433540335.png",
             "images": []
         },
         "launchy": {
@@ -23627,7 +23793,7 @@
             "images": []
         },
         "libreoffice": {
-            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/LibreOffice_icon_3.3.1_48_px.svg/200px-LibreOffice_icon_3.3.1_48_px.svg.png",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/LibreOffice_7.5_Main_Icon.svg/250px-LibreOffice_7.5_Main_Icon.svg.png",
             "images": [
                 "https://www.libreoffice.org/assets/Uploads/writer-2020.png",
                 "https://www.libreoffice.org/assets/Uploads/calc-2020.png",
@@ -23636,7 +23802,7 @@
             ]
         },
         "libreoffice-\u2026": {
-            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/LibreOffice_icon_3.3.1_48_px.svg/200px-LibreOffice_icon_3.3.1_48_px.svg.png",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/LibreOffice_7.5_Main_Icon.svg/250px-LibreOffice_7.5_Main_Icon.svg.png",
             "images": []
         },
         "libreoffice-fresh": {
@@ -23717,7 +23883,9 @@
         },
         "lightbulb": {
             "icon": "https://community.chocolatey.org/content/packageimages/lightbulb.2.0.png",
-            "images": []
+            "images": [
+                "https://i.imgur.com/BT0Gejw.png"
+            ]
         },
         "lightburn": {
             "icon": "https://i.postimg.cc/6pNTh6p3/Lightburn.png",
@@ -24083,7 +24251,7 @@
             "images": []
         },
         "llvm": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/LLVM-Logo-Derivative-4.png",
+            "icon": "https://unigeticons.meowcat285.com/LLVM-Logo-Derivative-4.png",
             "images": []
         },
         "lmath": {
@@ -24237,7 +24405,7 @@
             "images": []
         },
         "logitune": {
-            "icon": "",
+            "icon": "https://imgs.search.brave.com/ASjRKcLSMy8TMcfmAKV4Hte2F6IJZNgqHnCwlZv_jJw/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly93d3cu/bG9naXRlY2guY29t/L2Fzc2V0cy82NTY4/Ni8yL2xvZ2ktdHVu/ZS1hcHAucG5n",
             "images": []
         },
         "logmein-client": {
@@ -25990,7 +26158,7 @@
             "images": []
         },
         "miro": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/vmpfwKmf/miro-logo-250.png",
             "images": []
         },
         "mirrorgo": {
@@ -26093,6 +26261,12 @@
             "icon": "https://i.postimg.cc/DzrFp15v/mkvtoolnix-icon.png",
             "images": [
                 "https://i.postimg.cc/TPMfctVN/mkvtoolnix-gui-official-screenshot.png"
+            ]
+        },
+        "mlocati-gettext": {
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Heckert_GNU_white.svg/960px-Heckert_GNU_white.svg.png",
+            "images": [
+                "https://i.imgur.com/KnVZQsT.png"
             ]
         },
         "mls-software-openssh": {
@@ -26511,11 +26685,11 @@
             "images": []
         },
         "mountain-duck": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/MountainDuck.png",
+            "icon": "https://unigeticons.meowcat285.com/MountainDuck.png",
             "images": []
         },
         "mountainduck": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/MountainDuck.png",
+            "icon": "https://unigeticons.meowcat285.com/MountainDuck.png",
             "images": []
         },
         "mouse-jiggler": {
@@ -26523,7 +26697,7 @@
             "images": []
         },
         "mouseandkeyboardcenter": {
-            "icon": "",
+            "icon": "https://cdn.lo4d.com/t/icon/128/microsoft-mouse-and-keyboard-center.png",
             "images": []
         },
         "mousecontroller": {
@@ -26823,7 +26997,7 @@
             "images": []
         },
         "msedgeredirect": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/msedgeredirect.0.7.5.3.png",
+            "icon": "https://unigeticons.meowcat285.com/msedgeredirect.0.7.5.3.png",
             "images": []
         },
         "mseries": {
@@ -27060,6 +27234,10 @@
             "icon": "https://community.chocolatey.org/content/packageimages/mullvad-app.2023.1.png",
             "images": []
         },
+        "mullvadbrowser": {
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/70/Mullvad_Browser_logo.svg/128px-Mullvad_Browser_logo.svg.png",
+            "images": []
+        },
         "mullvadvpn": {
             "icon": "https://i.postimg.cc/0jX6jk4D/mullvad-VPN.png",
             "images": []
@@ -27147,15 +27325,15 @@
             "images": []
         },
         "mumble": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Icons_mumble.svg/256px-Icons_mumble.svg.png",
             "images": []
         },
         "mumble-client": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Icons_mumble.svg/256px-Icons_mumble.svg.png",
             "images": []
         },
         "mumble-server": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Icons_mumble.svg/256px-Icons_mumble.svg.png",
             "images": []
         },
         "munixo-client": {
@@ -27202,7 +27380,7 @@
             "images": []
         },
         "music-pattern-genera\u2026": {
-            "icon": "",
+            "icon": "https://community.chocolatey.org/content/packageimages/music-collector.22.0.6.png",
             "images": []
         },
         "musicbee": {
@@ -27220,6 +27398,14 @@
         "musicplayer2": {
             "icon": "",
             "images": []
+        },
+        "music-presence": {
+            "icon": "https://i.imgur.com/mg9JXrI.png",
+            "images": [
+                "https://i.imgur.com/a/0bmcVo6.png",
+                "https://repository-images.githubusercontent.com/754190568/8726b1de-8ffc-4184-9ad6-a0a8f7a7b896",
+                "https://musicpresence.app/opengraph/index.png"
+            ]
         },
         "musikcube": {
             "icon": "",
@@ -27354,7 +27540,7 @@
             "images": []
         },
         "mysql-workbench": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/MySQLWorkbench.png",
+            "icon": "https://unigeticons.meowcat285.com/MySQLWorkbench.png",
             "images": []
         },
         "mysqlnotifier": {
@@ -27362,7 +27548,7 @@
             "images": []
         },
         "mysqlworkbench": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/MySQLWorkbench.png",
+            "icon": "https://unigeticons.meowcat285.com/MySQLWorkbench.png",
             "images": [
                 "https://i.postimg.cc/wTDYzPtb/image.png",
                 "https://i.postimg.cc/43NDzxWr/image.png",
@@ -27790,6 +27976,12 @@
             "icon": "",
             "images": []
         },
+        "nditools": {
+            "icon": "https://i.postimg.cc/t4nMK0N7/nditools.png",
+            "images": [
+                "https://i.postimg.cc/RZpD8SHp/ndi-tools.png"
+            ]
+        },
         "ndm": {
             "icon": "https://i.imgur.com/Q3bnbu1.png",
             "images": []
@@ -28045,9 +28237,15 @@
             "icon": "https://community.chocolatey.org/content/packageimages/netbeans-php.8.2.png",
             "images": []
         },
+        "netbird": {
+            "icon": "https://netbird.io/icon.png",
+            "images": []
+        },
         "netbscanner": {
             "icon": "https://community.chocolatey.org/content/packageimages/netbscanner.1.11.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/GmnP542f/image.png"
+            ]
         },
         "netcat": {
             "icon": "",
@@ -28194,7 +28392,9 @@
         },
         "netrouteview": {
             "icon": "https://community.chocolatey.org/content/packageimages/netrouteview.1.30.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/jjsHRByM/image.png"
+            ]
         },
         "netscan": {
             "icon": "https://community.chocolatey.org/content/packageimages/netscan.6.2.1.20161101.png",
@@ -28336,15 +28536,19 @@
             "images": []
         },
         "nextcloud": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ed/Nextcloud-svgrepo-com.svg/512px-Nextcloud-svgrepo-com.svg.png",
             "images": []
         },
         "nextcloud-client": {
             "icon": "https://community.chocolatey.org/content/packageimages/nextcloud-client.3.7.3.png",
             "images": []
         },
+        "nextcloud-talk": {
+            "icon": "https://raw.githubusercontent.com/nextcloud/talk-desktop/refs/heads/main/img/icons/icon.png",
+            "images": []
+        },
         "nextclouddesktop": {
-            "icon": "https://postimg.cc/RJ17V9DG",
+            "icon": "https://raw.githubusercontent.com/nextcloud/desktop/refs/heads/master/theme/colored/wizard-nextcloud.png",
             "images": []
         },
         "nextdns": {
@@ -28473,19 +28677,13 @@
             "icon": "",
             "images": []
         },
-        "winget-nilesoft-shell": {
+        "Winget.Nilesoft.Shell": {
             "icon": "https://nilesoft.org/images/favicon.png",
             "images": [
                 "https://nilesoft.org/images/screenshots/light/ss2.png",
                 "https://nilesoft.org/images/screenshots/light/goto.png",
                 "https://nilesoft.org/images/screenshots/light/ss1.png",
                 "https://nilesoft.org/images/screenshots/light/file-manage.png"
-            ]
-        },
-        "Winget.Nilesoft.Shell": {
-            "icon": "https://nilesoft.org/images/favicon.png",
-            "images": [
-                "https://nilesoft.org/images/screenshots/light/ss2.png"
             ]
         },
         "nilesoft-shell": {
@@ -28563,7 +28761,10 @@
         },
         "nk2edit": {
             "icon": "https://community.chocolatey.org/content/packageimages/nk2edit.portable.3.40.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/PxbNNqhp/image.png",
+                "https://i.postimg.cc/d341mSLH/image.png"
+            ]
         },
         "nmap": {
             "icon": "",
@@ -29430,11 +29631,15 @@
             "images": []
         },
         "office": {
-            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/Microsoft_Office_logo_%282019%E2%80%93present%29.svg/640px-Microsoft_Office_logo_%282019%E2%80%93present%29.svg.png",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/Microsoft_Office_logo_%282013%E2%80%932019%29.svg/250px-Microsoft_Office_logo_%282013%E2%80%932019%29.svg.png",
+            "images": []
+        },
+        "office-2010-filterpack": {
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/Microsoft_Office_logo_%282013%E2%80%932019%29.svg/250px-Microsoft_Office_logo_%282013%E2%80%932019%29.svg.png",
             "images": []
         },
         "office-2021": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/4/49/Office_2021.png",
             "images": []
         },
         "office-online-chrome": {
@@ -29682,7 +29887,7 @@
             "images": []
         },
         "onedrive": {
-            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3c/Microsoft_Office_OneDrive_%282019%E2%80%93present%29.svg/320px-Microsoft_Office_OneDrive_%282019%E2%80%93present%29.svg.png",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Microsoft_OneDrive_Icon_%282025_-_present%29.svg/512px-Microsoft_OneDrive_Icon_%282025_-_present%29.svg.png",
             "images": [
                 "https://i.postimg.cc/T3TKcYTW/365.png",
                 "https://i.postimg.cc/mrDh0XzL/offic.png",
@@ -29690,11 +29895,11 @@
             ]
         },
         "onedrive-enterprise": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Microsoft_OneDrive_Icon_%282025_-_present%29.svg/512px-Microsoft_OneDrive_Icon_%282025_-_present%29.svg.png",
             "images": []
         },
         "onedrive-insiders": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Microsoft_OneDrive_Icon_%282025_-_present%29.svg/512px-Microsoft_OneDrive_Icon_%282025_-_present%29.svg.png",
             "images": []
         },
         "onedrive-internal-fast": {
@@ -30211,6 +30416,10 @@
             "icon": "",
             "images": []
         },
+        "openssh-preview": {
+            "icon": "https://i.ibb.co/nqFFVBcw/image.png",
+            "images": []
+        },
         "openssl": {
             "icon": "",
             "images": []
@@ -30278,7 +30487,7 @@
             "images": []
         },
         "openvpn": {
-            "icon": "https://community.chocolatey.org/content/packageimages/openvpn.2.6.0.004.png",
+            "icon": "https://postimg.cc/2LQGvMgm",
             "images": []
         },
         "openvpn-community": {
@@ -30420,7 +30629,7 @@
             "images": []
         },
         "orcaslicer": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/OrcaSlicer.png",
+            "icon": "https://unigeticons.meowcat285.com/OrcaSlicer.png",
             "images": []
         },
         "orchardcms": {
@@ -31033,8 +31242,10 @@
             "images": []
         },
         "passwordgenerator": {
-            "icon": "",
-            "images": []
+            "icon": "https://vovsoft.com/icons64/password-generator.png",
+            "images": [
+                "https://i.postimg.cc/ncvwMjzD/image.png"
+            ]
         },
         "passwordsafe": {
             "icon": "",
@@ -31058,7 +31269,11 @@
         },
         "pastel": {
             "icon": "",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/Jnv1gC2r/image.png",
+                "https://i.postimg.cc/T1bRvNzW/image.png",
+                "https://i.postimg.cc/xjNjmqXd/image.png"
+            ]
         },
         "patch": {
             "icon": "",
@@ -31073,7 +31288,7 @@
             "images": []
         },
         "patchmypc": {
-            "icon": "",
+            "icon": "https://community.chocolatey.org/content/packageimages/patch-my-pc.4.5.0.0.png",
             "images": []
         },
         "patchwork": {
@@ -31395,8 +31610,15 @@
             "images": []
         },
         "pdfreader": {
-            "icon": "",
-            "images": []
+            "icon": "https://vovsoft.com/icons128/pdf-reader.png",
+            "images": [
+                "https://vovsoft.com/screenshots/pdf-reader.png",
+                "https://vovsoft.com/screenshots/pdf-reader-2.png",
+                "https://vovsoft.com/screenshots/pdf-reader-3.png",
+                "https://vovsoft.com/screenshots/pdf-reader-4.png",
+                "https://vovsoft.com/screenshots/pdf-reader-5.png",
+                "https://vovsoft.com/screenshots/pdf-reader-6.png"
+            ]
         },
         "pdfreader-cn": {
             "icon": "",
@@ -32043,7 +32265,9 @@
         },
         "pingplotter": {
             "icon": "https://community.chocolatey.org/content/packageimages/pingplotter.5.23.3.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/QC2wcB03/image.png"
+            ]
         },
         "pingtracer": {
             "icon": "https://community.chocolatey.org/content/packageimages/pingtracer.1.13.png",
@@ -32112,6 +32336,13 @@
         "pixivutil2": {
             "icon": "https://community.chocolatey.org/content/packageimages/pixivutil2.2021.11.04.png",
             "images": []
+        },
+        "pixpin": {
+            "icon": "https://pixpin.cn/images/logo/1024.png",
+            "images": [
+                "https://pixpin.cn/docs/main.png",
+                "https://pixpin.cn/docs/images/member-features/image-2.png"
+            ]
         },
         "pixso": {
             "icon": "",
@@ -32200,7 +32431,7 @@
             ]
         },
         "playgames-beta": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/Google_Play_Games_logo_%282023%29.svg/512px-Google_Play_Games_logo_%282023%29.svg.png",
             "images": []
         },
         "playlist-creator": {
@@ -32209,7 +32440,13 @@
         },
         "playnite": {
             "icon": "https://playnite.link/applogo.png",
-            "images": []
+            "images": [
+                "https://playnite.link/screen1.jpg",
+                "https://playnite.link/screen2.jpg",
+                "https://playnite.link/screen3.jpg",
+                "https://playnite.link/screen4.jpg",
+                "https://playnite.link/screen5.jpg"
+            ]
         },
         "playparkdownloader": {
             "icon": "",
@@ -32747,11 +32984,11 @@
             "images": []
         },
         "powerautomatedesktop": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Microsoft_Power_Automate.svg/64px-Microsoft_Power_Automate.svg.png",
             "images": []
         },
         "powerbi": {
-            "icon": "",
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/New_Power_BI_Logo.svg/512px-New_Power_BI_Logo.svg.png",
             "images": []
         },
         "powerbi-reportbuilder": {
@@ -33087,9 +33324,17 @@
             "images": []
         },
         "prismlauncher": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/prismlauncher.8.4.20240820.png",
+            "icon": "https://unigeticons.meowcat285.com/prismlauncher.8.4.20240820.png",
             "images": [
                 "https://i.postimg.cc/FHLWvyfy/q7pf-R-Cbs-L-824.png"
+            ]
+        },
+        "prismlauncher-git": {
+            "icon": "https://cdn2.steamgriddb.com/file/sgdb-cdn/logo_thumb/d89950b4a87c48fdba628160f5217844.png",
+            "images": [
+                "https://images.opencollective.com/prismlauncher/29f649e/background.png",
+                "https://i.ibb.co/wZSn327s/image.png",
+                "https://i.ibb.co/G4zyDM4R/image.png"
             ]
         },
         "pritunl-client": {
@@ -33452,6 +33697,10 @@
         },
         "prusaslicer": {
             "icon": "https://community.chocolatey.org/content/packageimages/prusaslicer.2.5.0.png",
+            "images": []
+        },
+        "ps3-system-software": {
+            "icon": "https://i.ibb.co/219fc7pc/playstation-logo-rounded-playstation-logo-free-png-507847634.png",
             "images": []
         },
         "ps-remote-play": {
@@ -35589,8 +35838,10 @@
             "images": []
         },
         "registrychangesview": {
-            "icon": "https://community.chocolatey.org/content/packageimages/registrychangesview.1.29.png",
-            "images": []
+            "icon": "https://i.postimg.cc/cHC5Lvfg/image.png",
+            "images": [
+                "https://i.postimg.cc/zvRtT4tf/image.png"
+            ]
         },
         "registrymanager": {
             "icon": "https://community.chocolatey.org/content/packageimages/registrymanager.8.02.png",
@@ -36028,7 +36279,7 @@
             "images": []
         },
         "retroarch": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/G2q7QrKh/retroarch-300.png",
             "images": []
         },
         "retroshare": {
@@ -36052,7 +36303,7 @@
             "images": []
         },
         "revo-uninstaller": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/PqFKpK5s/Revouninstallerpro-512.png",
             "images": []
         },
         "revoltdesktop": {
@@ -36064,11 +36315,11 @@
             "images": []
         },
         "revouninstaller": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/PqFKpK5s/Revouninstallerpro-512.png",
             "images": []
         },
         "revouninstallerpro": {
-            "icon": "https://community.chocolatey.org/content/packageimages/revouninstallerpro.3.1.1.20141201.png",
+            "icon": "https://i.postimg.cc/PqFKpK5s/Revouninstallerpro-512.png",
             "images": []
         },
         "revrobotics-hardwareclient": {
@@ -36287,7 +36538,7 @@
             "images": []
         },
         "roblox": {
-            "icon": "https://i.postimg.cc/yYJ7tDNj/Roblox-Player.png",
+            "icon": "https://i.ibb.co/ddqFLQ9/roblox.png",
             "images": [
                 "https://i.postimg.cc/Dy4vWSLD/image.png",
                 "https://i.postimg.cc/mrLWSk1T/image.png"
@@ -36360,7 +36611,7 @@
             "images": []
         },
         "rockstar-launcher": {
-            "icon": "",
+            "icon": "https://i.ibb.co/PZ4CGyXW/rockstar-games-1536-433540335.png",
             "images": []
         },
         "rocolatey": {
@@ -36372,7 +36623,7 @@
             "images": []
         },
         "rode-central": {
-            "icon": "https://community.chocolatey.org/content/packageimages/rode-central.1.3.8.png",
+            "icon": "https://help.rode.com/hc/article_attachments/12943376530063",
             "images": []
         },
         "rokkr": {
@@ -36388,7 +36639,7 @@
             "images": []
         },
         "rommanager": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/qRCTHxrb/steamrommanager_256.png",
             "images": []
         },
         "romp": {
@@ -36498,6 +36749,12 @@
         "rpc": {
             "icon": "https://community.chocolatey.org/content/packageimages/rpc.6.1.png",
             "images": []
+        },
+        "rpcs3": {
+            "icon": "https://i.ibb.co/0RZzzr7y/8070735.png",
+            "images": [
+                "https://i.ibb.co/wF17cTdm/image.png"
+            ]
         },
         "rpgmakermv-free-trial": {
             "icon": "",
@@ -36610,8 +36867,10 @@
             "images": []
         },
         "rtss": {
-            "icon": "",
-            "images": []
+            "icon": "https://i.ibb.co/vMjBYpp/image.png",
+            "images": [
+                "https://i.ibb.co/bMTYq6bG/2024-02-07-19-19-30-guru3d.png"
+            ]
         },
         "rtxvoice": {
             "icon": "",
@@ -36838,6 +37097,12 @@
         "ryujinx": {
             "icon": "https://community.chocolatey.org/content/packageimages/ryujinx.1.1.645.png",
             "images": []
+        },
+        "ryujinx-canary": {
+            "icon": "https://raw.githubusercontent.com/Ryubing/Assets/refs/heads/main/RyujinxApp_1024.png",
+            "images": [
+                "https://i.ibb.co/Pv7N8rky/shell.png"
+            ]
         },
         "ryzen-controller": {
             "icon": "",
@@ -37928,7 +38193,7 @@
             "images": []
         },
         "session": {
-            "icon": "https://community.chocolatey.org/content/packageimages/session.1.10.7.png",
+            "icon": "https://getsession.org/apple-touch-icon.png",
             "images": []
         },
         "sessionmanagerplugin": {
@@ -38140,7 +38405,9 @@
                 "https://getsharex.com/img/screenshots/ScreenColorPicker.png",
                 "https://getsharex.com/img/screenshots/VideoConverter.png",
                 "https://getsharex.com/img/screenshots/ImageEditor.png",
-                "https://getsharex.com/img/screenshots/ImageEffects.png"
+                "https://getsharex.com/img/screenshots/ImageEffects.png",
+                "https://i.vgy.me/a9hTwL.png",
+                "https://i.vgy.me/JPxq19.png"
             ]
         },
         "sharik": {
@@ -38200,8 +38467,10 @@
             ]
         },
         "shellexview": {
-            "icon": "",
-            "images": []
+            "icon": "https://i.postimg.cc/sgBX7myK/image.png",
+            "images": [
+                "https://i.postimg.cc/qv97LKvG/image.png"
+            ]
         },
         "shellmenunew": {
             "icon": "https://community.chocolatey.org/content/packageimages/shellmenunew.1.02.png",
@@ -38510,7 +38779,9 @@
         },
         "simpleprogramdebugger": {
             "icon": "https://community.chocolatey.org/content/packageimages/simpleprogramdebugger.1.05.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/fyKK7Z7M/image.png"
+            ]
         },
         "simplestfilerenamer": {
             "icon": "",
@@ -38963,28 +39234,34 @@
             "images": []
         },
         "snagit": {
-            "icon": "https://community.chocolatey.org/content/packageimages/snagit.2023.0.3.png",
+            "icon": "https://i.postimg.cc/Pr6L1hBP/snagit-icon.png",
             "images": []
         },
         "snagit-2020": {
-            "icon": "https://blogs.swarthmore.edu/its/wp-content/uploads/2020/05/Snagit-1024x768.jpg",
+            "icon": "https://i.postimg.cc/Pr6L1hBP/snagit-icon.png",
             "images": []
         },
         "snagit-2021": {
-            "icon": "https://blogs.swarthmore.edu/its/wp-content/uploads/2020/05/Snagit-1024x768.jpg",
+            "icon": "https://i.postimg.cc/Pr6L1hBP/snagit-icon.png",
             "images": []
         },
         "snagit-2022": {
-            "icon": "https://blogs.swarthmore.edu/its/wp-content/uploads/2020/05/Snagit-1024x768.jpg",
+            "icon": "https://i.postimg.cc/Pr6L1hBP/snagit-icon.png",
             "images": []
         },
         "snagit-2023": {
-            "icon": "https://blogs.swarthmore.edu/its/wp-content/uploads/2020/05/Snagit-1024x768.jpg",
+            "icon": "https://i.postimg.cc/Pr6L1hBP/snagit-icon.png",
             "images": []
         },
         "snagit-2024": {
-            "icon": "https://assets.techsmith.com/Images/content/snagit_icon.svg",
+            "icon": "https://i.postimg.cc/Pr6L1hBP/snagit-icon.png",
             "images": []
+        },
+        "snagit-2025": {
+            "icon": "https://i.postimg.cc/Pr6L1hBP/snagit-icon.png",
+            "images": [
+                "https://i.postimg.cc/6513ycvf/image.png"
+            ]
         },
         "snailfm": {
             "icon": "",
@@ -39019,7 +39296,7 @@
             "images": []
         },
         "snappy-driver-installer-origin": {
-            "icon": "",
+            "icon": "https://i.ibb.co/C50n1dRK/image.png",
             "images": []
         },
         "snapraid": {
@@ -39575,8 +39852,10 @@
             "images": []
         },
         "specialk": {
-            "icon": "",
-            "images": []
+            "icon": "https://wiki.special-k.info/misc/sk_logo.png",
+            "images": [
+                "https://wiki.special-k.info/tools/skif_2022.png"
+            ]
         },
         "spectcl": {
             "icon": "",
@@ -40574,7 +40853,7 @@
             "images": []
         },
         "steam-rom-manager": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/qRCTHxrb/steamrommanager_256.png",
             "images": []
         },
         "steamachievementmanager": {
@@ -40734,11 +41013,11 @@
             "images": []
         },
         "streamdeck": {
-            "icon": "https://community.chocolatey.org/content/packageimages/streamdeck.6.0.5.18168.png",
+            "icon": "https://i.postimg.cc/4NbKFdts/streamdeck_202512_128.png",
             "images": []
         },
         "streamer": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/VirtualDesktop.png",
+            "icon": "https://unigeticons.meowcat285.com/VirtualDesktop.png",
             "images": []
         },
         "streaming-video-downloader": {
@@ -41078,6 +41357,10 @@
             "icon": "https://community.chocolatey.org/content/packageimages/sunshine.0.18.3.png",
             "images": []
         },
+        "sunshine-pre": {
+            "icon": "https://raw.githubusercontent.com/LizardByte/Sunshine/master/sunshine.png",
+            "images": []
+        },
         "supd2": {
             "icon": "https://community.chocolatey.org/content/packageimages/supd2.2.0.0.png",
             "images": []
@@ -41087,8 +41370,11 @@
             "images": []
         },
         "super-productivity": {
-            "icon": "https://community.chocolatey.org/content/packageimages/super-productivity.7.12.2.png",
-            "images": []
+            "icon": "https://i.imgur.com/UnvhxDl.png",
+            "images": [
+                "https://i.imgur.com/YUDVM3V.png",
+                "https://i.imgur.com/RMIK4fd.png"
+            ]
         },
         "superantispyware": {
             "icon": "https://community.chocolatey.org/content/packageimages/superantispyware.10.0.1246.png",
@@ -41135,8 +41421,11 @@
             "images": []
         },
         "superproductivity": {
-            "icon": "",
-            "images": []
+            "icon": "https://i.imgur.com/UnvhxDl.png",
+            "images": [
+                "https://i.imgur.com/YUDVM3V.png",
+                "https://i.imgur.com/RMIK4fd.png"
+            ]
         },
         "superputty": {
             "icon": "https://community.chocolatey.org/content/packageimages/superputty.portable.1.5.0.0.png",
@@ -41566,7 +41855,7 @@
             "images": []
         },
         "systemupdate": {
-            "icon": "",
+            "icon": "https://download.lenovo.com/km/media/images/HT003029/LSU2_20200824181525152.png",
             "images": []
         },
         "systweaksoftwareu\u2026": {
@@ -41974,9 +42263,10 @@
             "images": []
         },
         "teams": {
-            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c9/Microsoft_Office_Teams_(2018%E2%80%93present).svg/258px-Microsoft_Office_Teams_(2018%E2%80%93present).svg.png",
+            "icon": "https://i.ibb.co/1YT66G0j/teams.png",
             "images": [
-                "https://upload.wikimedia.org/wikipedia/en/f/f1/Microsoft_Teams_Desktop_Application_Screenshot.png"
+                "https://i.ibb.co/qYCjdVSp/71-E48-C78-1-F38-47-AD-B28-D-047-A1175-DAAD.png",
+                "https://i.ibb.co/QvYT1bKf/F17-F108-C-65-E1-4-FD4-AA9-D-E7539-B61-A6-EA.png"
             ]
         },
         "teams-free": {
@@ -42211,6 +42501,10 @@
             "icon": "https://community.chocolatey.org/content/packageimages/Temurinjre.19.0.2.700.png",
             "images": []
         },
+        "tenacity": {
+            "icon": "https://codeberg.org/tenacityteam/tenacity/raw/branch/main/images/icons/48x48/tenacity.png",
+            "images": []
+        },
         "tencentdocs": {
             "icon": "",
             "images": []
@@ -42244,8 +42538,12 @@
             "images": []
         },
         "teracopy": {
-            "icon": "https://tweakers.net/ext/i/2004859552.jpeg",
-            "images": []
+            "icon": "https://i.ibb.co/VWMLqzbN/icon.png",
+            "images": [
+                "https://i.ibb.co/XZgvrZDt/s1.png",
+                "https://i.ibb.co/RT4Qpvpj/s2.png",
+                "https://i.ibb.co/S40DxfM4/s3.png"
+            ]
         },
         "teraterm": {
             "icon": "https://community.chocolatey.org/content/packageimages/teraterm.4.106.png",
@@ -42488,8 +42786,15 @@
             "images": []
         },
         "texttomp3converter": {
-            "icon": "",
-            "images": []
+            "icon": "https://vovsoft.com/icons128/text-to-mp3-converter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/text-to-mp3-converter.png",
+                "https://vovsoft.com/screenshots/text-to-mp3-converter-2.png",
+                "https://vovsoft.com/screenshots/text-to-mp3-converter-3.png",
+                "https://vovsoft.com/screenshots/text-to-mp3-converter-4.png",
+                "https://vovsoft.com/screenshots/text-to-mp3-converter-5.png",
+                "https://vovsoft.com/screenshots/text-to-mp3-converter-6.png"
+            ]
         },
         "texworks": {
             "icon": "",
@@ -42716,13 +43021,17 @@
             "images": []
         },
         "thunderbird": {
-            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/Thunderbird_Logo%2C_2018.svg/langfr-800px-Thunderbird_Logo%2C_2018.svg.png",
+            "icon": "https://i.ibb.co/NgwCjhjJ/image.png",
             "images": [
                 "https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/Thunderbird_102_screenshot.png/1024px-Thunderbird_102_screenshot.png"
             ]
         },
         "thunderbird-beta": {
             "icon": "",
+            "images": []
+        },
+        "thunderbird-esr": {
+            "icon": "https://www.thunderbird.net/media/img/thunderbird/thunderbird-256.png",
             "images": []
         },
         "thymiosuite": {
@@ -43098,7 +43407,7 @@
             "images": []
         },
         "toggltrack": {
-            "icon": "",
+            "icon": "https://community.chocolatey.org/content/packageimages/toggl.7.5.454.png",
             "images": []
         },
         "tokei": {
@@ -43190,7 +43499,7 @@
             "images": []
         },
         "topazgigapixelai": {
-            "icon": "",
+            "icon": "https://www.pngfind.com/pngs/m/675-6751343_topaz-gigapixel-ai-logo-hd-png-download.png",
             "images": []
         },
         "topazphotoai": {
@@ -43262,7 +43571,7 @@
             "images": []
         },
         "tortoisegit": {
-            "icon": "https://cdn.meowcat285.com/unigeticons/tortoisegit.png",
+            "icon": "https://unigeticons.meowcat285.com/tortoisegit.png",
             "images": [
                 "https://i.imgur.com/r43Qy8M.png",
                 "https://i.imgur.com/yJlUype.png",
@@ -43723,6 +44032,10 @@
         },
         "tuna": {
             "icon": "",
+            "images": []
+        },
+        "tunein": {
+            "icon": "https://community.chocolatey.org/content/packageimages/tunein-radio.1.24.0.png",
             "images": []
         },
         "tunein-radio": {
@@ -44223,7 +44536,7 @@
             "images": []
         },
         "ultrasearch": {
-            "icon": "https://community.chocolatey.org/content/packageimages/ultrasearch.portable.3.4.0.1.png",
+            "icon": "https://community.chocolatey.org/content/packageimages/ultrasearch.4.8.4.png",
             "images": []
         },
         "ultraviewer": {
@@ -44381,8 +44694,13 @@
             "images": []
         },
         "uninstaller": {
-            "icon": "",
-            "images": []
+            "icon": "https://www.iobit.com/tpl/images/product-icons/icon_96_199.png",
+            "images": [
+                "https://www.iobit.com/tpl/images/screenshot/iu/software_uninstal_655.png",
+                "https://www.iobit.com/tpl/images/screenshot/iu/uninstalling_24.png",
+                "https://www.iobit.com/tpl/images/screenshot/iu/install_monitor_42.png",
+                "https://www.iobit.com/tpl/images/screenshot/iu/software_health_516.png"
+            ]
         },
         "uninstalltool": {
             "icon": "https://community.chocolatey.org/content/packageimages/uninstalltool.portable.3.7.2.png",
@@ -44395,8 +44713,10 @@
             ]
         },
         "uninstallview": {
-            "icon": "https://community.chocolatey.org/content/packageimages/uninstallview.1.48.png",
-            "images": []
+            "icon": "https://i.postimg.cc/jjHJnc4d/image.png",
+            "images": [
+                "https://i.postimg.cc/HxT8wM6w/image.png"
+            ]
         },
         "unison": {
             "icon": "https://community.chocolatey.org/content/packageimages/unison.2.53.0.png",
@@ -45436,6 +45756,12 @@
             "icon": "",
             "images": []
         },
+        "vencord-installer": {
+            "icon": "https://i.ibb.co/60R4PZVv/113042587.png",
+            "images": [
+                "https://user-images.githubusercontent.com/45497981/226734476-5fb42420-844d-4e27-ae06-4799118e086e.png"
+            ]
+        },
         "vendir": {
             "icon": "https://community.chocolatey.org/content/packageimages/vendir.0.32.0.png",
             "images": []
@@ -45479,6 +45805,12 @@
         "vesta": {
             "icon": "",
             "images": []
+        },
+        "vesktop": {
+            "icon": "https://i.ibb.co/vGXwKRp/image.png",
+            "images": [
+                "https://i.ibb.co/qMnD6bVM/image.png"
+            ]
         },
         "vet": {
             "icon": "https://community.chocolatey.org/content/packageimages/vet.1.4.png",
@@ -45592,8 +45924,10 @@
             "images": []
         },
         "videocacheview": {
-            "icon": "https://community.chocolatey.org/content/packageimages/videocacheview.3.09.png",
-            "images": []
+            "icon": "https://i.postimg.cc/0jWkJM42/image.png",
+            "images": [
+                "https://i.postimg.cc/05c24FNx/image.png"
+            ]
         },
         "videoder": {
             "icon": "https://community.chocolatey.org/content/packageimages/videoder.1.0.9.png",
@@ -45914,37 +46248,100 @@
             "icon": "https://community.chocolatey.org/content/packageimages/visualparadigm-ce.17.0.png",
             "images": []
         },
-        "visualstudio-2019-buildt\u2026": {
-            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Visual_Studio_Icon_2022.svg/800px-Visual_Studio_Icon_2022.svg.png",
+        "visualstudio-buildtools": {
+            "icon": "https://raw.githubusercontent.com/jberezanski/ChocolateyPackages/master/icons/vs2026.png",
             "images": []
         },
-        "visualstudio-2019-enterp\u2026": {
-            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Visual_Studio_Icon_2022.svg/800px-Visual_Studio_Icon_2022.svg.png",
+        "visualstudio-community": {
+            "icon": "https://raw.githubusercontent.com/jberezanski/ChocolateyPackages/master/icons/vs2026.png",
+            "images": [
+                "https://learn.microsoft.com/en-us/visualstudio/ide/media/visualstudio/create-new-project-dark-theme.png?view=vs-2017",
+                "https://learn.microsoft.com/zh-cn/visualstudio/releases/2026/media/18.0/pr-comment-in-file.png"
+            ]
+        },
+        "visualstudio-enterprise": {
+            "icon": "https://raw.githubusercontent.com/jberezanski/ChocolateyPackages/master/icons/vs2026.png",
+            "images": [
+                "https://learn.microsoft.com/en-us/visualstudio/ide/media/visualstudio/create-new-project-dark-theme.png?view=vs-2018",
+                "https://learn.microsoft.com/zh-cn/visualstudio/releases/2026/media/18.0/pr-comment-in-file.png"
+            ]
+        },
+        "visualstudio-professional": {
+            "icon": "https://raw.githubusercontent.com/jberezanski/ChocolateyPackages/master/icons/vs2026.png",
+            "images": [
+                "https://learn.microsoft.com/en-us/visualstudio/ide/media/visualstudio/create-new-project-dark-theme.png?view=vs-2019",
+                "https://learn.microsoft.com/zh-cn/visualstudio/releases/2026/media/18.0/pr-comment-in-file.png"
+            ]
+        },
+        "visualstudio-remotetools": {
+            "icon": "https://raw.githubusercontent.com/jberezanski/ChocolateyPackages/master/icons/vs2026.png",
             "images": []
         },
-        "visualstudio-2019-profes\u2026": {
-            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Visual_Studio_Icon_2022.svg/800px-Visual_Studio_Icon_2022.svg.png",
-            "images": []
+        "visualstudio-2019-buildtools": {
+            "icon": "https://raw.githubusercontent.com/jberezanski/ChocolateyPackages/master/icons/vs2019.png",
+            "images": [
+                "https://learn.microsoft.com/zh-cn/visualstudio/releases/2019/media/16.9/16.9_p2_vsinstallerdarktheme.png"
+            ]
+        },
+        "visualstudio-2019-community": {
+            "icon": "https://raw.githubusercontent.com/jberezanski/ChocolateyPackages/master/icons/vs2019.png",
+            "images": [
+                "https://devblogs.microsoft.com/visualstudio/wp-content/uploads/sites/4/2019/05/Visual-Studio-2019-Start-Window.png",
+                "https://devblogs.microsoft.com/visualstudio/wp-content/uploads/sites/4/2019/08/16.3preview2x1-1024x671.png",
+                "https://learn.microsoft.com/zh-tw/visualstudio/releases/2019/media/16.8/16_8_ga_xamlbindfailwindow.png"
+            ]
+        },
+        "visualstudio-2019-enterprise": {
+            "icon": "https://raw.githubusercontent.com/jberezanski/ChocolateyPackages/master/icons/vs2019.png",
+            "images": [
+                "https://devblogs.microsoft.com/visualstudio/wp-content/uploads/sites/4/2019/05/Visual-Studio-2019-Start-Window.png",
+                "https://devblogs.microsoft.com/visualstudio/wp-content/uploads/sites/4/2019/08/16.3preview2x1-1024x671.png",
+                "https://learn.microsoft.com/zh-tw/visualstudio/releases/2019/media/16.8/16_8_ga_xamlbindfailwindow.png"
+            ]
+        },
+        "visualstudio-2019-professional": {
+            "icon": "https://raw.githubusercontent.com/jberezanski/ChocolateyPackages/master/icons/vs2019.png",
+            "images": [
+                "https://devblogs.microsoft.com/visualstudio/wp-content/uploads/sites/4/2019/05/Visual-Studio-2019-Start-Window.png",
+                "https://devblogs.microsoft.com/visualstudio/wp-content/uploads/sites/4/2019/08/16.3preview2x1-1024x671.png",
+                "https://learn.microsoft.com/zh-tw/visualstudio/releases/2019/media/16.8/16_8_ga_xamlbindfailwindow.png"
+            ]
         },
         "visualstudio-2019-remotetools": {
-            "icon": "",
-            "images": []
+            "icon": "https://raw.githubusercontent.com/jberezanski/ChocolateyPackages/master/icons/vs2019.png",
+            "images": [
+                "https://devblogs.microsoft.com/visualstudio/wp-content/uploads/sites/4/2019/05/Visual-Studio-2019-Start-Window.png"
+            ]
         },
-        "visualstudio-2022-buildt\u2026": {
-            "icon": "https://pics.computerbase.de/9/9/2/3/0-e36f805671c3b980/logo-256.png",
-            "images": []
+        "visualstudio-2022-buildtools": {
+            "icon": "https://raw.githubusercontent.com/jberezanski/ChocolateyPackages/master/icons/vs2022.png",
+            "images": [
+                "https://learn.microsoft.com/zh-cn/visualstudio/install/media/vs-2022/update-ready-install-visual-studio-community-from-ide.png?view=vs-2017"
+            ]
         },
-        "visualstudio-2022-commun\u2026": {
-            "icon": "https://pics.computerbase.de/9/9/2/3/0-e36f805671c3b980/logo-256.png",
-            "images": []
+        "visualstudio-2022-community": {
+            "icon": "https://raw.githubusercontent.com/jberezanski/ChocolateyPackages/master/icons/vs2022.png",
+            "images": [
+                "https://learn.microsoft.com/en-us/visualstudio/ide/media/vs-2022/start-window-create-new-project.png?view=vs-2017",
+                "https://devblogs.microsoft.com/visualstudio/wp-content/uploads/sites/4/2022/02/word-image-3.png",
+                "https://devblogs.microsoft.com/visualstudio/wp-content/uploads/sites/4/2022/05/git-linestaging.png"
+            ]
         },
-        "visualstudio-2022-enterp\u2026": {
-            "icon": "https://pics.computerbase.de/9/9/2/3/0-e36f805671c3b980/logo-256.png",
-            "images": []
+        "visualstudio-2022-enterprise": {
+            "icon": "https://raw.githubusercontent.com/jberezanski/ChocolateyPackages/master/icons/vs2022.png",
+            "images": [
+                "https://learn.microsoft.com/en-us/visualstudio/ide/media/vs-2022/start-window-create-new-project.png?view=vs-2018",
+                "https://devblogs.microsoft.com/visualstudio/wp-content/uploads/sites/4/2022/02/word-image-3.png",
+                "https://devblogs.microsoft.com/visualstudio/wp-content/uploads/sites/4/2022/05/git-linestaging.png"
+            ]
         },
-        "visualstudio-2022-profes\u2026": {
-            "icon": "https://img-prod-cms-rt-microsoft-com.akamaized.net/cms/api/am/imageFileData/RWLkzw",
-            "images": []
+        "visualstudio-2022-professional": {
+            "icon": "https://raw.githubusercontent.com/jberezanski/ChocolateyPackages/master/icons/vs2022.png",
+            "images": [
+                "https://learn.microsoft.com/en-us/visualstudio/ide/media/vs-2022/start-window-create-new-project.png?view=vs-2019",
+                "https://devblogs.microsoft.com/visualstudio/wp-content/uploads/sites/4/2022/02/word-image-3.png",
+                "https://devblogs.microsoft.com/visualstudio/wp-content/uploads/sites/4/2022/05/git-linestaging.png"
+            ]
         },
         "visualstudio-codealignment": {
             "icon": "https://community.chocolatey.org/content/packageimages/visualstudio-codealignment.12.0.png",
@@ -45960,14 +46357,6 @@
         },
         "visualstudio-locator": {
             "icon": "",
-            "images": []
-        },
-        "visualstudio-2022-buildtools": {
-            "icon": "https://i.postimg.cc/rwGzh5vf/Visual-Studio-Icon-2022.png",
-            "images": []
-        },
-        "visualstudio-2022-community": {
-            "icon": "https://i.postimg.cc/rwGzh5vf/Visual-Studio-Icon-2022.png",
             "images": []
         },
         "visualstudio2012premium": {
@@ -46543,7 +46932,9 @@
         },
         "vlc-nightly": {
             "icon": "https://community.chocolatey.org/content/packageimages/vlc-nightly.4.0.0.20230228.png",
-            "images": []
+            "images": [
+                "https://i.vgy.me/JtHcSz.png"
+            ]
         },
         "vlc-skin-editor": {
             "icon": "https://community.chocolatey.org/content/packageimages/vlc-skin-editor.0.8.5.png",
@@ -46712,7 +47103,9 @@
         },
         "volumouse": {
             "icon": "https://community.chocolatey.org/content/packageimages/volumouse.install.2.03.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/cHd09Byx/image.png"
+            ]
         },
         "voodooshield": {
             "icon": "",
@@ -47408,6 +47801,10 @@
             "icon": "",
             "images": []
         },
+        "": {
+            "icon": "",
+            "images": []
+        },
         "vsts-admin-tools": {
             "icon": "https://community.chocolatey.org/content/packageimages/vsts-admin-tools.1.0.12.png",
             "images": []
@@ -47557,8 +47954,10 @@
             "images": []
         },
         "wakemeonlan": {
-            "icon": "https://community.chocolatey.org/content/packageimages/wakemeonlan.1.90.png",
-            "images": []
+            "icon": "https://i.postimg.cc/vZWm0BgX/image.png",
+            "images": [
+                "https://i.postimg.cc/SsZRcvXw/image.png"
+            ]
         },
         "wallcat": {
             "icon": "https://community.chocolatey.org/content/packageimages/wallcat.1.0.4.png",
@@ -47912,8 +48311,12 @@
             "images": []
         },
         "webpconverter": {
-            "icon": "",
-            "images": []
+            "icon": "https://vovsoft.com/icons128/webp-converter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/webp-converter.png",
+                "https://vovsoft.com/screenshots/webp-converter-2.png",
+                "https://vovsoft.com/screenshots/webp-converter-3.png"
+            ]
         },
         "webpicmd": {
             "icon": "",
@@ -47994,7 +48397,10 @@
         },
         "wecom": {
             "icon": "http://dldir1.qq.com/foxmail/icon/work_logo.png",
-            "images": []
+            "images": [
+                "https://res.wx.qq.com/wxdoc/dist/assets/img/application2.803df32d.png",
+                "https://wwcdn.weixin.qq.com/node/wework/images/wecom-temp-f9247fc9ed69949f3e3cd39480410738.4145f338c0.png"
+            ]
         },
         "weebp": {
             "icon": "",
@@ -48117,7 +48523,9 @@
         },
         "whatishang": {
             "icon": "https://community.chocolatey.org/content/packageimages/whatishang.1.27.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/bwjyShCR/image.png"
+            ]
         },
         "whatpulse": {
             "icon": "",
@@ -48172,8 +48580,10 @@
             "images": []
         },
         "whoisthisdomain": {
-            "icon": "",
-            "images": []
+            "icon": "https://i.postimg.cc/V67Q7yW7/image.png",
+            "images": [
+                "https://i.postimg.cc/DzPKX4Jn/image.png"
+            ]
         },
         "whosip": {
             "icon": "",
@@ -48204,8 +48614,10 @@
             "images": []
         },
         "wifidiagnosticsview": {
-            "icon": "https://community.chocolatey.org/content/packageimages/wifidiagnosticsview.1.03.png",
-            "images": []
+            "icon": "https://i.postimg.cc/YCqpz377/image.png",
+            "images": [
+                "https://i.postimg.cc/htyKyd4y/image.png"
+            ]
         },
         "wifiguard": {
             "icon": "https://community.chocolatey.org/content/packageimages/wifiguard.2.2.0.png",
@@ -48427,7 +48839,7 @@
             "images": []
         },
         "windhawk": {
-            "icon": "https://i.imgur.com/Zp8Utej.png",
+            "icon": "https://community.chocolatey.org/content/packageimages/windhawk.1.7.2.png",
             "images": [
                 "https://i.imgur.com/fszFq44.png",
                 "https://i.imgur.com/PlkUIje.png"
@@ -48748,10 +49160,10 @@
             "images": []
         },
         "windowsterminal": {
-            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/51/Windows_Terminal_logo.svg/320px-Windows_Terminal_logo.svg.png",
+            "icon": "https://i.ibb.co/TBjm1bMR/terminal.png",
             "images": [
-                "https://store-images.s-microsoft.com/image/apps.64156.13926773940052066.16e93a5b-b25f-4aaf-8a38-77375e237879.00013886-8351-473f-9acd-7fcce9ee7388",
-                "https://store-images.s-microsoft.com/image/apps.28865.13926773940052066.16e93a5b-b25f-4aaf-8a38-77375e237879.78e2aeac-6ede-4855-acb1-79a854b5556d"
+                "https://i.ibb.co/pv1Fg0m2/image.png",
+                "https://i.ibb.co/wZmf8Wzh/image.png"
             ]
         },
         "windowsterminal-preview": {
@@ -49168,6 +49580,12 @@
             "icon": "https://community.chocolatey.org/content/packageimages/WinScreenfetch.0.5.1.png",
             "images": []
         },
+        "winscript": {
+            "icon": "https://i.ibb.co/5WvDZdDb/winscript-upscayl-4x-upscayl-standard-4x.png",
+            "images": [
+                "https://i.ibb.co/PvhGcy8S/image.png"
+            ]
+        },
         "winsecuritybaseline": {
             "icon": "https://community.chocolatey.org/content/packageimages/WinSecurityBaseline.19.03.02.png",
             "images": []
@@ -49286,8 +49704,10 @@
             "images": []
         },
         "wirelessnetworkwatcher": {
-            "icon": "",
-            "images": []
+            "icon": "https://i.postimg.cc/44SRVgdp/image.png",
+            "images": [
+                "https://i.postimg.cc/L8jccgVg/image.png"
+            ]
         },
         "wirelessworkbench": {
             "icon": "",
@@ -50307,7 +50727,7 @@
             "images": []
         },
         "xnaredist": {
-            "icon": "",
+            "icon": "https://community.chocolatey.org/content/packageimages/xna31.3.1.0.20160105.png",
             "images": []
         },
         "xnconvert": {
@@ -50941,7 +51361,7 @@
             "images": []
         },
         "zen-browser": {
-            "icon": "",
+            "icon": "https://raw.githubusercontent.com/zen-browser/desktop/refs/heads/dev/configs/branding/release/logo1024.png",
             "images": [
                 "https://i.postimg.cc/MTFqp5N4/browsers-i-Ox7z-S8-P-Z2u-WYk9.png",
                 "https://i.postimg.cc/9XDqtnmD/browser-workspaces-Cb-JPkzf-E-Ha2-Q.png",
@@ -52788,7 +53208,7 @@
             "images": []
         },
         "dnslookupview": {
-            "icon": "",
+            "icon": "https://i.postimg.cc/2SjdDPQy/image.png",
             "images": [
                 "https://i.postimg.cc/T3j7Mm4s/image.png"
             ]
@@ -52945,13 +53365,13 @@
                 "https://i.postimg.cc/G25hW8Nx/image.png"
             ]
         },
-        "winget-softperfect-wifiguard": {
+        "Winget.SoftPerfect.WiFiGuard\n": {
             "icon": "https://i.postimg.cc/5Nxbsm6W/image.png",
             "images": [
                 "https://i.postimg.cc/43hgYLFm/image.png"
             ]
         },
-        "winget-softperfect-networkscanner": {
+        "Winget.SoftPerfect.NetworkScanner\n": {
             "icon": "https://i.postimg.cc/brmMCkF7/image.png",
             "images": [
                 "https://i.postimg.cc/Fsn80bS3/image.png",
@@ -52977,7 +53397,12 @@
         },
         "zed-preview": {
             "icon": "https://i.postimg.cc/8zd1DHyx/zed-prev.png",
-            "images": []
+            "images": [
+                "https://i.postimg.cc/cLWvQ62b/image.png",
+                "https://i.postimg.cc/Zq70tHnz/image.png",
+                "https://i.postimg.cc/Y2m0Z1wb/image.png",
+                "https://i.postimg.cc/3R0rMHzK/image.png"
+            ]
         },
         "worldmap": {
             "icon": "",
@@ -53019,6 +53444,1812 @@
                 "https://i.postimg.cc/2yL45wSJ/image.png",
                 "https://i.postimg.cc/59DrSKvT/image.png"
             ]
+        },
+        "logonexpert": {
+            "icon": "https://i.postimg.cc/bwwjxDYk/logonexpert.png",
+            "images": [
+                "https://i.postimg.cc/htdXq5xN/image.png",
+                "https://i.postimg.cc/50xyL9rs/image.png",
+                "https://i.postimg.cc/85t5HQQc/image.png",
+                "https://i.postimg.cc/nrWhy4hg/image.png",
+                "https://i.postimg.cc/L4Q5gp3c/image.png",
+                "https://i.postimg.cc/mgCgnFfY/image.png"
+            ]
+        },
+        "logonexpert-server": {
+            "icon": "https://i.postimg.cc/bwwjxDYk/logonexpert.png",
+            "images": [
+                "https://i.postimg.cc/1tc61Ykk/image.png",
+                "https://i.postimg.cc/6qMvy45c/image.png",
+                "https://i.postimg.cc/bNvn4g3Q/image.png",
+                "https://i.postimg.cc/3JbGhGqd/image.png",
+                "https://i.postimg.cc/8z2rJSDx/image.png",
+                "https://i.postimg.cc/bJ8Dg9Zm/image.png",
+                "https://i.postimg.cc/Kjp1ZXJP/image.png"
+            ]
+        },
+        "networktimesystem-server": {
+            "icon": "https://i.postimg.cc/XYjns1L9/ntsclient.png",
+            "images": []
+        },
+        "networktimesystem-client": {
+            "icon": "https://i.postimg.cc/XYjns1L9/ntsclient.png",
+            "images": []
+        },
+        "transparentlockscreen": {
+            "icon": "",
+            "images": []
+        },
+        "airequester": {
+            "icon": "https://vovsoft.com/icons128/ai-requester.png",
+            "images": [
+                "https://vovsoft.com/screenshots/ai-requester.png",
+                "https://vovsoft.com/screenshots/ai-requester-2.png",
+                "https://vovsoft.com/screenshots/ai-requester-3.png",
+                "https://vovsoft.com/screenshots/ai-requester-4.png",
+                "https://vovsoft.com/screenshots/ai-requester-5.png",
+                "https://vovsoft.com/screenshots/ai-requester-6.png"
+            ]
+        },
+        "autochangescreensavers": {
+            "icon": "https://vovsoft.com/icons128/auto-change-screensavers.png",
+            "images": [
+                "https://vovsoft.com/screenshots/auto-change-screensavers.png"
+            ]
+        },
+        "automouseclicker": {
+            "icon": "https://vovsoft.com/icons64/auto-mouse-clicker.png",
+            "images": [
+                "https://i.postimg.cc/v8W83Tjm/image.png"
+            ]
+        },
+        "batchaudioconverter": {
+            "icon": "https://vovsoft.com/icons128/batch-audio-converter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/batch-audio-converter.png"
+            ]
+        },
+        "Winget.VovSoft.BatchImageResizer": {
+            "icon": "https://vovsoft.com/icons64/batch-image-resizer.png",
+            "images": [
+                "https://vovsoft.com/screenshots/batch-image-resizer.png",
+                "https://vovsoft.com/screenshots/batch-image-resizer-2.png",
+                "https://vovsoft.com/screenshots/batch-image-resizer-3.png",
+                "https://vovsoft.com/screenshots/batch-image-resizer-4.png"
+            ]
+        },
+        "batchimageupscaler": {
+            "icon": "https://vovsoft.com/icons128/batch-image-upscaler.png",
+            "images": [
+                "https://i.postimg.cc/XJt8JQ3S/image.png"
+            ]
+        },
+        "batchtranslator": {
+            "icon": "https://vovsoft.com/icons64/batch-translator.png",
+            "images": [
+                "https://vovsoft.com/screenshots/batch-translator.png",
+                "https://vovsoft.com/screenshots/batch-translator-2.png",
+                "https://vovsoft.com/screenshots/batch-translator-3.png",
+                "https://vovsoft.com/screenshots/batch-translator-4.png"
+            ]
+        },
+        "batchurldownloader": {
+            "icon": "https://vovsoft.com/icons64/batch-url-downloader.png",
+            "images": [
+                "https://vovsoft.com/screenshots/batch-url-downloader.png",
+                "https://vovsoft.com/screenshots/batch-url-downloader-2.png",
+                "https://vovsoft.com/screenshots/batch-url-downloader-3.png",
+                "https://vovsoft.com/screenshots/batch-url-downloader-4.png",
+                "https://vovsoft.com/screenshots/batch-url-downloader-5.png",
+                "https://vovsoft.com/screenshots/batch-url-downloader-6.png"
+            ]
+        },
+        "batchvideoupscaler": {
+            "icon": "https://vovsoft.com/icons128/batch-video-upscaler.png",
+            "images": [
+                "https://vovsoft.com/screenshots/batch-video-upscaler.png"
+            ]
+        },
+        "brokenlinkdetector": {
+            "icon": "https://vovsoft.com/icons128/broken-link-detector.png",
+            "images": [
+                "https://i.postimg.cc/mkDsLZLT/image.png"
+            ]
+        },
+        "bulkbarcodegenerator": {
+            "icon": "https://vovsoft.com/icons128/bulk-barcode-generator.png",
+            "images": [
+                "https://vovsoft.com/screenshots/bulk-barcode-generator.png"
+            ]
+        },
+        "bulkdomainappraisal": {
+            "icon": "https://vovsoft.com/icons64/bulk-domain-appraisal.png",
+            "images": [
+                "https://vovsoft.com/screenshots/bulk-domain-appraisal.png",
+                "https://vovsoft.com/screenshots/bulk-domain-appraisal-2.png",
+                "https://vovsoft.com/screenshots/bulk-domain-appraisal-3.png",
+                "https://vovsoft.com/screenshots/bulk-domain-appraisal-4.png"
+            ]
+        },
+        "bulkqrcodegenerator": {
+            "icon": "https://vovsoft.com/icons128/bulk-qr-code-generator.png",
+            "images": [
+                "https://vovsoft.com/screenshots/bulk-qr-code-generator.png",
+                "https://vovsoft.com/screenshots/bulk-qr-code-generator-2.png",
+                "https://vovsoft.com/screenshots/bulk-qr-code-generator-3.png",
+                "https://vovsoft.com/screenshots/bulk-qr-code-generator-4.png",
+                "https://vovsoft.com/screenshots/bulk-qr-code-generator-5.png"
+            ]
+        },
+        "cpubenchmark": {
+            "icon": "https://vovsoft.com/icons128/cpu-benchmark.png",
+            "images": [
+                "https://vovsoft.com/screenshots/cpu-benchmark.png"
+            ]
+        },
+        "csvsplitter": {
+            "icon": "https://vovsoft.com/icons64/csv-splitter.png",
+            "images": [
+                "https://i.postimg.cc/kGdTsfHZ/image.png"
+            ]
+        },
+        "csvtojsonconverter": {
+            "icon": "https://vovsoft.com/icons128/csv-to-json-converter.png",
+            "images": [
+                "https://i.postimg.cc/pTKZmKdJ/image.png"
+            ]
+        },
+        "csvtovcfconverter": {
+            "icon": "https://vovsoft.com/icons64/csv-to-vcf-converter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/csv-to-vcf-converter.png",
+                "https://vovsoft.com/screenshots/csv-to-vcf-converter-2.png",
+                "https://vovsoft.com/screenshots/csv-to-vcf-converter-3.png"
+            ]
+        },
+        "clipboardreader": {
+            "icon": "https://vovsoft.com/icons128/clipboard-reader.png",
+            "images": [
+                "https://i.postimg.cc/jqXHBxnb/image.png"
+            ]
+        },
+        "collecturl": {
+            "icon": "https://vovsoft.com/icons64/collect-url.png",
+            "images": [
+                "https://vovsoft.com/screenshots/collect-url.png"
+            ]
+        },
+        "comparetwotexts": {
+            "icon": "https://vovsoft.com/icons128/compare-two-texts.png",
+            "images": [
+                "https://vovsoft.com/screenshots/compare-two-texts.png",
+                "https://vovsoft.com/screenshots/compare-two-texts-2.png"
+            ]
+        },
+        "contactmanager": {
+            "icon": "https://vovsoft.com/icons128/contact-manager.png",
+            "images": [
+                "https://i.postimg.cc/gjTndTPv/image.png"
+            ]
+        },
+        "containerloadingcalculator": {
+            "icon": "https://vovsoft.com/icons64/container-loading-calculator.png",
+            "images": [
+                "https://vovsoft.com/screenshots/container-loading-calculator.png"
+            ]
+        },
+        "convertvideotoaudio": {
+            "icon": "https://vovsoft.com/icons128/convert-video-to-audio.png",
+            "images": [
+                "https://i.postimg.cc/mZJLLMHv/image.png"
+            ]
+        },
+        "copyfilesintomultiplefolders": {
+            "icon": "https://vovsoft.com/icons64/copy-files-into-multiple-folders.png",
+            "images": [
+                "https://i.postimg.cc/y8PW8xB4/image.png",
+                "https://vovsoft.com/screenshots/copy-files-into-multiple-folders-2.png",
+                "https://vovsoft.com/screenshots/copy-files-into-multiple-folders-3.png",
+                "https://vovsoft.com/screenshots/copy-files-into-multiple-folders-4.png",
+                "https://vovsoft.com/screenshots/copy-files-into-multiple-folders-5.png"
+            ]
+        },
+        "createimagegallery": {
+            "icon": "https://vovsoft.com/icons64/create-image-gallery.png",
+            "images": [
+                "https://vovsoft.com/screenshots/create-image-gallery.png",
+                "https://vovsoft.com/screenshots/create-image-gallery-2.png"
+            ]
+        },
+        "cryptocurrencytracker": {
+            "icon": "https://vovsoft.com/icons64/cryptocurrency-tracker.png",
+            "images": [
+                "https://vovsoft.com/screenshots/cryptocurrency-tracker.png",
+                "https://vovsoft.com/screenshots/cryptocurrency-tracker-2.png",
+                "https://vovsoft.com/screenshots/cryptocurrency-tracker-3.png",
+                "https://vovsoft.com/screenshots/cryptocurrency-tracker-4.png",
+                "https://vovsoft.com/screenshots/cryptocurrency-tracker-5.png"
+            ]
+        },
+        "desktopdiary": {
+            "icon": "https://vovsoft.com/icons64/desktop-diary.png",
+            "images": [
+                "https://vovsoft.com/screenshots/desktop-diary.png",
+                "https://vovsoft.com/screenshots/desktop-diary-2.png",
+                "https://vovsoft.com/screenshots/desktop-diary-3.png",
+                "https://vovsoft.com/screenshots/desktop-diary-4.png",
+                "https://vovsoft.com/screenshots/desktop-diary-5.png"
+            ]
+        },
+        "Winget.VovSoft.DirectoryMonitor": {
+            "icon": "https://vovsoft.com/icons128/directory-monitor.png",
+            "images": [
+                "https://vovsoft.com/screenshots/directory-monitor.png",
+                "https://vovsoft.com/screenshots/directory-monitor-2.png",
+                "https://vovsoft.com/screenshots/directory-monitor-3.png",
+                "https://vovsoft.com/screenshots/directory-monitor-4.png"
+            ]
+        },
+        "diskmonitorgadget": {
+            "icon": "https://vovsoft.com/icons64/disk-monitor-gadget.png",
+            "images": [
+                "https://vovsoft.com/screenshots/disk-monitor-gadget.png"
+            ]
+        },
+        "documentmanager": {
+            "icon": "https://vovsoft.com/icons64/document-manager.png",
+            "images": [
+                "https://vovsoft.com/screenshots/document-manager.png",
+                "https://vovsoft.com/screenshots/document-manager-2.png",
+                "https://vovsoft.com/screenshots/document-manager-3.png",
+                "https://vovsoft.com/screenshots/document-manager-4.png"
+            ]
+        },
+        "domainchecker": {
+            "icon": "https://vovsoft.com/icons64/domain-checker.png",
+            "images": [
+                "https://vovsoft.com/screenshots/domain-checker.png",
+                "https://vovsoft.com/screenshots/domain-checker-2.png",
+                "https://vovsoft.com/screenshots/domain-checker-3.png",
+                "https://vovsoft.com/screenshots/domain-checker-4.png",
+                "https://vovsoft.com/screenshots/domain-checker-5.png",
+                "https://vovsoft.com/screenshots/domain-checker-6.png"
+            ]
+        },
+        "downloadmailboxemails": {
+            "icon": "https://vovsoft.com/icons64/download-mailbox-emails.png",
+            "images": [
+                "https://vovsoft.com/screenshots/download-mailbox-emails.png",
+                "https://vovsoft.com/screenshots/download-mailbox-emails-2.png",
+                "https://vovsoft.com/screenshots/download-mailbox-emails-3.png",
+                "https://vovsoft.com/screenshots/download-mailbox-emails-4.png"
+            ]
+        },
+        "Winget.VovSoft.DuplicateFileFinder": {
+            "icon": "https://vovsoft.com/icons64/duplicate-file-finder.png",
+            "images": [
+                "https://vovsoft.com/screenshots/duplicate-file-finder.png"
+            ]
+        },
+        "emlconverter": {
+            "icon": "https://vovsoft.com/icons128/eml-converter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/eml-converter.png"
+            ]
+        },
+        "executablebitscanner": {
+            "icon": "https://vovsoft.com/icons128/executable-bit-scanner.png",
+            "images": [
+                "https://vovsoft.com/screenshots/executable-bit-scanner.png"
+            ]
+        },
+        "externallinkdetector": {
+            "icon": "https://vovsoft.com/icons128/external-link-detector.png",
+            "images": [
+                "https://vovsoft.com/screenshots/external-link-detector.png"
+            ]
+        },
+        "facedetector": {
+            "icon": "https://vovsoft.com/icons128/face-detector.png",
+            "images": [
+                "https://vovsoft.com/screenshots/face-detector.png",
+                "https://vovsoft.com/screenshots/face-detector-2.png",
+                "https://vovsoft.com/screenshots/face-detector-3.png"
+            ]
+        },
+        "filechecksumcalculator": {
+            "icon": "https://vovsoft.com/icons64/file-checksum-calculator.png",
+            "images": [
+                "https://vovsoft.com/screenshots/file-checksum-calculator.png",
+                "https://vovsoft.com/screenshots/file-checksum-calculator-2.png",
+                "https://vovsoft.com/screenshots/file-checksum-calculator-3.png"
+            ]
+        },
+        "filesplitterandjoiner": {
+            "icon": "https://vovsoft.com/icons64/file-splitter-and-joiner.png",
+            "images": [
+                "https://vovsoft.com/screenshots/file-splitter-and-joiner.png"
+            ]
+        },
+        "filenamelister": {
+            "icon": "https://vovsoft.com/icons64/filename-lister.png",
+            "images": [
+                "https://vovsoft.com/screenshots/filename-lister.png"
+            ]
+        },
+        "findandreplacemultiplefiles": {
+            "icon": "https://vovsoft.com/icons64/find-and-replace-multiple-files.png",
+            "images": [
+                "https://i.postimg.cc/pXv0FW3X/image.png"
+            ]
+        },
+        "foldersplitter": {
+            "icon": "https://vovsoft.com/icons128/folder-splitter.png",
+            "images": [
+                "https://i.postimg.cc/rwmN1Kjy/image.png"
+            ]
+        },
+        "htmlstripper": {
+            "icon": "https://vovsoft.com/icons128/html-stripper.png",
+            "images": [
+                "https://vovsoft.com/screenshots/html-stripper.png",
+                "https://vovsoft.com/screenshots/html-stripper-2.png",
+                "https://vovsoft.com/screenshots/html-stripper-3.png"
+            ]
+        },
+        "httprequester": {
+            "icon": "https://vovsoft.com/icons128/http-requester.png",
+            "images": [
+                "https://vovsoft.com/screenshots/http-requester.png",
+                "https://vovsoft.com/screenshots/http-requester-2.png",
+                "https://vovsoft.com/screenshots/http-requester-3.png",
+                "https://vovsoft.com/screenshots/http-requester-4.png"
+            ]
+        },
+        "healthbreakreminder": {
+            "icon": "https://vovsoft.com/icons128/health-break-reminder.png",
+            "images": [
+                "https://vovsoft.com/screenshots/health-break-reminder.png"
+            ]
+        },
+        "hexviewer": {
+            "icon": "https://vovsoft.com/icons128/hex-viewer.png",
+            "images": [
+                "https://vovsoft.com/screenshots/hex-viewer.png"
+            ]
+        },
+        "hidefiles": {
+            "icon": "https://vovsoft.com/icons128/hide-files.png",
+            "images": [
+                "https://vovsoft.com/screenshots/hide-files.png",
+                "https://vovsoft.com/screenshots/hide-files-2.png",
+                "https://vovsoft.com/screenshots/hide-files-3.png",
+                "https://vovsoft.com/screenshots/hide-files-4.png",
+                "https://vovsoft.com/screenshots/hide-files-5.png"
+            ]
+        },
+        "hierarchicalfilemanager": {
+            "icon": "https://vovsoft.com/icons128/hierarchical-file-manager.png",
+            "images": [
+                "https://vovsoft.com/screenshots/hierarchical-file-manager.png"
+            ]
+        },
+        "imagecombiner": {
+            "icon": "https://vovsoft.com/icons64/image-combiner.png",
+            "images": [
+                "https://vovsoft.com/screenshots/image-combiner.png",
+                "https://vovsoft.com/screenshots/image-combiner-2.png",
+                "https://vovsoft.com/screenshots/image-combiner-3.png"
+            ]
+        },
+        "imagepixelator": {
+            "icon": "https://vovsoft.com/icons128/image-pixelator.png",
+            "images": [
+                "https://vovsoft.com/screenshots/image-pixelator.png"
+            ]
+        },
+        "imagesplitter": {
+            "icon": "https://vovsoft.com/icons128/image-splitter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/image-splitter.png",
+                "https://vovsoft.com/screenshots/image-splitter-2.png",
+                "https://vovsoft.com/screenshots/image-splitter-3.png",
+                "https://vovsoft.com/screenshots/image-splitter-4.png"
+            ]
+        },
+        "imagetocartoonconverter": {
+            "icon": "https://vovsoft.com/icons128/image-to-cartoon-converter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/image-to-cartoon-converter.png"
+            ]
+        },
+        "jsonbeautifier": {
+            "icon": "https://vovsoft.com/icons128/json-beautifier.png",
+            "images": [
+                "https://vovsoft.com/screenshots/json-beautifier.png"
+            ]
+        },
+        "jsontocsvconverter": {
+            "icon": "https://vovsoft.com/icons128/json-to-csv-converter.png",
+            "images": [
+                "https://i.postimg.cc/7ZWd0vgF/image.png"
+            ]
+        },
+        "keepsoftwarealive": {
+            "icon": "https://vovsoft.com/icons64/keep-software-alive.png",
+            "images": [
+                "https://vovsoft.com/screenshots/keep-software-alive.png"
+            ]
+        },
+        "keyboardlights": {
+            "icon": "https://vovsoft.com/icons128/keyboard-lights.png",
+            "images": [
+                "https://vovsoft.com/screenshots/keyboard-lights.png",
+                "https://vovsoft.com/screenshots/keyboard-lights-2.png",
+                "https://vovsoft.com/screenshots/keyboard-lights-3.png",
+                "https://vovsoft.com/screenshots/keyboard-lights-4.png"
+            ]
+        },
+        "keyboardsoundboard": {
+            "icon": "https://vovsoft.com/icons128/keyboard-soundboard.png",
+            "images": [
+                "https://vovsoft.com/screenshots/keyboard-soundboard.png",
+                "https://vovsoft.com/screenshots/keyboard-soundboard-2.png",
+                "https://vovsoft.com/screenshots/keyboard-soundboard-3.png",
+                "https://vovsoft.com/screenshots/keyboard-soundboard-4.png"
+            ]
+        },
+        "keystrokevisualizer": {
+            "icon": "https://vovsoft.com/icons64/keystroke-visualizer.png",
+            "images": [
+                "https://vovsoft.com/screenshots/keystroke-visualizer.png",
+                "https://vovsoft.com/screenshots/keystroke-visualizer-2.png",
+                "https://vovsoft.com/screenshots/keystroke-visualizer-3.png",
+                "https://vovsoft.com/screenshots/keystroke-visualizer-4.png"
+            ]
+        },
+        "keywordcombiner": {
+            "icon": "https://vovsoft.com/icons128/keyword-combiner.png",
+            "images": [
+                "https://vovsoft.com/screenshots/keyword-combiner.png"
+            ]
+        },
+        "machinelearningrequester": {
+            "icon": "https://vovsoft.com/icons128/machine-learning-requester.png",
+            "images": [
+                "https://vovsoft.com/screenshots/machine-learning-requester.png"
+            ]
+        },
+        "markdownconverter": {
+            "icon": "https://vovsoft.com/icons128/markdown-converter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/markdown-converter.png"
+            ]
+        },
+        "mergemultiplefolders": {
+            "icon": "https://vovsoft.com/icons128/merge-multiple-folders.png",
+            "images": [
+                "https://i.postimg.cc/d3cL0SH6/image.png"
+            ]
+        },
+        "mergexmlfiles": {
+            "icon": "https://vovsoft.com/icons64/merge-xml-files.png",
+            "images": [
+                "https://vovsoft.com/screenshots/merge-xml-files.png"
+            ]
+        },
+        "networkalarmer": {
+            "icon": "https://vovsoft.com/icons128/network-alarmer.png",
+            "images": [
+                "https://vovsoft.com/screenshots/network-alarmer.png"
+            ]
+        },
+        "noisedetector": {
+            "icon": "https://vovsoft.com/icons128/noise-detector.png",
+            "images": [
+                "https://vovsoft.com/screenshots/noise-detector.png",
+                "https://vovsoft.com/screenshots/noise-detector-2.png",
+                "https://vovsoft.com/screenshots/noise-detector-3.png"
+            ]
+        },
+        "ocrreader": {
+            "icon": "https://vovsoft.com/icons128/ocr-reader.png?v=3.3",
+            "images": [
+                "https://vovsoft.com/screenshots/ocr-reader.png",
+                "https://vovsoft.com/screenshots/ocr-reader-2.png",
+                "https://vovsoft.com/screenshots/ocr-reader-3.png",
+                "https://vovsoft.com/screenshots/ocr-reader-4.png",
+                "https://vovsoft.com/screenshots/ocr-reader-5.png"
+            ]
+        },
+        "pdftoimageconverter": {
+            "icon": "https://vovsoft.com/icons64/pdf-to-image-converter.png",
+            "images": [
+                "https://i.postimg.cc/1zRdkmyW/image.png"
+            ]
+        },
+        "photostovideo": {
+            "icon": "https://vovsoft.com/icons64/photos-to-video.png",
+            "images": [
+                "https://vovsoft.com/screenshots/photos-to-video.png",
+                "https://vovsoft.com/screenshots/photos-to-video-2.png",
+                "https://vovsoft.com/screenshots/photos-to-video-3.png"
+            ]
+        },
+        "picturedownloader": {
+            "icon": "https://vovsoft.com/icons64/picture-downloader.png",
+            "images": [
+                "https://vovsoft.com/screenshots/picture-downloader.png",
+                "https://vovsoft.com/screenshots/picture-downloader-2.png",
+                "https://vovsoft.com/screenshots/picture-downloader-3.png"
+            ]
+        },
+        "podcastdownloader": {
+            "icon": "https://vovsoft.com/icons64/podcast-downloader.png",
+            "images": [
+                "https://vovsoft.com/screenshots/podcast-downloader.png",
+                "https://vovsoft.com/screenshots/podcast-downloader-2.png",
+                "https://vovsoft.com/screenshots/podcast-downloader-3.png"
+            ]
+        },
+        "preventcomputersleep": {
+            "icon": "https://vovsoft.com/icons128/prevent-computer-sleep.png",
+            "images": [
+                "https://i.postimg.cc/1zMXqZBK/image.png"
+            ]
+        },
+        "preventdisksleep": {
+            "icon": "https://vovsoft.com/icons64/prevent-disk-sleep.png",
+            "images": [
+                "https://i.postimg.cc/x8mbH4c1/image.png"
+            ]
+        },
+        "proxychecker": {
+            "icon": "https://vovsoft.com/icons128/proxy-checker.png",
+            "images": [
+                "https://vovsoft.com/screenshots/proxy-checker.png"
+            ]
+        },
+        "proxyserver": {
+            "icon": "https://vovsoft.com/icons128/proxy-server.png",
+            "images": [
+                "https://vovsoft.com/screenshots/proxy-server.png"
+            ]
+        },
+        "proxyswitcher": {
+            "icon": "https://vovsoft.com/icons128/proxy-switcher.png",
+            "images": [
+                "https://vovsoft.com/screenshots/proxy-switcher.png"
+            ]
+        },
+        "qrcodeandbarcodereader": {
+            "icon": "https://vovsoft.com/icons128/qr-code-and-barcode-reader.png",
+            "images": [
+                "https://vovsoft.com/screenshots/qr-code-and-barcode-reader.png",
+                "https://vovsoft.com/screenshots/qr-code-and-barcode-reader-2.png",
+                "https://vovsoft.com/screenshots/qr-code-and-barcode-reader-3.png"
+            ]
+        },
+        "rambenchmark": {
+            "icon": "https://vovsoft.com/icons64/ram-benchmark.png",
+            "images": [
+                "https://i.postimg.cc/Gm6wgg29/image.png"
+            ]
+        },
+        "rammonitorgadget": {
+            "icon": "https://vovsoft.com/icons128/ram-monitor-gadget.png",
+            "images": [
+                "https://vovsoft.com/screenshots/ram-monitor-gadget.png"
+            ]
+        },
+        "randomwordlistgenerator": {
+            "icon": "https://vovsoft.com/icons128/random-wordlist-generator.png",
+            "images": [
+                "https://vovsoft.com/screenshots/random-wordlist-generator.png",
+                "https://vovsoft.com/screenshots/random-wordlist-generator-2.png",
+                "https://vovsoft.com/screenshots/random-wordlist-generator-3.png"
+            ]
+        },
+        "readmode": {
+            "icon": "https://vovsoft.com/icons64/read-mode.png",
+            "images": [
+                "https://vovsoft.com/screenshots/read-mode.png"
+            ]
+        },
+        "regexextractor": {
+            "icon": "https://vovsoft.com/icons64/regex-extractor.png",
+            "images": [
+                "https://vovsoft.com/screenshots/regex-extractor.png",
+                "https://vovsoft.com/screenshots/regex-extractor-2.png",
+                "https://vovsoft.com/screenshots/regex-extractor-3.png",
+                "https://vovsoft.com/screenshots/regex-extractor-4.png"
+            ]
+        },
+        "resourceextractor": {
+            "icon": "https://vovsoft.com/icons128/resource-extractor.png",
+            "images": [
+                "https://vovsoft.com/screenshots/resource-extractor.png"
+            ]
+        },
+        "seochecker": {
+            "icon": "https://vovsoft.com/icons64/seo-checker.png",
+            "images": [
+                "https://vovsoft.com/screenshots/seo-checker.png",
+                "https://vovsoft.com/screenshots/seo-checker-2.png",
+                "https://vovsoft.com/screenshots/seo-checker-3.png",
+                "https://vovsoft.com/screenshots/seo-checker-4.png",
+                "https://vovsoft.com/screenshots/seo-checker-5.png",
+                "https://vovsoft.com/screenshots/seo-checker-6.png",
+                "https://vovsoft.com/screenshots/seo-checker-7.png"
+            ]
+        },
+        "searchtextinfiles": {
+            "icon": "https://vovsoft.com/icons128/search-text-in-files.png",
+            "images": [
+                "https://vovsoft.com/screenshots/search-text-in-files.png",
+                "https://vovsoft.com/screenshots/search-text-in-files-2.png",
+                "https://vovsoft.com/screenshots/search-text-in-files-3.png",
+                "https://vovsoft.com/screenshots/search-text-in-files-4.png",
+                "https://vovsoft.com/screenshots/search-text-in-files-5.png",
+                "https://vovsoft.com/screenshots/search-text-in-files-6.png"
+            ]
+        },
+        "serialportmonitor": {
+            "icon": "https://vovsoft.com/icons64/serial-port-monitor.png",
+            "images": [
+                "https://vovsoft.com/screenshots/serial-port-monitor.png",
+                "https://vovsoft.com/screenshots/serial-port-monitor-2.png",
+                "https://vovsoft.com/screenshots/serial-port-monitor-3.png",
+                "https://vovsoft.com/screenshots/serial-port-monitor-4.png",
+                "https://vovsoft.com/screenshots/serial-port-monitor-5.png"
+            ]
+        },
+        "silenceremover": {
+            "icon": "https://vovsoft.com/icons128/silence-remover.png",
+            "images": [
+                "https://vovsoft.com/screenshots/silence-remover.png"
+            ]
+        },
+        "sitemapgenerator": {
+            "icon": "https://vovsoft.com/icons64/sitemap-generator.png",
+            "images": [
+                "https://vovsoft.com/screenshots/sitemap-generator.png"
+            ]
+        },
+        "soundrecorder": {
+            "icon": "https://vovsoft.com/icons64/sound-recorder.png",
+            "images": [
+                "https://i.postimg.cc/2jqzGWTH/image.png"
+            ]
+        },
+        "speechtosubtitleconverter": {
+            "icon": "https://vovsoft.com/icons128/speech-to-subtitle-converter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/speech-to-subtitle-converter.png",
+                "https://vovsoft.com/screenshots/speech-to-subtitle-converter-2.png",
+                "https://vovsoft.com/screenshots/speech-to-subtitle-converter-3.png",
+                "https://vovsoft.com/screenshots/speech-to-subtitle-converter-4.png"
+            ]
+        },
+        "spreadsheetcombiner": {
+            "icon": "https://vovsoft.com/icons128/spreadsheet-combiner.png",
+            "images": [
+                "https://vovsoft.com/screenshots/spreadsheet-combiner.png"
+            ]
+        },
+        "textdecoderandencoder": {
+            "icon": "https://vovsoft.com/icons64/text-decoder-and-encoder.png",
+            "images": [
+                "https://vovsoft.com/screenshots/text-decoder-and-encoder.png",
+                "https://vovsoft.com/screenshots/text-decoder-and-encoder-2.png",
+                "https://vovsoft.com/screenshots/text-decoder-and-encoder-3.png"
+            ]
+        },
+        "texteditplus": {
+            "icon": "https://vovsoft.com/icons128/text-edit-plus.png",
+            "images": [
+                "https://i.postimg.cc/sx34jznX/image.png",
+                "https://vovsoft.com/screenshots/text-edit-plus.png",
+                "https://vovsoft.com/screenshots/text-edit-plus-2.png",
+                "https://vovsoft.com/screenshots/text-edit-plus-3.png",
+                "https://vovsoft.com/screenshots/text-edit-plus-4.png",
+                "https://vovsoft.com/screenshots/text-edit-plus-5.png",
+                "https://vovsoft.com/screenshots/text-edit-plus-6.png"
+            ]
+        },
+        "Winget.VovSoft.TextFilter": {
+            "icon": "https://vovsoft.com/icons128/text-filter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/text-filter.png"
+            ]
+        },
+        "timesync": {
+            "icon": "https://vovsoft.com/icons64/time-sync.png",
+            "images": [
+                "https://vovsoft.com/screenshots/time-sync.png"
+            ]
+        },
+        "treenotes": {
+            "icon": "https://vovsoft.com/icons128/tree-notes.png",
+            "images": [
+                "https://vovsoft.com/screenshots/tree-notes.png"
+            ]
+        },
+        "urlextractor": {
+            "icon": "https://vovsoft.com/icons64/url-extractor.png",
+            "images": [
+                "https://vovsoft.com/screenshots/url-extractor.png",
+                "https://vovsoft.com/screenshots/url-extractor-2.png",
+                "https://vovsoft.com/screenshots/url-extractor-3.png",
+                "https://vovsoft.com/screenshots/url-extractor-4.png",
+                "https://vovsoft.com/screenshots/url-extractor-6.png"
+            ]
+        },
+        "vcfeditor": {
+            "icon": "https://vovsoft.com/icons128/vcf-editor.png",
+            "images": [
+                "https://vovsoft.com/screenshots/vcf-editor.png"
+            ]
+        },
+        "vcfmerger": {
+            "icon": "https://vovsoft.com/icons128/vcf-merger.png",
+            "images": [
+                "https://vovsoft.com/screenshots/vcf-merger.png"
+            ]
+        },
+        "vcfsplitter": {
+            "icon": "https://vovsoft.com/icons128/vcf-splitter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/vcf-splitter.png"
+            ]
+        },
+        "vcftocsvconverter": {
+            "icon": "https://vovsoft.com/icons128/vcf-to-csv-converter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/vcf-to-csv-converter-2.png",
+                "https://vovsoft.com/screenshots/vcf-to-csv-converter-3.png",
+                "https://vovsoft.com/screenshots/vcf-to-csv-converter-4.png"
+            ]
+        },
+        "videotophotos": {
+            "icon": "https://vovsoft.com/icons64/video-to-photos.png",
+            "images": [
+                "https://vovsoft.com/screenshots/video-to-photos.png"
+            ]
+        },
+        "voicechanger": {
+            "icon": "https://vovsoft.com/icons64/voice-changer.png",
+            "images": [
+                "https://vovsoft.com/screenshots/voice-changer.png",
+                "https://vovsoft.com/screenshots/voice-changer-2.png",
+                "https://vovsoft.com/screenshots/voice-changer-3.png"
+            ]
+        },
+        "vovalphablend": {
+            "icon": "https://vovsoft.com/icons64/vov-alpha-blend.png",
+            "images": [
+                "https://vovsoft.com/screenshots/vov-alpha-blend.png"
+            ]
+        },
+        "vovmusicplayer": {
+            "icon": "https://vovsoft.com/icons128/vov-music-player.png",
+            "images": [
+                "https://vovsoft.com/screenshots/vov-music-player.png",
+                "https://vovsoft.com/screenshots/vov-music-player-2.png",
+                "https://vovsoft.com/screenshots/vov-music-player-3.png",
+                "https://vovsoft.com/screenshots/vov-music-player-4.png",
+                "https://vovsoft.com/screenshots/vov-music-player-5.png"
+            ]
+        },
+        "vovscreenrecorder": {
+            "icon": "https://vovsoft.com/icons64/vov-screen-recorder.png",
+            "images": [
+                "https://vovsoft.com/screenshots/vov-screen-recorder.png",
+                "https://vovsoft.com/screenshots/vov-screen-recorder-2.png",
+                "https://vovsoft.com/screenshots/vov-screen-recorder-3.png",
+                "https://vovsoft.com/screenshots/vov-screen-recorder-4.png"
+            ]
+        },
+        "vovstickynotes": {
+            "icon": "https://vovsoft.com/icons128/vov-sticky-notes.png",
+            "images": [
+                "https://vovsoft.com/screenshots/vov-sticky-notes.png",
+                "https://vovsoft.com/screenshots/vov-sticky-notes-2.png",
+                "https://vovsoft.com/screenshots/vov-sticky-notes-3.png",
+                "https://vovsoft.com/screenshots/vov-sticky-notes-4.png",
+                "https://vovsoft.com/screenshots/vov-sticky-notes-5.png",
+                "https://vovsoft.com/screenshots/vov-sticky-notes-6.png",
+                "https://vovsoft.com/screenshots/vov-sticky-notes-7.png"
+            ]
+        },
+        "vovstopstart": {
+            "icon": "https://vovsoft.com/icons128/vov-stop-start.png",
+            "images": [
+                "https://vovsoft.com/screenshots/vov-stop-start.png"
+            ]
+        },
+        "watermarkvideo": {
+            "icon": "https://vovsoft.com/icons64/watermark-video.png",
+            "images": [
+                "https://i.postimg.cc/CxFjCWdn/image.png"
+            ]
+        },
+        "webplatformidentifier": {
+            "icon": "https://vovsoft.com/icons128/web-platform-identifier.png",
+            "images": [
+                "https://vovsoft.com/screenshots/web-platform-identifier.png"
+            ]
+        },
+        "webcamcapture": {
+            "icon": "https://vovsoft.com/icons64/webcam-capture.png",
+            "images": [
+                "https://vovsoft.com/screenshots/webcam-capture.png"
+            ]
+        },
+        "websitefilecollector": {
+            "icon": "https://vovsoft.com/icons128/website-file-collector.png",
+            "images": [
+                "https://vovsoft.com/screenshots/website-file-collector.png"
+            ]
+        },
+        "websitescreenshotgenerator": {
+            "icon": "https://vovsoft.com/icons128/website-screenshot-generator.png",
+            "images": [
+                "https://vovsoft.com/screenshots/website-screenshot-generator.png"
+            ]
+        },
+        "websitespellchecker": {
+            "icon": "https://vovsoft.com/icons128/website-spell-checker.png",
+            "images": [
+                "https://vovsoft.com/screenshots/website-spell-checker.png"
+            ]
+        },
+        "Winget.VovSoft.WebsiteWatcher": {
+            "icon": "https://vovsoft.com/icons128/website-watcher.png",
+            "images": [
+                "https://vovsoft.com/screenshots/website-watcher.png",
+                "https://vovsoft.com/screenshots/website-watcher-2.png",
+                "https://vovsoft.com/screenshots/website-watcher-3.png"
+            ]
+        },
+        "windowresizer": {
+            "icon": "https://vovsoft.com/icons128/window-resizer.png",
+            "images": [
+                "https://vovsoft.com/screenshots/window-resizer.png"
+            ]
+        },
+        "vovsystemuptime": {
+            "icon": "https://vovsoft.com/icons64/vov-system-uptime.png",
+            "images": [
+                "https://vovsoft.com/screenshots/vov-system-uptime.png"
+            ]
+        },
+        "xlstocsvconverter": {
+            "icon": "https://vovsoft.com/icons64/xls-to-csv-converter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/xls-to-csv-converter.png"
+            ]
+        },
+        "vcftotxtconverter": {
+            "icon": "https://vovsoft.com/icons128/vcf-to-txt-converter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/vcf-to-txt-converter.png?v=3.1"
+            ]
+        },
+        "subtitletranslator": {
+            "icon": "https://vovsoft.com/icons64/subtitle-translator.png",
+            "images": [
+                "https://vovsoft.com/screenshots/subtitle-translator.png"
+            ]
+        },
+        "speechtotextconverter": {
+            "icon": "https://vovsoft.com/icons64/speech-to-text-converter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/speech-to-text-converter.png",
+                "https://vovsoft.com/screenshots/speech-to-text-converter-2.png",
+                "https://vovsoft.com/screenshots/speech-to-text-converter-3.png",
+                "https://vovsoft.com/screenshots/speech-to-text-converter-4.png",
+                "https://vovsoft.com/screenshots/speech-to-text-converter-5.png",
+                "https://vovsoft.com/screenshots/speech-to-text-converter-6.png"
+            ]
+        },
+        "textstatisticsanalyzer": {
+            "icon": "https://vovsoft.com/icons128/text-statistics-analyzer.png",
+            "images": [
+                "https://vovsoft.com/screenshots/text-statistics-analyzer.png",
+                "https://vovsoft.com/screenshots/text-statistics-analyzer-2.png",
+                "https://vovsoft.com/screenshots/text-statistics-analyzer-3.png",
+                "https://vovsoft.com/screenshots/text-statistics-analyzer-4.png",
+                "https://vovsoft.com/screenshots/text-statistics-analyzer-5.png",
+                "https://vovsoft.com/screenshots/text-statistics-analyzer-6.png"
+            ]
+        },
+        "3dboxmaker": {
+            "icon": "https://vovsoft.com/icons64/3d-box-maker.png",
+            "images": [
+                "https://vovsoft.com/screenshots/3d-box-maker.png"
+            ]
+        },
+        "picturepuzzle": {
+            "icon": "https://vovsoft.com/icons128/picture-puzzle.png",
+            "images": [
+                "https://vovsoft.com/screenshots/picture-puzzle.png"
+            ]
+        },
+        "syslogserver": {
+            "icon": "https://vovsoft.com/icons128/syslog-server.png",
+            "images": [
+                "https://vovsoft.com/screenshots/syslog-server.png"
+            ]
+        },
+        "vcftoxlsconverter": {
+            "icon": "https://vovsoft.com/icons128/vcf-to-xls-converter.png",
+            "images": [
+                "https://vovsoft.com/screenshots/vcf-to-xls-converter.png"
+            ]
+        },
+        "appreadwritecounter": {
+            "icon": "https://i.postimg.cc/0201zJLD/App-Read-Write-Counter.png",
+            "images": [
+                "https://i.postimg.cc/7L648Yth/image.png"
+            ]
+        },
+        "dhcplogview": {
+            "icon": "https://i.postimg.cc/nzWcwQHF/DHCPLog-View.png",
+            "images": [
+                "https://i.postimg.cc/LX33t2Rc/image.png"
+            ]
+        },
+        "fulleventlogview": {
+            "icon": "https://i.postimg.cc/50Q6JmKG/image.png",
+            "images": [
+                "https://i.postimg.cc/KvP34JG7/image.png"
+            ]
+        },
+        "guipropview": {
+            "icon": "https://i.postimg.cc/MpsTjLhB/image.png",
+            "images": [
+                "https://i.postimg.cc/XYNqqWDv/image.png"
+            ]
+        },
+        "installeddriverslist": {
+            "icon": "https://i.postimg.cc/GtrrfPW8/image.png",
+            "images": [
+                "https://i.postimg.cc/Xq836GWg/image.png"
+            ]
+        },
+        "installedpackagesview": {
+            "icon": "https://i.postimg.cc/hthnNt5m/image.png",
+            "images": [
+                "https://i.postimg.cc/13TSS1kv/image.png"
+            ]
+        },
+        "lanipscanner": {
+            "icon": "https://i.postimg.cc/6QRkN2Lq/image.png",
+            "images": [
+                "https://i.postimg.cc/y8JqvrDZ/image.png"
+            ]
+        },
+        "managewirelessnetworks": {
+            "icon": "https://i.postimg.cc/pV1qqVKR/image.png",
+            "images": [
+                "https://i.postimg.cc/zXspYddW/image.png"
+            ]
+        },
+        "mobilefilesearch": {
+            "icon": "https://i.postimg.cc/76Znnj6h/image.png",
+            "images": [
+                "https://i.postimg.cc/Fzfb2c3n/image.png",
+                "https://i.postimg.cc/fy67ZLvh/image.png"
+            ]
+        },
+        "networkcounterswatch": {
+            "icon": "https://i.postimg.cc/jqWFVJsp/image.png",
+            "images": [
+                "https://i.postimg.cc/NGWPQfFF/image.png"
+            ]
+        },
+        "networkinterfacesview": {
+            "icon": "https://i.postimg.cc/43LBqXjJ/image.png",
+            "images": [
+                "https://i.postimg.cc/gJxNPfPf/image.png"
+            ]
+        },
+        "networkopenedfiles": {
+            "icon": "https://i.postimg.cc/X7fx3fTY/image.png",
+            "images": [
+                "https://i.postimg.cc/y87jNJHP/image.png"
+            ]
+        },
+        "networkusageview": {
+            "icon": "https://i.postimg.cc/C1nH2kGY/image.png",
+            "images": [
+                "https://i.postimg.cc/NFh7vFD6/image.png"
+            ]
+        },
+        "openedfilesview": {
+            "icon": "https://i.postimg.cc/Tw3B57vN/image.png",
+            "images": [
+                "https://i.postimg.cc/76td33qj/image.png",
+                "https://i.postimg.cc/C5ZtmR1f/image.png"
+            ]
+        },
+        "resourcesextract": {
+            "icon": "https://i.postimg.cc/ZqszHtcc/image.png",
+            "images": [
+                "https://i.postimg.cc/0Q6RHWX9/image.png"
+            ]
+        },
+        "searchmyfiles": {
+            "icon": "https://i.postimg.cc/Gp56YPLP/image.png",
+            "images": [
+                "https://i.postimg.cc/Y9LZx4jp/image.png"
+            ]
+        },
+        "shellmenuview": {
+            "icon": "https://i.postimg.cc/TYJSQv2r/image.png",
+            "images": [
+                "https://i.postimg.cc/W19yLmJB/image.png"
+            ]
+        },
+        "simplecodegenerator": {
+            "icon": "https://i.postimg.cc/RFtpHjb7/image.png",
+            "images": [
+                "https://i.postimg.cc/bYQFNfnf/image.png"
+            ]
+        },
+        "soundvolumeview": {
+            "icon": "https://i.postimg.cc/MHW0pNkT/image.png",
+            "images": [
+                "https://i.postimg.cc/sxwYQmym/image.png"
+            ]
+        },
+        "tcplogview": {
+            "icon": "https://i.postimg.cc/1zwDcssz/image.png",
+            "images": [
+                "https://i.postimg.cc/fLsm8pRK/image.png"
+            ]
+        },
+        "turnedontimesview": {
+            "icon": "https://i.postimg.cc/MZdVYs2Z/image.png",
+            "images": [
+                "https://i.postimg.cc/FszcCjNp/image.png"
+            ]
+        },
+        "usblogview": {
+            "icon": "https://i.postimg.cc/2jcLWVhb/image.png",
+            "images": [
+                "https://i.postimg.cc/qMNhx4xZ/image.png"
+            ]
+        },
+        "wifiinfoview": {
+            "icon": "https://i.postimg.cc/T39KR1dg/image.png",
+            "images": [
+                "https://i.postimg.cc/xdpqzZb2/image.png"
+            ]
+        },
+        "browserdownloadsview": {
+            "icon": "https://i.postimg.cc/zvFrnLPV/image.png",
+            "images": [
+                "https://i.postimg.cc/VsqmyTLy/image.png"
+            ]
+        },
+        "winhex": {
+            "icon": "https://i.postimg.cc/v8zktdZ0/winhex.png",
+            "images": [
+                "https://i.postimg.cc/8cPy0jzM/image.png"
+            ]
+        },
+        "Winget.DiskInternals.AccessRecovery": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/5yCH1m0h/image.png",
+                "https://i.postimg.cc/05bBgXGv/image.png",
+                "https://i.postimg.cc/1R2Yy0Mw/image.png",
+                "https://i.postimg.cc/wTN4MtGy/image.png",
+                "https://i.postimg.cc/zGSdwsNS/image.png"
+            ]
+        },
+        "Winget.DiskInternals.BootableRecoveryCD": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/VNkFq5DS/image.png",
+                "https://i.postimg.cc/3RyCq6sq/image.png",
+                "https://i.postimg.cc/Hxf41zHk/image.png",
+                "https://i.postimg.cc/zB9SY75t/image.png"
+            ]
+        },
+        "Winget.DiskInternals.CD-DVDRecovery": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/9QWP2r52/image.png",
+                "https://i.postimg.cc/Zqnr925n/image.png",
+                "https://i.postimg.cc/YS014ZC3/image.png"
+            ]
+        },
+        "Winget.DiskInternals.DVRRecovery": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/7LjT5Lcv/image.png",
+                "https://i.postimg.cc/j5NnPb04/image.png"
+            ]
+        },
+        "Winget.DiskInternals.EFSRecovery": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/Bn68ND9k/image.png",
+                "https://i.postimg.cc/XJwXXkd1/image.png",
+                "https://i.postimg.cc/CLMdLD1b/image.png",
+                "https://i.postimg.cc/t4wg5Mzv/image.png",
+                "https://i.postimg.cc/cHNLqt2B/image.png",
+                "https://i.postimg.cc/BQvQG0YN/image.png"
+            ]
+        },
+        "Winget.DiskInternals.ExcelRecovery": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/VkCwYLjf/image.png",
+                "https://i.postimg.cc/Dz17cyZp/image.png",
+                "https://i.postimg.cc/W3jTYLq9/image.png",
+                "https://i.postimg.cc/zv2NfytF/image.png",
+                "https://i.postimg.cc/9FzVnB09/image.png"
+            ]
+        },
+        "ramtempfolderpro": {
+            "icon": "https://i.postimg.cc/ZRR4zPjy/image.png",
+            "images": [
+                "https://i.postimg.cc/637ghMYH/image.png"
+            ]
+        },
+        "ramtempfolder": {
+            "icon": "https://i.postimg.cc/ZRR4zPjy/image.png",
+            "images": []
+        },
+        "diskboss": {
+            "icon": "",
+            "images": []
+        },
+        "diskbossenterprise": {
+            "icon": "",
+            "images": []
+        },
+        "diskbosspro": {
+            "icon": "",
+            "images": []
+        },
+        "diskbossserver": {
+            "icon": "",
+            "images": []
+        },
+        "diskbossultimate": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/6qxK4st9/image.png",
+                "https://i.postimg.cc/rwZLCRMh/image.png"
+            ]
+        },
+        "diskpulse": {
+            "icon": "",
+            "images": []
+        },
+        "diskpulseenterprise": {
+            "icon": "",
+            "images": []
+        },
+        "diskpulsepro": {
+            "icon": "",
+            "images": []
+        },
+        "diskpulseserver": {
+            "icon": "",
+            "images": []
+        },
+        "disksavvy": {
+            "icon": "",
+            "images": []
+        },
+        "disksavvyenterprise": {
+            "icon": "",
+            "images": []
+        },
+        "disksavvypro": {
+            "icon": "",
+            "images": []
+        },
+        "disksavvyserver": {
+            "icon": "",
+            "images": []
+        },
+        "disksavvyultimate": {
+            "icon": "",
+            "images": []
+        },
+        "disksorter": {
+            "icon": "https://i.postimg.cc/rFDPg9rn/disksorter.png",
+            "images": []
+        },
+        "disksorterenterprise": {
+            "icon": "https://i.postimg.cc/rFDPg9rn/disksorter.png",
+            "images": []
+        },
+        "disksorterpro": {
+            "icon": "https://i.postimg.cc/rFDPg9rn/disksorter.png",
+            "images": []
+        },
+        "disksorterserver": {
+            "icon": "https://i.postimg.cc/rFDPg9rn/disksorter.png",
+            "images": []
+        },
+        "disksorterultimate": {
+            "icon": "https://i.postimg.cc/rFDPg9rn/disksorter.png",
+            "images": []
+        },
+        "dupscout": {
+            "icon": "",
+            "images": []
+        },
+        "dupscoutenterprise": {
+            "icon": "",
+            "images": []
+        },
+        "dupscoutpro": {
+            "icon": "",
+            "images": []
+        },
+        "dupscoutserver": {
+            "icon": "",
+            "images": []
+        },
+        "dupscoutultimate": {
+            "icon": "",
+            "images": []
+        },
+        "syncbreeze": {
+            "icon": "",
+            "images": []
+        },
+        "syncbreezeenterprise": {
+            "icon": "",
+            "images": []
+        },
+        "syncbreezepro": {
+            "icon": "",
+            "images": []
+        },
+        "syncbreezeserver": {
+            "icon": "",
+            "images": []
+        },
+        "syncbreezeultimate": {
+            "icon": "",
+            "images": []
+        },
+        "sysgaugepro": {
+            "icon": "",
+            "images": []
+        },
+        "sysgaugeserver": {
+            "icon": "",
+            "images": []
+        },
+        "sysgaugeultimate": {
+            "icon": "",
+            "images": []
+        },
+        "vxsearch": {
+            "icon": "",
+            "images": []
+        },
+        "vxsearchenterprise": {
+            "icon": "",
+            "images": []
+        },
+        "vxsearchpro": {
+            "icon": "",
+            "images": []
+        },
+        "vxsearchserver": {
+            "icon": "",
+            "images": []
+        },
+        "vxsearchultimate": {
+            "icon": "",
+            "images": []
+        },
+        "autologout": {
+            "icon": "https://autologout.yiays.com/img/icon-colour.png",
+            "images": [
+                "https://autologout.yiays.com/img/client.png",
+                "https://autologout.yiays.com/img/client-controlpanel.png"
+            ]
+        },
+        "habbolauncher": {
+            "icon": "https://i.imgur.com/yzNr9nN.png",
+            "images": []
+        },
+        "iobitunlocker": {
+            "icon": "https://i.imgur.com/nq6FMyG.png",
+            "images": []
+        },
+        "calendartask": {
+            "icon": "https://i.postimg.cc/Qt5rXMNW/caltask.png",
+            "images": [
+                "https://i.postimg.cc/L6mMpRcZ/image.png",
+                "https://i.postimg.cc/QdVw8M0J/image.png",
+                "https://i.postimg.cc/MHd3xkBg/image.png",
+                "https://i.postimg.cc/T3Z7TJKs/image.png",
+                "https://i.postimg.cc/nzx3DVYw/image.png",
+                "https://i.postimg.cc/QCxSf6zJ/image.png",
+                "https://i.postimg.cc/sDxwSNS8/image.png"
+            ]
+        },
+        "websiteoptimizer": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/s2YbYdpf/image.png",
+                "https://i.postimg.cc/s2YbYdpf/image.png",
+                "https://i.postimg.cc/zvBMYy4V/image.png"
+            ]
+        },
+        "appletrunnerpro": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/59hGR2n5/image.png",
+                "https://i.postimg.cc/vZzNTLMx/image.png",
+                "https://i.postimg.cc/ZnpfS6Vy/image.png",
+                "https://i.postimg.cc/h4dZTqc4/image.png",
+                "https://i.postimg.cc/021WCHyn/image.png"
+            ]
+        },
+        "controldashboard": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/1XQGD2r8/image.png",
+                "https://i.postimg.cc/sfY93f33/image.png",
+                "https://i.postimg.cc/xT9G8rdy/image.png",
+                "https://i.postimg.cc/KvQPg9kZ/image.png",
+                "https://i.postimg.cc/NjM181mk/image.png",
+                "https://i.postimg.cc/0NKDFPV3/image.png"
+            ]
+        },
+        "controldashboard-pro": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/1XQGD2r8/image.png",
+                "https://i.postimg.cc/sfY93f33/image.png",
+                "https://i.postimg.cc/xT9G8rdy/image.png",
+                "https://i.postimg.cc/KvQPg9kZ/image.png",
+                "https://i.postimg.cc/NjM181mk/image.png",
+                "https://i.postimg.cc/0NKDFPV3/image.png"
+            ]
+        },
+        "decoration": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/xTjHYKxQ/image.png",
+                "https://i.postimg.cc/HkVy8T14/image.png",
+                "https://i.postimg.cc/ZRhBQ3BV/image.png",
+                "https://i.postimg.cc/rsVdVk9y/image.png",
+                "https://i.postimg.cc/L5xJhbyy/image.png",
+                "https://i.postimg.cc/h4szCXSm/image.png"
+            ]
+        },
+        "dictaphone": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/Bv2t26Y5/image.png",
+                "https://i.postimg.cc/d1v36Ypb/image.png",
+                "https://i.postimg.cc/LXTX0WMh/image.png"
+            ]
+        },
+        "discotheek": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/SQPqN4Vb/image.png"
+            ]
+        },
+        "clipboardhistory": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/LsmF084f/image.png",
+                "https://i.postimg.cc/YS8BcBhc/image.png",
+                "https://i.postimg.cc/QttGhYTp/image.png",
+                "https://i.postimg.cc/k4pr4NQZ/image.png",
+                "https://i.postimg.cc/QC92WBSr/image.png",
+                "https://i.postimg.cc/nry6KHwQ/image.png"
+            ]
+        },
+        "clipboardhistory-pro": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/MKRGCXwr/image.png",
+                "https://i.postimg.cc/JzLhMm4r/image.png",
+                "https://i.postimg.cc/y8y8N5kJ/image.png",
+                "https://i.postimg.cc/rpyFRJrf/image.png"
+            ]
+        },
+        "Winget.Japplis.Toolbox": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/zDh5BMQq/image.png",
+                "https://i.postimg.cc/YCrwdSCr/image.png",
+                "https://i.postimg.cc/XYs6m0r2/image.png",
+                "https://i.postimg.cc/W4KLp66J/image.png",
+                "https://i.postimg.cc/XqSRdjPW/image.png",
+                "https://i.postimg.cc/90dvp33v/image.png",
+                "https://i.postimg.cc/hPgFGGTF/image.png"
+            ]
+        },
+        "Winget.Japplis.Toolbox.Pro": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/R0JpdrKZ/image.png",
+                "https://i.postimg.cc/26pcXHxC/image.png",
+                "https://i.postimg.cc/C57c5wpT/image.png",
+                "https://i.postimg.cc/sDfn8G5s/image.png",
+                "https://i.postimg.cc/XqSRdjPW/image.png",
+                "https://i.postimg.cc/90dvp33v/image.png"
+            ]
+        },
+        "Winget.Japplis.Watch": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/htDfVcFw/image.png",
+                "https://i.postimg.cc/P5SN49TP/image.png",
+                "https://i.postimg.cc/BvybWFjB/image.png",
+                "https://i.postimg.cc/hjdjKGxh/image.png",
+                "https://i.postimg.cc/QCZMCrkf/image.png",
+                "https://i.postimg.cc/0jGyJHVN/image.png"
+            ]
+        },
+        "Winget.Japplis.Watch.Pro": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/4N53fqKn/image.png",
+                "https://i.postimg.cc/8zXPWvmp/image.png",
+                "https://i.postimg.cc/d07Q905C/image.png",
+                "https://i.postimg.cc/TPZdNXsz/image.png"
+            ]
+        },
+        "lopeedit": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/XqGX0B5m/image.png"
+            ]
+        },
+        "Winget.Hetman.PhotoRecovery": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/XJQnqfdm/image.png",
+                "https://i.postimg.cc/htTgTWVX/image.png",
+                "https://i.postimg.cc/nzRtpHt8/image.png"
+            ]
+        },
+        "Winget.Hetman.OfficeRecovery": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/cCF6qqF0/image.png",
+                "https://i.postimg.cc/HsLVwxLx/image.png",
+                "https://i.postimg.cc/XYGqPzFx/image.png",
+                "https://i.postimg.cc/4dZ3m4Mk/image.png",
+                "https://i.postimg.cc/C5rMPGx9/image.png"
+            ]
+        },
+        "Winget.Hetman.DataRecoveryPack": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/d32mG0Q2/image.png",
+                "https://i.postimg.cc/wvZgD64R/image.png",
+                "https://i.postimg.cc/76GyHFHt/image.png",
+                "https://i.postimg.cc/HsLVwxLx/image.png",
+                "https://i.postimg.cc/htTgTWVX/image.png"
+            ]
+        },
+        "Winget.Hetman.PartitionRecovery": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/dVHR2pv0/image.png",
+                "https://i.postimg.cc/dtnGFphF/image.png",
+                "https://i.postimg.cc/25LW4520/image.png",
+                "https://i.postimg.cc/3NYD5F7S/image.png",
+                "https://i.postimg.cc/VLsbKgDT/image.png"
+            ]
+        },
+        "Winget.Hetman.FileRepair": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/tg659D0N/image.png"
+            ]
+        },
+        "Winget.Hetman.RAIDRecovery": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/nhR5X3PC/image.png",
+                "https://i.postimg.cc/yN2bPkKt/image.png",
+                "https://i.postimg.cc/1t6YYs50/image.png",
+                "https://i.postimg.cc/5ySKbgzb/image.png",
+                "https://i.postimg.cc/7YqQmvv4/image.png",
+                "https://i.postimg.cc/GhzgfMrX/image.png"
+            ]
+        },
+        "Winget.Hetman.InternetSpy": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/jScTZ63G/image.png",
+                "https://i.postimg.cc/76GyHFHt/image.png",
+                "https://i.postimg.cc/NM3v5dLs/image.png",
+                "https://i.postimg.cc/mZ9G0W6Q/image.png",
+                "https://i.postimg.cc/QxkZdkDC/image.png",
+                "https://i.postimg.cc/SxSF22Qt/image.png"
+            ]
+        },
+        "Winget.Hetman.Uneraser": {
+            "icon": "",
+            "images": [
+                "https://i.postimg.cc/76fqCCVj/image.png",
+                "https://i.postimg.cc/wvZgD64R/image.png",
+                "https://i.postimg.cc/zvh5j949/image.png",
+                "https://i.postimg.cc/5Ncf02Fk/image.png"
+            ]
+        },
+        "calendartask ": {
+            "icon": "https://i.postimg.cc/qq326gN9/image.png",
+            "images": [
+                "https://i.postimg.cc/sxQ1vSZr/image.png",
+                "https://i.postimg.cc/bwHrDqdw/image.png",
+                "https://i.postimg.cc/XvsvLxfb/image.png",
+                "https://i.postimg.cc/d3ytqYgz/image.png",
+                "https://i.postimg.cc/ry3Jy2DJ/image.png",
+                "https://i.postimg.cc/sgR4SP9J/image.png",
+                "https://i.postimg.cc/nLFKSHWB/image.png"
+            ]
+        },
+        "multiping": {
+            "icon": "https://i.postimg.cc/fTgJQMkh/multiping-icon.png",
+            "images": [
+                "https://i.postimg.cc/NGSW3VBF/image.png",
+                "https://i.postimg.cc/2SFMBSv5/image.png"
+            ]
+        },
+        "musehub": {
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/MuseHub_Logo.svg/512px-MuseHub_Logo.svg.png ",
+            "images": []
+        },
+        "antigravity": {
+            "icon": "https://unigeticons.meowcat285.com/Antigravity.png",
+            "images": [
+                "https://cdn.thenewstack.io/media/2025/11/9fa23e7d-googleantigravitylogo-whitebackground.png",
+                "https://antigravity.google/assets/image/docs/editor-open-agent-manager.png",
+                "https://antigravity.google/assets/image/docs/default-allowlist-urls.png",
+                "https://antigravity.google/assets/image/docs/editor/editor.png"
+            ]
+        },
+        "aviutl2-catalog": {
+            "icon": "https://raw.githubusercontent.com/Neosku/aviutl2-catalog/main/src-tauri/icons/icon.png",
+            "images": [
+                "https://raw.githubusercontent.com/Neosku/aviutl2-catalog/main/docs/info1.png",
+                "https://raw.githubusercontent.com/Neosku/aviutl2-catalog/main/docs/info2.png",
+                "https://raw.githubusercontent.com/Neosku/aviutl2-catalog/main/docs/info3.png",
+                "https://raw.githubusercontent.com/Neosku/aviutl2-catalog/main/docs/info4.png"
+            ]
+        },
+        "r2modman": {
+            "icon": "https://unigeticons.meowcat285.com/r2modman.png",
+            "images": [
+                "https://unigeticons.meowcat285.com/Screenshots/r2modman/r2modman-screenshot1.png",
+                "https://unigeticons.meowcat285.com/Screenshots/r2modman/r2modman-screenshot2.png",
+                "https://unigeticons.meowcat285.com/Screenshots/r2modman/r2modman-screenshot3.png",
+                "https://unigeticons.meowcat285.com/Screenshots/r2modman/r2modman-screenshot4.png",
+                "https://unigeticons.meowcat285.com/Screenshots/r2modman/r2modman-screenshot5.png"
+            ]
+        },
+        "robotframework": {
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/e/e4/Robot-framework-logo.png",
+            "images": []
+        },
+        "Logitech.LogiTune\n": {
+            "icon": "https://imgs.search.brave.com/ASjRKcLSMy8TMcfmAKV4Hte2F6IJZNgqHnCwlZv_jJw/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly93d3cu/bG9naXRlY2guY29t/L2Fzc2V0cy82NTY4/Ni8yL2xvZ2ktdHVu/ZS1hcHAucG5n",
+            "images": []
+        },
+        "  OpenVPNTechnologies.OpenVPN\n": {
+            "icon": "https://postimg.cc/2LQGvMgm",
+            "images": []
+        },
+        "Winget.Zoom.Zoom.EXE": {
+            "icon": "https://i.postimg.cc/NFd1Qg5d/zoom-logo.png",
+            "images": [
+                "https://i.postimg.cc/HW0dsF59/Zoom1.png",
+                "https://i.postimg.cc/pXqvK8s9/Zoom2.png",
+                "https://i.postimg.cc/52yVg0rs/Zoom3.png"
+            ]
+        },
+        "Winget.winaero.tweaker": {
+            "icon": "https://winaerotweaker.com/images/tweaker-app-icon.png",
+            "images": [
+                "https://winaerotweaker.com/images/tweaker-app.png",
+                "https://winaerotweaker.com/images/tweaker-app-unblock-cm.png",
+                "https://winaerotweaker.com/images/tweaker-app-drag-drop.png",
+                "https://winaerotweaker.com/images/tweaker-app-taskbar-thumbnails.png",
+                "https://winaerotweaker.com/images/tweaker-app-this-pc.png",
+                "https://winaerotweaker.com/images/tweaker-app-remove-cm.png",
+                "https://winaerotweaker.com/images/tweaker-app-reset-gp.png",
+                "https://winaerotweaker.com/images/tweaker-app-shares-uac.png"
+            ]
+        },
+        "Winget.Microsoft.DotNet.DesktopRuntime.8": {
+            "icon": "https://community.chocolatey.org/content/packageimages/dotnet-8.0-desktopruntime.8.0.22.png",
+            "images": []
+        },
+        "google/gemini-cli": {
+            "icon": "https://geminicli.com/icon.png",
+            "images": [
+                "https://raw.githubusercontent.com/google-gemini/gemini-cli/HEAD/docs/assets/gemini-screenshot.png"
+            ]
+        },
+        "codesector-teraCopy": {
+            "icon": "https://i.ibb.co/VWMLqzbN/icon.png",
+            "images": [
+                "https://i.ibb.co/XZgvrZDt/s1.png",
+                "https://i.ibb.co/RT4Qpvpj/s2.png ",
+                "https://i.ibb.co/S40DxfM4/s3.png"
+            ]
+        },
+        "XPFFCG7M673D4F": {
+            "icon": "https://images-eds-ssl.xboxlive.com/image?url=4rt9.lXDC4H_93laV1_eHHFT949fUipzkiFOBH3fAiZZUCdYojwUyX2aTonS1aIwMrx6NUIsHfUHSLzjGJFxxs6rpBN2unaNv5PNdhlS_qHGRhvdm1TQsZPByVJpM1zdYJW4EEWuEzJfMSAN6k7OiP4f5vDN5Z3B5cnmDdboFpA-&format=source&h=115",
+            "images": []
+        },
+        "setuptools": {
+            "icon": "https://imgur.com/a/E92OhoW",
+            "images": []
+        },
+        "requests": {
+            "icon": "https://requests.readthedocs.io/en/latest/_static/requests-sidebar.png",
+            "images": []
+        },
+        "psutil": {
+            "icon": "https://github.com/giampaolo/psutil/raw/master/docs/_static/psutil-logo.png",
+            "images": []
+        },
+        "attrs": {
+            "icon": "https://i.ibb.co/Tx99nQCc/attrs-logo.png",
+            "images": []
+        },
+        "starlette": {
+            "icon": "https://i.postimg.cc/2y15VgpK/starlette.png",
+            "images": []
+        },
+        "trio": {
+            "icon": "https://i.postimg.cc/sg60JLtz/68747470733a2f2f7261772e67697468756275736572636f6e74656e742e636f6d2f707974686f6e2d7472696f2f7472696f.png",
+            "images": []
+        },
+        "affinity": {
+            "icon": "https://i.postimg.cc/ZqQSQDGP/affinity_canva_256.png",
+            "images": []
+        },
+        "akiflow": {
+            "icon": "https://i.postimg.cc/MTjSJmwB/akiflow_256.png",
+            "images": []
+        },
+        "fullstackaimemegenerator": {
+            "icon": "https://i.postimg.cc/nzQJfGxG/thiojoe_96.png",
+            "images": []
+        },
+        "svgthumbnailextension": {
+            "icon": "https://i.postimg.cc/nzQJfGxG/thiojoe_96.png",
+            "images": []
+        },
+        "ytspammerpurge": {
+            "icon": "https://i.postimg.cc/nzQJfGxG/thiojoe_96.png",
+            "images": []
+        },
+        "tweaker": {
+            "icon": "https://i.postimg.cc/C1fgps0W/winaero_109.png",
+            "images": []
+        },
+        "uvicorn": {
+            "icon": "https://uvicorn.dev/uvicorn.png",
+            "images": []
+        },
+        "Winget.XMediaRecode.XMediaRecode": {
+            "icon": "",
+            "images": []
+        },
+        "mirrorforphotoshopserver": {
+            "icon": "https://raw.githubusercontent.com/hex/mirror-for-photoshop-server/main/assets/icon.png",
+            "images": [
+                "https://raw.githubusercontent.com/hex/mirror-for-photoshop-server/main/assets/screenshot.png"
+            ]
+        },
+        "jarkviewer": {
+            "icon": "https://i.postimg.cc/4x7jNZ9r/ico.png",
+            "images": [
+                "https://i.postimg.cc/fW8PckjQ/preview.png"
+            ]
+        },
+        "fastapi": {
+            "icon": "https://avatars.githubusercontent.com/u/156354296?s=200&v=4",
+            "images": []
+        },
+        "applocate": {
+            "icon": "https://i.postimg.cc/gkpYhzw7/applocate.png",
+            "images": [
+                "https://i.postimg.cc/fLHDFw0J/applocate-unigetui-sample.png",
+                "https://i.postimg.cc/jqFR4STS/applocate-unigetui-sample-advanced.png",
+                "https://i.postimg.cc/pXLnpTZM/applocate-unigetui-sample-json-fromat.png"
+            ]
+        },
+        "click": {
+            "icon": "https://postimg.cc/21WxJpxY",
+            "images": []
+        },
+        "lin-ycv.EverythingCmdPal3": {
+            "icon": "https://store-images.s-microsoft.com/image/apps.25263.13565088367537471.1afd4527-e5f2-4286-ae89-167b4ff891b1.6b1f6c28-e687-4873-982a-ddf8c246ba6e?h=115",
+            "images": []
+        },
+        "Python.Launcher\n": {
+            "icon": "https://s3.dualstack.us-east-2.amazonaws.com/pythondotorg-assets/media/community/logos/python-logo-only.png",
+            "images": []
+        },
+        "pkhex": {
+            "icon": "https://raw.githubusercontent.com/kwsch/PKHeX/refs/heads/master/icon.png",
+            "images": [
+                "https://camo.githubusercontent.com/691f9203db46580d9f02406a7fd4574a3f0d70ec196bb948b8453469af30f217/68747470733a2f2f692e696d6775722e636f6d2f704948646f54702e706e67"
+            ]
+        },
+        "nikke": {
+            "icon": "https://cdn.brandfetch.io/idQEkAXA-z/w/400/h/400/theme/dark/icon.jpeg?c=1bxid64Mup7aczewSAYMX&t=1769771355360",
+            "images": [
+                "https://i.vgy.me/SlaOsN.png"
+            ]
+        },
+        "Ollama": {
+            "icon": "https://cdn.brandfetch.io/idrRDmZ2_F/w/400/h/400/theme/dark/icon.jpeg?c=1bxid64Mup7aczewSAYMX&t=1771678337826",
+            "images": [
+                "https://i.vgy.me/Q7ouok.png"
+            ]
+        },
+        "google-genai": {
+            "icon": "https://community.chocolatey.org/content/packageimages/google-workspace-sync.4.3.53.0.png",
+            "images": [
+                "https://upload.wikimedia.org/wikipedia/commons/0/01/Google_AI.png"
+            ]
+        },
+        "langchain-core": {
+            "icon": "https://images.seeklogo.com/logo-png/61/3/langchain-icon-logo-png_seeklogo-611655.png",
+            "images": [
+                "https://saraceni.me/wp-content/uploads/2025/08/langchain.png"
+            ]
+        },
+        "npm": {
+            "icon": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/db/Npm-logo.svg/960px-Npm-logo.svg.png",
+            "images": [
+                "https://blog.risingstack.com/wp-content/uploads/2021/07/npm-1466683907227.png"
+            ]
+        },
+        "ElementLabs.LMStudio": {
+            "icon": "https://ignos.blog/wp-content/uploads/2024/01/lm-studio-logo.png",
+            "images": [
+                "https://lmstudio.ai/assets/docs/chat.png",
+                "https://lmstudio.ai/assets/docs/mcp-editor.png",
+                "https://lmstudio.ai/assets/docs/speculative-decoding-setting.png"
+            ]
+        },
+        "openclaw": {
+            "icon": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/openclaw.png",
+            "images": [
+                "https://openclaw.ai/og-image.png"
+            ]
+        },
+        "opencode-ai": {
+            "icon": "https://pbs.twimg.com/profile_images/1973794620233433088/nBn75BTm.png",
+            "images": [
+                "https://opencode.ai/social-share.png",
+                "https://miro.medium.com/v2/resize:fit:1400/1*-hGiynLuhdOZPwsMrqnUuQ.png"
+            ]
+        },
+        "pydantic_core": {
+            "icon": "https://opensource.muenchen.de/logo/pydantic.png",
+            "images": []
         }
     }
 }

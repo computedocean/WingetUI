@@ -6,6 +6,7 @@ using UniGetUI.PackageEngine.Classes.Manager.BaseProviders;
 using UniGetUI.PackageEngine.Classes.Packages.Classes;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.PackageClasses;
 using Architecture = UniGetUI.PackageEngine.Enums.Architecture;
 using InstallOptions = UniGetUI.PackageEngine.Serializable.InstallOptions;
 
@@ -68,6 +69,14 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
                 options.Architecture = Architecture.x86;
             }
             parameters.Add("--include-unknown");
+
+            if(Settings.Get(Settings.K.WinGetForceLocationOnUpdate) && options.CustomInstallLocation != "")
+                parameters.AddRange(["--location", $"\"{options.CustomInstallLocation}\""]);
+        }
+        else if (operation is OperationType.Install)
+        {
+            if (options.CustomInstallLocation != "")
+                parameters.AddRange(["--location", $"\"{options.CustomInstallLocation}\""]);
         }
 
         if (operation is not OperationType.Uninstall)
@@ -76,9 +85,6 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
 
             if (options.SkipHashCheck)
                 parameters.Add("--ignore-security-hash");
-
-            if (options.CustomInstallLocation != "")
-                parameters.AddRange(["--location", $"\"{options.CustomInstallLocation}\""]);
 
             parameters.AddRange(options.Architecture switch
             {
@@ -147,7 +153,7 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
 
         if (uintCode is 0x8A150109)
         {   // TODO: Restart required to finish installation
-            if (operation is OperationType.Update) MarkUpgradeAsDone(package);
+            if (operation is OperationType.Update or OperationType.Install) MarkUpgradeAsDone(package);
             return OperationVeredict.Success;
         }
 
@@ -180,13 +186,13 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
 
         if (uintCode is 0x8A15010D or 0x8A15004F or 0x8A15010E)
         {   // Application is already installed
-            if (operation is OperationType.Update) MarkUpgradeAsDone(package);
+            if (operation is OperationType.Update or OperationType.Install) MarkUpgradeAsDone(package);
             return OperationVeredict.Success;
         }
 
         if (returnCode is 0)
         {   // Operation succeeded
-            if (operation is OperationType.Update) MarkUpgradeAsDone(package);
+            if (operation is OperationType.Update or OperationType.Install) MarkUpgradeAsDone(package);
             return OperationVeredict.Success;
         }
 
@@ -203,16 +209,33 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
             return OperationVeredict.AutoRetry;
         }
 
+        if (operation is OperationType.Uninstall && (uintCode is 0x8A150030) && package.OverridenOptions.RunAsAdministrator is not true)
+        {   // Sometimes, when uninstalling, error code 0x8A150030 can be caused by missing permissions.
+            package.OverridenOptions.RunAsAdministrator = true;
+            return OperationVeredict.AutoRetry;
+        }
+
         return OperationVeredict.Failure;
     }
 
     private static void MarkUpgradeAsDone(IPackage package)
     {
-        Settings.SetDictionaryItem<string, string>(Settings.K.WinGetAlreadyUpgradedPackages, package.Id, package.NewVersionString);
+        var options = InstallOptionsFactory.LoadApplicable(package);
+        string version;
+        if (package.IsUpgradable) version = package.NewVersionString;
+        else if (options.Version != "") version = options.Version;
+        else version = package.VersionString;
+        Settings.SetDictionaryItem<string, string>(Settings.K.WinGetAlreadyUpgradedPackages, package.Id, version);
     }
 
     public static bool UpdateAlreadyInstalled(IPackage package)
     {
         return Settings.GetDictionaryItem<string, string>(Settings.K.WinGetAlreadyUpgradedPackages, package.Id) == package.NewVersionString;
+    }
+    public static string GetLastInstalledVersion(string id)
+    {
+        var val = Settings.GetDictionaryItem<string, string>(Settings.K.WinGetAlreadyUpgradedPackages, id);
+        if (val is null || val == "") val = "Unknown";
+        return val;
     }
 }

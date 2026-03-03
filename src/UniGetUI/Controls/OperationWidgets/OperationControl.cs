@@ -573,7 +573,7 @@ public partial class OperationControl: INotifyPropertyChanged
                 skipThisVersion.Click += async (_, _) =>
                 {
                     callback();
-                    await packageOp.Package.AddToIgnoredUpdatesAsync(packageOp.Package.VersionString);
+                    await packageOp.Package.AddToIgnoredUpdatesAsync(packageOp.Package.NewVersionString);
                     UpgradablePackagesLoader.Instance.Remove(packageOp.Package);
                     Close();
                 };
@@ -610,7 +610,6 @@ public partial class OperationControl: INotifyPropertyChanged
                 _ = DialogHelper.ShowPackageDetails(packageOp.Package, OperationType.None, TEL_InstallReferral.DIRECT_SEARCH);
             };
             optionsMenu.Add(details);
-
 
             var installationSettings = new BetterMenuItem
             {
