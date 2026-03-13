@@ -1,38 +1,37 @@
 extern alias DrawingCommon;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Web;
 using H.NotifyIcon;
+using H.NotifyIcon.EfficiencyMode;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.Win32;
+using Microsoft.Windows.AppNotifications;
+using UniGetUI.Core.Classes;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
+using UniGetUI.Interface.Enums;
 using UniGetUI.PackageEngine;
 using UniGetUI.PackageEngine.Classes.Manager.Classes;
 using UniGetUI.PackageEngine.Interfaces;
-using Windows.ApplicationModel.DataTransfer;
-using H.NotifyIcon.EfficiencyMode;
-using Microsoft.Windows.AppNotifications;
-using UniGetUI.Core.Classes;
-using UniGetUI.Interface.Enums;
 using UniGetUI.PackageEngine.PackageClasses;
-using UniGetUI.Pages.DialogPages;
-using WindowExtensions = H.NotifyIcon.WindowExtensions;
-using System.Diagnostics;
-using Windows.UI.Text.Core;
 using UniGetUI.PackageEngine.PackageLoader;
+using UniGetUI.Pages.DialogPages;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.UI.Text.Core;
+using WindowExtensions = H.NotifyIcon.WindowExtensions;
 
 namespace UniGetUI.Interface
 {
     public sealed partial class MainWindow : Window
     {
-
         public XamlRoot XamlRoot
         {
             get => MainContentGrid.XamlRoot;
@@ -61,8 +60,9 @@ namespace UniGetUI.Interface
             ExtendsContentIntoTitleBar = true;
             AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
             SetTitleBar(MainContentGrid);
-            AppWindow.SetIcon(Path.Join(CoreData.UniGetUIExecutableDirectory, "Assets", "Images", "icon.ico"));
-
+            AppWindow.SetIcon(
+                Path.Join(CoreData.UniGetUIExecutableDirectory, "Assets", "Images", "icon.ico")
+            );
 
             LoadTrayMenu();
             ApplyTheme();
@@ -79,8 +79,11 @@ namespace UniGetUI.Interface
             SizeChanged += (_, _) => _ = SaveGeometry();
             Activated += (_, e) =>
             {
-                if (e.WindowActivationState is WindowActivationState.CodeActivated
-                    or WindowActivationState.PointerActivated)
+                if (
+                    e.WindowActivationState
+                    is WindowActivationState.CodeActivated
+                        or WindowActivationState.PointerActivated
+                )
                 {
                     DWMThreadHelper.ChangeState_DWM(false);
                     DWMThreadHelper.ChangeState_XAML(false);
@@ -154,7 +157,11 @@ namespace UniGetUI.Interface
                 var proxyUri = Settings.GetProxyUrl();
                 if (proxyUri is null || !Settings.Get(Settings.K.EnableProxy))
                 {
-                    Environment.SetEnvironmentVariable("HTTP_PROXY", "", EnvironmentVariableTarget.Process);
+                    Environment.SetEnvironmentVariable(
+                        "HTTP_PROXY",
+                        "",
+                        EnvironmentVariableTarget.Process
+                    );
                     return;
                 }
 
@@ -172,13 +179,18 @@ namespace UniGetUI.Interface
                     }
                     else
                     {
-                        content = $"{proxyUri.Scheme}://{Uri.EscapeDataString(creds.UserName)}" +
-                                  $":{Uri.EscapeDataString(creds.Password)}" +
-                                  $"@{proxyUri.AbsoluteUri.Replace($"{proxyUri.Scheme}://", "")}";
+                        content =
+                            $"{proxyUri.Scheme}://{Uri.EscapeDataString(creds.UserName)}"
+                            + $":{Uri.EscapeDataString(creds.Password)}"
+                            + $"@{proxyUri.AbsoluteUri.Replace($"{proxyUri.Scheme}://", "")}";
                     }
                 }
 
-                Environment.SetEnvironmentVariable("HTTP_PROXY", content, EnvironmentVariableTarget.Process);
+                Environment.SetEnvironmentVariable(
+                    "HTTP_PROXY",
+                    content,
+                    EnvironmentVariableTarget.Process
+                );
             }
             catch (Exception ex)
             {
@@ -194,21 +206,14 @@ namespace UniGetUI.Interface
             _currentSubtitle += line;
             _currentSubtitlePxLength = _currentSubtitle.Length * 4;
             Title = "UniGetUI - " + _currentSubtitle;
-            TitleBar.Subtitle = subtitleCollapsed is true? "": _currentSubtitle;
-        }
-
-        private void ClearSubtitle()
-        {
-            TitleBar.Subtitle = "";
-            _currentSubtitle = "";
-            _currentSubtitlePxLength = 0;
-            Title = "UniGetUI";
+            TitleBar.Subtitle = subtitleCollapsed is true ? "" : _currentSubtitle;
         }
 
         public void HandleNotificationActivation(AppNotificationActivatedEventArgs args)
         {
             args.Arguments.TryGetValue("action", out string? action);
-            if (action is null) action = "";
+            if (action is null)
+                action = "";
 
             if (action == NotificationArguments.UpdateAllPackages)
             {
@@ -230,7 +235,8 @@ namespace UniGetUI.Interface
             else
             {
                 throw new ArgumentException(
-                    $"args.Argument was not set to a value present in Enums.NotificationArguments (value is {action})");
+                    $"args.Argument was not set to a value present in Enums.NotificationArguments (value is {action})"
+                );
             }
 
             Logger.Debug("Notification activated: " + args.Arguments);
@@ -245,7 +251,10 @@ namespace UniGetUI.Interface
             {
                 AutoUpdater.ReleaseLockForAutoupdate_Window = true;
                 _ = SaveGeometry(Force: true);
-                if (!Settings.Get(Settings.K.DisableSystemTray) || AutoUpdater.UpdateReadyToBeInstalled)
+                if (
+                    !Settings.Get(Settings.K.DisableSystemTray)
+                    || AutoUpdater.UpdateReadyToBeInstalled
+                )
                 {
                     args.Cancel = true;
                     DWMThreadHelper.ChangeState_DWM(true);
@@ -302,8 +311,12 @@ namespace UniGetUI.Interface
             if (baseUrl.StartsWith("showPackage"))
             {
                 string Id = Regex.Match(baseUrl, "id=([^&]+)").Value.Split("=")[^1];
-                string CombinedManagerName = Regex.Match(baseUrl, "combinedManagerName=([^&]+)").Value.Split("=")[^1];
-                string ManagerName = Regex.Match(baseUrl, "managerName=([^&]+)").Value.Split("=")[^1];
+                string CombinedManagerName = Regex
+                    .Match(baseUrl, "combinedManagerName=([^&]+)")
+                    .Value.Split("=")[^1];
+                string ManagerName = Regex.Match(baseUrl, "managerName=([^&]+)").Value.Split("=")[
+                    ^1
+                ];
                 string SourceName = Regex.Match(baseUrl, "sourceName=([^&]+)").Value.Split("=")[^1];
 
                 if (Id != "" && CombinedManagerName != "" && ManagerName == "" && SourceName == "")
@@ -362,11 +375,16 @@ namespace UniGetUI.Interface
                     {
                         NavigationPage.ShowHelp();
                     }
-                    else if (new[]
-                             {
-                                 "--daemon", "--updateapps", "--report-all-errors", "--uninstall-unigetui",
-                                 "--migrate-wingetui-to-unigetui"
-                             }.Contains(param))
+                    else if (
+                        new[]
+                        {
+                            "--daemon",
+                            "--updateapps",
+                            "--report-all-errors",
+                            "--uninstall-unigetui",
+                            "--migrate-wingetui-to-unigetui",
+                        }.Contains(param)
+                    )
                     {
                         /* Skip */
                     }
@@ -381,8 +399,12 @@ namespace UniGetUI.Interface
                 }
                 else if (Path.IsPathFullyQualified(param) && File.Exists(param))
                 {
-                    if (param.EndsWith(".ubundle") || param.EndsWith(".json") || param.EndsWith(".xml") ||
-                        param.EndsWith(".yaml"))
+                    if (
+                        param.EndsWith(".ubundle")
+                        || param.EndsWith(".json")
+                        || param.EndsWith(".xml")
+                        || param.EndsWith(".yaml")
+                    )
                     {
                         // Handle potential JSON files
                         Logger.ImportantInfo("Begin attempt to open the package bundle " + param);
@@ -459,7 +481,10 @@ namespace UniGetUI.Interface
                 { DiscoverPackages, CoreTools.Translate("Discover Packages") },
                 { AvailableUpdates, CoreTools.Translate("Available Updates") },
                 { InstalledPackages, CoreTools.Translate("Installed Packages") },
-                { AboutUniGetUI, CoreTools.Translate("WingetUI Version {0}", CoreData.VersionName) },
+                {
+                    AboutUniGetUI,
+                    CoreTools.Translate("WingetUI Version {0}", CoreData.VersionName)
+                },
                 { ShowUniGetUI, CoreTools.Translate("Show WingetUI") },
                 { QuitUniGetUI, CoreTools.Translate("Quit") },
             };
@@ -500,8 +525,14 @@ namespace UniGetUI.Interface
                 Activate();
             };
             AboutUniGetUI.Label = CoreTools.Translate("WingetUI Version {0}", CoreData.VersionName);
-            ShowUniGetUI.ExecuteRequested += (_, _) => { Activate(); };
-            QuitUniGetUI.ExecuteRequested += (_, _) => { MainApp.Instance.DisposeAndQuit(); };
+            ShowUniGetUI.ExecuteRequested += (_, _) =>
+            {
+                Activate();
+            };
+            QuitUniGetUI.ExecuteRequested += (_, _) =>
+            {
+                MainApp.Instance.DisposeAndQuit();
+            };
 
             TrayMenu.Items.Add(new MenuFlyoutItem { Command = DiscoverPackages });
             TrayMenu.Items.Add(new MenuFlyoutItem { Command = AvailableUpdates });
@@ -534,7 +565,8 @@ namespace UniGetUI.Interface
             UpdateSystemTrayStatus();
         }
 
-        private string LastTrayIcon  = "";
+        private string LastTrayIcon = "";
+
         public void UpdateSystemTrayStatus()
         {
             try
@@ -566,8 +598,13 @@ namespace UniGetUI.Interface
                     }
                     else
                     {
-                        tooltip = CoreTools.Translate("{0} updates are available",
-                            MainApp.Tooltip.AvailableUpdates) + " - " + Title;
+                        tooltip =
+                            CoreTools.Translate(
+                                "{0} updates are available",
+                                MainApp.Tooltip.AvailableUpdates
+                            )
+                            + " - "
+                            + Title;
                     }
                 }
 
@@ -580,7 +617,8 @@ namespace UniGetUI.Interface
                 TrayIcon.ToolTipText = tooltip;
 
                 ApplicationTheme theme = ApplicationTheme.Light;
-                string RegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+                string RegistryKeyPath =
+                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
                 string RegistryValueName = "SystemUsesLightTheme";
                 RegistryKey? key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath);
                 object? registryValueObject = key?.GetValue(RegistryValueName) ?? null;
@@ -599,7 +637,10 @@ namespace UniGetUI.Interface
                     modifier += "_white";
                 }
 
-                string FullIconPath = Path.Join(CoreData.UniGetUIExecutableDirectory, "\\Assets\\Images\\tray" + modifier + ".ico");
+                string FullIconPath = Path.Join(
+                    CoreData.UniGetUIExecutableDirectory,
+                    "\\Assets\\Images\\tray" + modifier + ".ico"
+                );
                 if (LastTrayIcon != FullIconPath)
                 {
                     LastTrayIcon = FullIconPath;
@@ -617,7 +658,6 @@ namespace UniGetUI.Interface
                 {
                     TrayIcon.Visibility = Visibility.Visible;
                 }
-
             }
             catch (Exception ex)
             {
@@ -648,7 +688,11 @@ namespace UniGetUI.Interface
 
             Activated += (_, e) =>
             {
-                if(e.WindowActivationState is WindowActivationState.CodeActivated or WindowActivationState.PointerActivated)
+                if (
+                    e.WindowActivationState
+                    is WindowActivationState.CodeActivated
+                        or WindowActivationState.PointerActivated
+                )
                     MainContentFrame.Content = NavigationPage;
             };
 
@@ -704,14 +748,41 @@ namespace UniGetUI.Interface
             return WinRT.Interop.WindowNative.GetWindowHandle(this);
         }
 
+        private double GetWindowRasterizationScale()
+        {
+            uint dpi = NativeHelpers.GetDpiForWindow(GetWindowHandle());
+            if (dpi > 0)
+            {
+                return dpi / 96.0;
+            }
+
+            return MainContentGrid.XamlRoot?.RasterizationScale ?? 1.0;
+        }
+
+        private int ConvertPhysicalPixelsToDips(int physicalPixels)
+        {
+            return (int)Math.Round(physicalPixels / Math.Max(GetWindowRasterizationScale(), 0.01));
+        }
+
+        private int ConvertDipsToPhysicalPixels(int dips)
+        {
+            return Math.Max(1, (int)Math.Round(dips * GetWindowRasterizationScale()));
+        }
+
         public async Task HandleMissingDependencies(IReadOnlyList<ManagerDependency> dependencies)
         {
             int current = 1;
             int total = dependencies.Count;
             foreach (ManagerDependency dependency in dependencies)
             {
-                await DialogHelper.ShowMissingDependency(dependency.Name, dependency.InstallFileName,
-                    dependency.InstallArguments, dependency.FancyInstallCommand, current++, total);
+                await DialogHelper.ShowMissingDependency(
+                    dependency.Name,
+                    dependency.InstallFileName,
+                    dependency.InstallArguments,
+                    dependency.FancyInstallCommand,
+                    current++,
+                    total
+                );
             }
         }
 
@@ -747,11 +818,13 @@ namespace UniGetUI.Interface
                 }
                 else
                 {
-                    Logger.Warn("MainWindow.AppWindow.Presenter is not OverlappedPresenter presenter!");
+                    Logger.Warn(
+                        "MainWindow.AppWindow.Presenter is not OverlappedPresenter presenter!"
+                    );
                 }
 
                 string geometry =
-                    $"{AppWindow.Position.X},{AppWindow.Position.Y},{AppWindow.Size.Width},{AppWindow.Size.Height},{windowState}";
+                    $"v2,{AppWindow.Position.X},{AppWindow.Position.Y},{ConvertPhysicalPixelsToDips(AppWindow.Size.Width)},{ConvertPhysicalPixelsToDips(AppWindow.Size.Height)},{windowState}";
 
                 Logger.Debug($"Saving window geometry {geometry}");
                 Settings.SetValue(Settings.K.WindowGeometry, geometry);
@@ -764,23 +837,39 @@ namespace UniGetUI.Interface
 
         private void RestoreGeometry()
         {
-
             string geometry = Settings.GetValue(Settings.K.WindowGeometry);
             string[] items = geometry.Split(",");
-            if (items.Length != 5)
+            if (items.Length is not (5 or 6))
             {
-                Logger.Warn($"The restored geometry did not have exactly 5 items (found length was {items.Length})");
+                Logger.Warn(
+                    $"The restored geometry did not have a supported item count (found length was {items.Length})"
+                );
                 return;
             }
 
-            int X, Y, Width, Height, State;
+            int X,
+                Y,
+                Width,
+                Height,
+                State;
             try
             {
-                X = int.Parse(items[0]);
-                Y = int.Parse(items[1]);
-                Width = int.Parse(items[2]);
-                Height = int.Parse(items[3]);
-                State = int.Parse(items[4]);
+                if (items.Length == 6 && items[0] == "v2")
+                {
+                    X = int.Parse(items[1]);
+                    Y = int.Parse(items[2]);
+                    Width = ConvertDipsToPhysicalPixels(int.Parse(items[3]));
+                    Height = ConvertDipsToPhysicalPixels(int.Parse(items[4]));
+                    State = int.Parse(items[5]);
+                }
+                else
+                {
+                    X = int.Parse(items[0]);
+                    Y = int.Parse(items[1]);
+                    Width = int.Parse(items[2]);
+                    Height = int.Parse(items[3]);
+                    State = int.Parse(items[4]);
+                }
             }
             catch (Exception ex)
             {
@@ -797,7 +886,9 @@ namespace UniGetUI.Interface
                 }
                 else
                 {
-                    Logger.Warn("MainWindow.AppWindow.Presenter is not OverlappedPresenter presenter!");
+                    Logger.Warn(
+                        "MainWindow.AppWindow.Presenter is not OverlappedPresenter presenter!"
+                    );
                 }
             }
             else if (IsRectangleFullyVisible(X, Y, Width, Height))
@@ -815,20 +906,24 @@ namespace UniGetUI.Interface
         {
             List<NativeHelpers.MONITORINFO> monitorInfos = [];
 
-            NativeHelpers.MonitorEnumDelegate callback =
-                (IntPtr hMonitor, IntPtr _, ref NativeHelpers.RECT _, IntPtr _) =>
+            NativeHelpers.MonitorEnumDelegate callback = (
+                IntPtr hMonitor,
+                IntPtr _,
+                ref NativeHelpers.RECT _,
+                IntPtr _
+            ) =>
+            {
+                NativeHelpers.MONITORINFO monitorInfo = new()
                 {
-                    NativeHelpers.MONITORINFO monitorInfo = new()
-                    {
-                        cbSize = Marshal.SizeOf(typeof(NativeHelpers.MONITORINFO))
-                    };
-                    if (NativeHelpers.GetMonitorInfo(hMonitor, ref monitorInfo))
-                    {
-                        monitorInfos.Add(monitorInfo);
-                    }
-
-                    return true;
+                    cbSize = Marshal.SizeOf(typeof(NativeHelpers.MONITORINFO)),
                 };
+                if (NativeHelpers.GetMonitorInfo(hMonitor, ref monitorInfo))
+                {
+                    monitorInfos.Add(monitorInfo);
+                }
+
+                return true;
+            };
 
             NativeHelpers.EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, callback, IntPtr.Zero);
 
@@ -860,8 +955,7 @@ namespace UniGetUI.Interface
                 }
             }
 
-            if (x + 10 < minX || x + width - 10 > maxX
-                              || y + 10 < minY || y + height - 10 > maxY)
+            if (x + 10 < minX || x + width - 10 > maxX || y + 10 < minY || y + height - 10 > maxY)
             {
                 return false;
             }
@@ -874,14 +968,18 @@ namespace UniGetUI.Interface
             if (NavigationPage is null)
                 return;
 
-            if(this.AppWindow.Size.Width >= 1600)
+            if (MainContentGrid.ActualWidth >= 1600)
             {
-                Settings.Set(Settings.K.CollapseNavMenuOnWideScreen, NavigationPage.NavView.IsPaneOpen);
+                Settings.Set(
+                    Settings.K.CollapseNavMenuOnWideScreen,
+                    NavigationPage.NavView.IsPaneOpen
+                );
             }
             NavigationPage.NavView.IsPaneOpen = !NavigationPage.NavView.IsPaneOpen;
         }
 
         private void TitleBar_OnBackRequested(TitleBar sender, object args) => GoBack();
+
         public void GoBack() => NavigationPage?.NavigateBack();
 
         private bool? subtitleCollapsed;
@@ -890,11 +988,15 @@ namespace UniGetUI.Interface
         private const int HIDE_TITLE_LIMIT = 870;
         private const int MIN_SEARCHBOX_W = 50;
         private const int MAX_SEARCHBOX_W = 400;
+
         private void TitleBar_SizeChanged(object sender, SizeChangedEventArgs e)
         {
-            if(TitleBar.ActualWidth <= DYNAMIC_SEARCHBOX_LIMIT)
+            if (TitleBar.ActualWidth <= DYNAMIC_SEARCHBOX_LIMIT)
             {
-                GlobalSearchBox.Width = Math.Max(MIN_SEARCHBOX_W, MAX_SEARCHBOX_W - (DYNAMIC_SEARCHBOX_LIMIT - TitleBar.ActualWidth));
+                GlobalSearchBox.Width = Math.Max(
+                    MIN_SEARCHBOX_W,
+                    MAX_SEARCHBOX_W - (DYNAMIC_SEARCHBOX_LIMIT - TitleBar.ActualWidth)
+                );
             }
 
             if (titleCollapsed is not true && TitleBar.ActualWidth < HIDE_TITLE_LIMIT)
@@ -909,12 +1011,18 @@ namespace UniGetUI.Interface
                 titleCollapsed = false;
             }
 
-            if (subtitleCollapsed is not true && TitleBar.ActualWidth < (HIDE_TITLE_LIMIT + _currentSubtitlePxLength))
+            if (
+                subtitleCollapsed is not true
+                && TitleBar.ActualWidth < (HIDE_TITLE_LIMIT + _currentSubtitlePxLength)
+            )
             {
                 TitleBar.Subtitle = "";
                 subtitleCollapsed = true;
             }
-            else if (subtitleCollapsed is not false && TitleBar.ActualWidth > (HIDE_TITLE_LIMIT + _currentSubtitlePxLength))
+            else if (
+                subtitleCollapsed is not false
+                && TitleBar.ActualWidth > (HIDE_TITLE_LIMIT + _currentSubtitlePxLength)
+            )
             {
                 TitleBar.Subtitle = _currentSubtitle;
                 GlobalSearchBox.Width = MAX_SEARCHBOX_W;
@@ -928,6 +1036,9 @@ namespace UniGetUI.Interface
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern uint GetDpiForWindow(IntPtr hWnd);
 
         public const int MONITORINFOF_PRIMARY = 0x00000001;
 
@@ -949,12 +1060,20 @@ namespace UniGetUI.Interface
             public uint dwFlags;
         }
 
-        public delegate bool MonitorEnumDelegate(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor,
-            IntPtr dwData);
+        public delegate bool MonitorEnumDelegate(
+            IntPtr hMonitor,
+            IntPtr hdcMonitor,
+            ref RECT lprcMonitor,
+            IntPtr dwData
+        );
 
         [DllImport("user32.dll")]
-        public static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumDelegate lpfnEnum,
-            IntPtr dwData);
+        public static extern bool EnumDisplayMonitors(
+            IntPtr hdc,
+            IntPtr lprcClip,
+            MonitorEnumDelegate lpfnEnum,
+            IntPtr dwData
+        );
 
         [DllImport("user32.dll")]
         public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);

@@ -6,13 +6,13 @@ using UniGetUI.Interface.Enums;
 using UniGetUI.Interface.Widgets;
 
 namespace UniGetUI.Controls;
-internal partial class CustomNavViewItem : NavigationViewItem
+
+internal sealed partial class CustomNavViewItem : NavigationViewItem
 {
-    int _iconSize = 28;
+    int _iconSize = 24;
     public IconType LocalIcon
     {
         set => base.Icon = new LocalIcon(value);
-
     }
     public string GlyphIcon
     {
@@ -27,8 +27,10 @@ internal partial class CustomNavViewItem : NavigationViewItem
     {
         set
         {
-            if (value) _ = increaseMargins();
-            else _ = decreaseMargins();
+            if (value)
+                _ = increaseMargins();
+            else
+                _ = decreaseMargins();
             _progressRing.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
         }
     }
@@ -46,7 +48,6 @@ internal partial class CustomNavViewItem : NavigationViewItem
             _textBlock.Text = text;
             ToolTipService.SetToolTip(this, text);
         }
-
     }
 
     private readonly TextBlock _textBlock;
@@ -61,25 +62,22 @@ internal partial class CustomNavViewItem : NavigationViewItem
 
     public CustomNavViewItem()
     {
-        Height = 60;
+        Height = 54;
         Resources["NavigationViewItemOnLeftIconBoxHeight"] = _iconSize;
         Resources["NavigationViewItemContentPresenterMargin"] = new Thickness(0);
 
-        var grid = new Grid { Height = 50 };
+        var grid = new Grid { Height = 44 };
 
         _progressRing = new ProgressRing
         {
-            Margin = new Thickness(-46, 0, 0, 0),
+            Margin = new Thickness(-42, 0, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center,
             IsIndeterminate = true,
             Visibility = Visibility.Collapsed,
         };
 
-        _textBlock = new TextBlock
-        {
-            VerticalAlignment = VerticalAlignment.Center,
-        };
+        _textBlock = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
 
         grid.Children.Add(_progressRing);
         grid.Children.Add(_textBlock);
@@ -88,7 +86,7 @@ internal partial class CustomNavViewItem : NavigationViewItem
 
     public async Task increaseMargins()
     {
-        for(int i = (int)base.Icon.Margin.Left; i < 6; i += 2)
+        for (int i = (int)base.Icon.Margin.Left; i < 6; i += 2)
         {
             base.Icon.Margin = new Thickness(i);
             await Task.Delay(15);

@@ -2,18 +2,21 @@
 // Licensed under the MIT License.
 
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using Windows.Win32;
 using Windows.Win32.System.Com;
 using WinRT;
 
 namespace WindowsPackageManager.Interop;
 
+[SupportedOSPlatform("windows5.0")]
 public class WindowsPackageManagerStandardFactory : WindowsPackageManagerFactory
 {
-    public WindowsPackageManagerStandardFactory(ClsidContext clsidContext = ClsidContext.Prod, bool allowLowerTrustRegistration = false)
-        : base(clsidContext, allowLowerTrustRegistration)
-    {
-    }
+    public WindowsPackageManagerStandardFactory(
+        ClsidContext clsidContext = ClsidContext.Prod,
+        bool allowLowerTrustRegistration = false
+    )
+        : base(clsidContext, allowLowerTrustRegistration) { }
 
     protected override T CreateInstance<T>(Guid clsid, Guid iid)
     {
@@ -26,7 +29,13 @@ public class WindowsPackageManagerStandardFactory : WindowsPackageManagerFactory
                 clsctx |= CLSCTX.CLSCTX_ALLOW_LOWER_TRUST_REGISTRATION;
             }
 
-            Windows.Win32.Foundation.HRESULT hr = PInvoke.CoCreateInstance(clsid, null, clsctx, iid, out object result);
+            Windows.Win32.Foundation.HRESULT hr = PInvoke.CoCreateInstance(
+                clsid,
+                null,
+                clsctx,
+                iid,
+                out object result
+            );
 
             //                     !! WARNING !!
             // An exception may be thrown on the line below if UniGetUI

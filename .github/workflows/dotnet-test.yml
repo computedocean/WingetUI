@@ -5,7 +5,10 @@ on:
     paths:
       - '**.cs'
       - '**.csproj'
+      - '**.props'
+      - '**.targets'
       - '**.sln'
+      - 'src/.editorconfig'
       - '.github/workflows/dotnet-test.yml'
 
   pull_request:
@@ -13,7 +16,10 @@ on:
     paths:
       - '**.cs'
       - '**.csproj'
+      - '**.props'
+      - '**.targets'
       - '**.sln'
+      - 'src/.editorconfig'
       - '.github/workflows/dotnet-test.yml'
 
   workflow_dispatch:
@@ -21,6 +27,8 @@ on:
 jobs:
   test-codebase:
     runs-on: windows-latest
+    env:
+      NUGET_PACKAGES: ${{ github.workspace }}\.nuget\packages
 
     steps:
     - name: Checkout the repository
@@ -28,24 +36,31 @@ jobs:
       with:
         fetch-depth: 0
 
-    # Install the .NET Core workload
     - name: Install .NET Core
       uses: actions/setup-dotnet@v5
       with:
         dotnet-version: 8.0.x
 
-    # - name: Install WinGet
-    #   uses: Cyberboss/install-winget@v1
+    - name: Cache NuGet packages
+      uses: actions/cache@v5
+      with:
+        path: ${{ env.NUGET_PACKAGES }}
+        key: ${{ runner.os }}-nuget-${{ hashFiles('src/**/*.csproj', 'src/**/*.props', 'src/**/*.targets', 'src/**/*.sln') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
 
     - name: Install dependencies
       working-directory: src
-      run: dotnet restore
+      run: dotnet restore UniGetUI.sln
 
-    # - name: Test build
-    #   working-directory: src
-    #   run: dotnet build --configuration Release
+    - name: Check whitespace formatting
+      run: dotnet format whitespace src --folder --verify-no-changes --verbosity minimal
+
+    - name: Check code style formatting
+      working-directory: src
+      run: dotnet format style UniGetUI.sln --no-restore --verify-no-changes --verbosity minimal
 
     - name: Run Tests
       working-directory: src
-      run: dotnet test --no-restore --verbosity q --nologo
+      run: dotnet test UniGetUI.sln --no-restore --verbosity q --nologo
 

@@ -26,7 +26,6 @@ public static class CLIHandler
     public const string ENABLE_SECURE_SETTING_FOR_USER = SecureSettings.Args.ENABLE_FOR_USER;
     public const string DISABLE_SECURE_SETTING_FOR_USER = SecureSettings.Args.DISABLE_FOR_USER;
 
-
     private enum HRESULT
     {
         SUCCESS = 0,
@@ -38,7 +37,8 @@ public static class CLIHandler
 
     public static int Help()
     {
-        var url = "https://github.com/marticliment/UniGetUI/blob/main/cli-arguments.md#unigetui-command-line-parameters";
+        var url =
+            "https://github.com/Devolutions/UniGetUI/blob/main/cli-arguments.md#unigetui-command-line-parameters";
         CoreTools.Launch(url);
         return 0;
     }
@@ -51,7 +51,7 @@ public static class CLIHandler
         if (filePos < 0)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater --import-settings was not found
 
-        if (filePos +1 >= args.Count)
+        if (filePos + 1 >= args.Count)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The file parameter does not exist (import settings requires "--import-settings file")
 
         var file = args[filePos + 1].Trim('"').Trim('\'');
@@ -78,7 +78,7 @@ public static class CLIHandler
         if (filePos < 0)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater --export-settings was not found
 
-        if (filePos +1 >= args.Count)
+        if (filePos + 1 >= args.Count)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The file parameter does not exist (export settings requires "--export-settings file")
 
         var file = args[filePos + 1].Trim('"').Trim('\'');
@@ -103,7 +103,7 @@ public static class CLIHandler
         if (basePos < 0)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater --export-settings was not found
 
-        if (basePos +1 >= args.Count)
+        if (basePos + 1 >= args.Count)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The file parameter does not exist (export settings requires "--export-settings file")
 
         var setting = args[basePos + 1].Trim('"').Trim('\'');
@@ -130,7 +130,7 @@ public static class CLIHandler
         if (basePos < 0)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater --export-settings was not found
 
-        if (basePos +1 >= args.Count)
+        if (basePos + 1 >= args.Count)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The file parameter does not exist (export settings requires "--export-settings file")
 
         var setting = args[basePos + 1].Trim('"').Trim('\'');
@@ -156,7 +156,7 @@ public static class CLIHandler
         if (basePos < 0)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater --export-settings was not found
 
-        if (basePos +2 >= args.Count)
+        if (basePos + 2 >= args.Count)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The file parameter does not exist (export settings requires "--export-settings file")
 
         var setting = args[basePos + 1].Trim('"').Trim('\'');
@@ -184,20 +184,25 @@ public static class CLIHandler
             [
                 // User desktop icon
                 Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
-
                 // User start menu icon
                 Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),
-
                 // Common desktop icon
                 Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory),
-
                 // User start menu icon
                 Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu),
             ];
 
             foreach (string path in BasePaths)
             {
-                foreach (string old_wingetui_icon in new[] { "WingetUI.lnk", "WingetUI .lnk", "UniGetUI (formerly WingetUI) .lnk", "UniGetUI (formerly WingetUI).lnk" })
+                foreach (
+                    string old_wingetui_icon in new[]
+                    {
+                        "WingetUI.lnk",
+                        "WingetUI .lnk",
+                        "UniGetUI (formerly WingetUI) .lnk",
+                        "UniGetUI (formerly WingetUI).lnk",
+                    }
+                )
                 {
                     try
                     {
@@ -210,7 +215,11 @@ public static class CLIHandler
 
                         if (File.Exists(old_file) && File.Exists(new_file))
                         {
-                            Logger.Info("Deleting shortcut " + old_file + " since new shortcut already exists");
+                            Logger.Info(
+                                "Deleting shortcut "
+                                    + old_file
+                                    + " since new shortcut already exists"
+                            );
                             File.Delete(old_file);
                         }
                         else if (File.Exists(old_file) && !File.Exists(new_file))
@@ -221,7 +230,9 @@ public static class CLIHandler
                     }
                     catch (Exception ex)
                     {
-                        Logger.Warn($"An error occurred while migrating the shortcut {Path.Join(path, old_wingetui_icon)}");
+                        Logger.Warn(
+                            $"An error occurred while migrating the shortcut {Path.Join(path, old_wingetui_icon)}"
+                        );
                         Logger.Warn(ex);
                     }
                 }
@@ -250,7 +261,7 @@ public static class CLIHandler
         if (basePos < 0)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater was not found
 
-        if (basePos +1 >= args.Count)
+        if (basePos + 1 >= args.Count)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The file parameter does not exist (export settings requires "--export-settings file")
 
         var setting = args[basePos + 1].Trim('"').Trim('\'');
@@ -260,8 +271,10 @@ public static class CLIHandler
         try
         {
             bool success = SecureSettings.TrySet(validKey, true).GetAwaiter().GetResult();
-            if (!success) return (int)HRESULT.STATUS_FAILED;
-            else return (int)HRESULT.SUCCESS;
+            if (!success)
+                return (int)HRESULT.STATUS_FAILED;
+            else
+                return (int)HRESULT.SUCCESS;
         }
         catch (Exception ex)
         {
@@ -277,7 +290,7 @@ public static class CLIHandler
         if (basePos < 0)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater was not found
 
-        if (basePos +1 >= args.Count)
+        if (basePos + 1 >= args.Count)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The first positional argument does not exist
 
         var setting = args[basePos + 1].Trim('"').Trim('\'');
@@ -287,8 +300,10 @@ public static class CLIHandler
         try
         {
             bool success = SecureSettings.TrySet(validKey, false).GetAwaiter().GetResult();
-            if (!success) return (int)HRESULT.STATUS_FAILED;
-            else return (int)HRESULT.SUCCESS;
+            if (!success)
+                return (int)HRESULT.STATUS_FAILED;
+            else
+                return (int)HRESULT.SUCCESS;
         }
         catch (Exception ex)
         {
@@ -304,7 +319,7 @@ public static class CLIHandler
         if (basePos < 0)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater was not found
 
-        if (basePos +2 >= args.Count)
+        if (basePos + 2 >= args.Count)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The required parameters do not exist
 
         var user = args[basePos + 1].Trim('"').Trim('\'');
@@ -328,7 +343,7 @@ public static class CLIHandler
         if (basePos < 0)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater was not found
 
-        if (basePos +2 >= args.Count)
+        if (basePos + 2 >= args.Count)
             return (int)HRESULT.STATUS_INVALID_PARAMETER; // The required parameters do not exist
 
         var user = args[basePos + 1].Trim('"').Trim('\'');

@@ -3,12 +3,13 @@ using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
-using UniGetUI.PackageEngine.Managers.WingetManager;
 using UniGetUI.PackageOperations;
+#if WINDOWS
+using UniGetUI.PackageEngine.Managers.WingetManager;
+#endif
 
 namespace UniGetUI.PackageEngine.Operations
 {
-
     public abstract class SourceOperation : AbstractProcessOperation
     {
         protected abstract void Initialize();
@@ -16,9 +17,7 @@ namespace UniGetUI.PackageEngine.Operations
         protected IManagerSource Source;
         public bool ForceAsAdministrator { get; private set; }
 
-        public SourceOperation(
-            IManagerSource source,
-            IReadOnlyList<InnerOperation>? preOps)
+        public SourceOperation(IManagerSource source, IReadOnlyList<InnerOperation>? preOps)
             : base(false, preOps)
         {
             Source = source;
@@ -27,12 +26,14 @@ namespace UniGetUI.PackageEngine.Operations
 
         public override Task<Uri> GetOperationIcon()
         {
-            return Task.FromResult(new Uri($"ms-appx:///Assets/Images/{Source.Manager.Properties.ColorIconId}.png"));
+            return Task.FromResult(
+                new Uri($"ms-appx:///Assets/Images/{Source.Manager.Properties.ColorIconId}.png")
+            );
         }
 
-        protected bool RequiresAdminRights()
-            => !Settings.Get(Settings.K.ProhibitElevation)
-               && (ForceAsAdministrator || Source.Manager.Capabilities.Sources.MustBeInstalledAsAdmin);
+        protected bool RequiresAdminRights() =>
+            !Settings.Get(Settings.K.ProhibitElevation)
+            && (ForceAsAdministrator || Source.Manager.Capabilities.Sources.MustBeInstalledAsAdmin);
 
         protected override void ApplyRetryAction(string retryMode)
         {
@@ -44,32 +45,65 @@ namespace UniGetUI.PackageEngine.Operations
                     ForceAsAdministrator = true;
                     break;
                 default:
-                    throw new InvalidOperationException($"Retry mode {retryMode} is not supported in this context");
+                    throw new InvalidOperationException(
+                        $"Retry mode {retryMode} is not supported in this context"
+                    );
             }
         }
 
-        public static IReadOnlyList<InnerOperation> CreateInstallPreOps(IManagerSource source, bool forceLocalWinGet)
+        public static IReadOnlyList<InnerOperation> CreateInstallPreOps(
+            IManagerSource source,
+            bool forceLocalWinGet
+        )
         {
-            if (source.Manager is not WinGet) return [];
-            if (forceLocalWinGet) return [];
-            if (source.Manager.Status.ExecutablePath == WinGet.BundledWinGetPath) return [];
+            if (!IsWinGetManager(source.Manager))
+                return [];
+            if (forceLocalWinGet)
+                return [];
+            if (source.Manager.Status.ExecutablePath == GetBundledWinGetPath())
+                return [];
             return [new(new AddSourceOperation(source, true), mustSucceed: true)];
         }
 
-        public static IReadOnlyList<InnerOperation> CreateUninstallPreOps(IManagerSource source, bool forceLocalWinGet)
+        public static IReadOnlyList<InnerOperation> CreateUninstallPreOps(
+            IManagerSource source,
+            bool forceLocalWinGet
+        )
         {
-            if (source.Manager is not WinGet) return [];
-            if (forceLocalWinGet) return [];
-            if (source.Manager.Status.ExecutablePath == WinGet.BundledWinGetPath) return [];
+            if (!IsWinGetManager(source.Manager))
+                return [];
+            if (forceLocalWinGet)
+                return [];
+            if (source.Manager.Status.ExecutablePath == GetBundledWinGetPath())
+                return [];
             // In this case, must succeed is set to false since we cannot ensure that bundled WinGet will
             // have this source added
             return [new(new RemoveSourceOperation(source, true), mustSucceed: false)];
+        }
+
+        protected static bool IsWinGetManager(IPackageManager manager)
+        {
+#if WINDOWS
+            return manager is WinGet;
+#else
+            return false;
+#endif
+        }
+
+        protected static string? GetBundledWinGetPath()
+        {
+#if WINDOWS
+            return WinGet.BundledWinGetPath;
+#else
+            return null;
+#endif
         }
     }
 
     public class AddSourceOperation : SourceOperation
     {
         private readonly bool _forceLocalWinGet;
+
         public AddSourceOperation(IManagerSource source, bool forceLocalWinGet = false)
             : base(source, CreateInstallPreOps(source, forceLocalWinGet))
         {
@@ -79,58 +113,103 @@ namespace UniGetUI.PackageEngine.Operations
         protected override void PrepareProcessStartInfo()
         {
             var exePath = Source.Manager.Status.ExecutablePath;
-            if (Source.Manager is WinGet && _forceLocalWinGet)
+            if (IsWinGetManager(Source.Manager) && _forceLocalWinGet)
             {
-                exePath = WinGet.BundledWinGetPath;
+                exePath = GetBundledWinGetPath() ?? exePath;
             }
 
             bool admin = false;
             if (RequiresAdminRights())
             {
-                if (Settings.Get(Settings.K.DoCacheAdminRights) || Settings.Get(Settings.K.DoCacheAdminRightsForBatches))
+                if (
+                    Settings.Get(Settings.K.DoCacheAdminRights)
+                    || Settings.Get(Settings.K.DoCacheAdminRightsForBatches)
+                )
                     RequestCachingOfUACPrompt();
 
-                if (Source.Manager is WinGet)
+                if (IsWinGetManager(Source.Manager))
                     RedirectWinGetTempFolder();
 
                 admin = true;
                 process.StartInfo.FileName = CoreData.ElevatorPath;
-                process.StartInfo.Arguments = $"\"{exePath}\" " + Source.Manager.Status.ExecutableCallArgs + " " + string.Join(" ", Source.Manager.SourcesHelper.GetAddSourceParameters(Source));
-
+                process.StartInfo.Arguments =
+                    $"\"{exePath}\" "
+                    + Source.Manager.Status.ExecutableCallArgs
+                    + " "
+                    + string.Join(" ", Source.Manager.SourcesHelper.GetAddSourceParameters(Source));
             }
             else
             {
                 process.StartInfo.FileName = exePath;
-                process.StartInfo.Arguments = Source.Manager.Status.ExecutableCallArgs + " " + string.Join(" ", Source.Manager.SourcesHelper.GetAddSourceParameters(Source));
+                process.StartInfo.Arguments =
+                    Source.Manager.Status.ExecutableCallArgs
+                    + " "
+                    + string.Join(" ", Source.Manager.SourcesHelper.GetAddSourceParameters(Source));
             }
 
-           ApplyCapabilities(admin, false, false, null);
+            ApplyCapabilities(admin, false, false, null);
         }
 
-        protected override Task<OperationVeredict> GetProcessVeredict(int ReturnCode, List<string> Output)
+        protected override Task<OperationVeredict> GetProcessVeredict(
+            int ReturnCode,
+            List<string> Output
+        )
         {
-            return Task.Run(() => Source.Manager.SourcesHelper.GetAddOperationVeredict(Source, ReturnCode, Output.ToArray()));
+            return Task.Run(() =>
+                Source.Manager.SourcesHelper.GetAddOperationVeredict(
+                    Source,
+                    ReturnCode,
+                    Output.ToArray()
+                )
+            );
         }
 
         protected override void Initialize()
         {
-            Metadata.OperationInformation = "Starting adding source operation for source=" + Source.Name +
-                                            "with Manager=" + Source.Manager.Name;
+            Metadata.OperationInformation =
+                "Starting adding source operation for source="
+                + Source.Name
+                + "with Manager="
+                + Source.Manager.Name;
 
-            Metadata.Title = CoreTools.Translate("Adding source {source}", new Dictionary<string, object?> { { "source", Source.Name } });
-            Metadata.Status = CoreTools.Translate("Adding source {source} to {manager}", new Dictionary<string, object?> { { "source", Source.Name }, { "manager", Source.Manager.Name } });;
+            Metadata.Title = CoreTools.Translate(
+                "Adding source {source}",
+                new Dictionary<string, object?> { { "source", Source.Name } }
+            );
+            Metadata.Status = CoreTools.Translate(
+                "Adding source {source} to {manager}",
+                new Dictionary<string, object?>
+                {
+                    { "source", Source.Name },
+                    { "manager", Source.Manager.Name },
+                }
+            );
+            ;
             Metadata.SuccessTitle = CoreTools.Translate("Source added successfully");
-            Metadata.SuccessMessage = CoreTools.Translate("The source {source} was added to {manager} successfully",
-                new Dictionary<string, object?> { { "source", Source.Name }, { "manager", Source.Manager.Name } });
+            Metadata.SuccessMessage = CoreTools.Translate(
+                "The source {source} was added to {manager} successfully",
+                new Dictionary<string, object?>
+                {
+                    { "source", Source.Name },
+                    { "manager", Source.Manager.Name },
+                }
+            );
             Metadata.FailureTitle = CoreTools.Translate("Could not add source");
-            Metadata.FailureMessage = CoreTools.Translate("Could not add source {source} to {manager}",
-                new Dictionary<string, object?> { { "source", Source.Name }, { "manager", Source.Manager.Name } });
+            Metadata.FailureMessage = CoreTools.Translate(
+                "Could not add source {source} to {manager}",
+                new Dictionary<string, object?>
+                {
+                    { "source", Source.Name },
+                    { "manager", Source.Manager.Name },
+                }
+            );
         }
     }
 
     public class RemoveSourceOperation : SourceOperation
     {
         private readonly bool _forceLocalWinGet;
+
         public RemoveSourceOperation(IManagerSource source, bool forceLocalWinGet = false)
             : base(source, CreateUninstallPreOps(source, forceLocalWinGet))
         {
@@ -140,48 +219,100 @@ namespace UniGetUI.PackageEngine.Operations
         protected override void PrepareProcessStartInfo()
         {
             var exePath = Source.Manager.Status.ExecutablePath;
-            if (Source.Manager is WinGet && _forceLocalWinGet)
+            if (IsWinGetManager(Source.Manager) && _forceLocalWinGet)
             {
-                exePath = WinGet.BundledWinGetPath;
+                exePath = GetBundledWinGetPath() ?? exePath;
             }
             bool admin = false;
             if (RequiresAdminRights())
             {
-                if (Settings.Get(Settings.K.DoCacheAdminRights) || Settings.Get(Settings.K.DoCacheAdminRightsForBatches))
+                if (
+                    Settings.Get(Settings.K.DoCacheAdminRights)
+                    || Settings.Get(Settings.K.DoCacheAdminRightsForBatches)
+                )
                     RequestCachingOfUACPrompt();
 
-                if (Source.Manager is WinGet)
+                if (IsWinGetManager(Source.Manager))
                     RedirectWinGetTempFolder();
 
                 admin = true;
                 process.StartInfo.FileName = CoreData.ElevatorPath;
-                process.StartInfo.Arguments = $"\"{exePath}\" " + Source.Manager.Status.ExecutableCallArgs + " " + string.Join(" ", Source.Manager.SourcesHelper.GetRemoveSourceParameters(Source));
+                process.StartInfo.Arguments =
+                    $"\"{exePath}\" "
+                    + Source.Manager.Status.ExecutableCallArgs
+                    + " "
+                    + string.Join(
+                        " ",
+                        Source.Manager.SourcesHelper.GetRemoveSourceParameters(Source)
+                    );
             }
             else
             {
                 process.StartInfo.FileName = exePath;
-                process.StartInfo.Arguments = Source.Manager.Status.ExecutableCallArgs + " " + string.Join(" ", Source.Manager.SourcesHelper.GetRemoveSourceParameters(Source));
+                process.StartInfo.Arguments =
+                    Source.Manager.Status.ExecutableCallArgs
+                    + " "
+                    + string.Join(
+                        " ",
+                        Source.Manager.SourcesHelper.GetRemoveSourceParameters(Source)
+                    );
             }
             ApplyCapabilities(admin, false, false, null);
         }
 
-        protected override Task<OperationVeredict> GetProcessVeredict(int ReturnCode, List<string> Output)
+        protected override Task<OperationVeredict> GetProcessVeredict(
+            int ReturnCode,
+            List<string> Output
+        )
         {
-            return Task.Run(() => Source.Manager.SourcesHelper.GetRemoveOperationVeredict(Source, ReturnCode, Output.ToArray()));
+            return Task.Run(() =>
+                Source.Manager.SourcesHelper.GetRemoveOperationVeredict(
+                    Source,
+                    ReturnCode,
+                    Output.ToArray()
+                )
+            );
         }
 
         protected override void Initialize()
         {
-            Metadata.OperationInformation = "Starting remove source operation for source=" + Source.Name + "with Manager=" + Source.Manager.Name;
+            Metadata.OperationInformation =
+                "Starting remove source operation for source="
+                + Source.Name
+                + "with Manager="
+                + Source.Manager.Name;
 
-            Metadata.Title = CoreTools.Translate("Removing source {source}", new Dictionary<string, object?> { { "source", Source.Name } });
-            Metadata.Status = CoreTools.Translate("Removing source {source} from {manager}", new Dictionary<string, object?> { { "source", Source.Name }, { "manager", Source.Manager.Name } });;
+            Metadata.Title = CoreTools.Translate(
+                "Removing source {source}",
+                new Dictionary<string, object?> { { "source", Source.Name } }
+            );
+            Metadata.Status = CoreTools.Translate(
+                "Removing source {source} from {manager}",
+                new Dictionary<string, object?>
+                {
+                    { "source", Source.Name },
+                    { "manager", Source.Manager.Name },
+                }
+            );
+            ;
             Metadata.SuccessTitle = CoreTools.Translate("Source removed successfully");
-            Metadata.SuccessMessage = CoreTools.Translate("The source {source} was removed from {manager} successfully",
-                new Dictionary<string, object?> { { "source", Source.Name }, { "manager", Source.Manager.Name } });
+            Metadata.SuccessMessage = CoreTools.Translate(
+                "The source {source} was removed from {manager} successfully",
+                new Dictionary<string, object?>
+                {
+                    { "source", Source.Name },
+                    { "manager", Source.Manager.Name },
+                }
+            );
             Metadata.FailureTitle = CoreTools.Translate("Could not remove source");
-            Metadata.FailureMessage = CoreTools.Translate("Could not remove source {source} from {manager}",
-                new Dictionary<string, object?> { { "source", Source.Name }, { "manager", Source.Manager.Name } });
+            Metadata.FailureMessage = CoreTools.Translate(
+                "Could not remove source {source} from {manager}",
+                new Dictionary<string, object?>
+                {
+                    { "source", Source.Name },
+                    { "manager", Source.Manager.Name },
+                }
+            );
         }
     }
 }

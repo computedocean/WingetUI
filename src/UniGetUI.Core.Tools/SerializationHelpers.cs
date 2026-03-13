@@ -9,28 +9,31 @@ namespace UniGetUI.Core.Data;
 
 public static class SerializationHelpers
 {
-    public static Task<string> YAML_to_JSON(string YAML)
-        => Task.Run(() => yaml_to_json(YAML));
+    public static Task<string> YAML_to_JSON(string YAML) => Task.Run(() => yaml_to_json(YAML));
 
     private static string yaml_to_json(string YAML)
     {
         var yamlObject = new YamlDotNet.Serialization.Deserializer().Deserialize(YAML);
-        if (yamlObject is null) return "{'message': 'deserialized YAML object was null'}";
+        if (yamlObject is null)
+            return "{'message': 'deserialized YAML object was null'}";
         return new YamlDotNet.Serialization.SerializerBuilder()
             .JsonCompatible()
             .Build()
             .Serialize(yamlObject);
     }
 
-    public static Task<string> XML_to_JSON(string XML)
-        => Task.Run(() => xml_to_json(XML));
+    public static Task<string> XML_to_JSON(string XML) => Task.Run(() => xml_to_json(XML));
 
     private static string xml_to_json(string XML)
     {
         var doc = new XmlDocument();
         doc.LoadXml(XML);
-        if (doc.DocumentElement is null) return "{'message': 'XmlDocument.DocumentElement was null'}";
-        return JsonSerializer.Serialize(_convertXmlNode(doc.DocumentElement), SerializationHelpers.DefaultOptions);
+        if (doc.DocumentElement is null)
+            return "{'message': 'XmlDocument.DocumentElement was null'}";
+        return JsonSerializer.Serialize(
+            _convertXmlNode(doc.DocumentElement),
+            SerializationHelpers.DefaultOptions
+        );
     }
 
     private static object? _convertXmlNode(XmlNode node)
@@ -42,7 +45,7 @@ public static class SerializationHelpers
         }
 
         // Attributes dictionary
-        var dict = new Dictionary<string, object>();
+        var dict = new Dictionary<string, object?>();
         if (node.Attributes?.Count > 0)
         {
             foreach (XmlAttribute attr in node.Attributes)
@@ -52,14 +55,14 @@ public static class SerializationHelpers
         }
 
         // Group child elements
-        var children = new Dictionary<string, List<object>>();
+        var children = new Dictionary<string, List<object?>>();
         foreach (XmlNode child in node.ChildNodes)
         {
             if (child is XmlElement childElement)
             {
                 var value = _convertXmlNode(childElement);
                 if (!children.ContainsKey(childElement.Name))
-                    children[childElement.Name] = new List<object>();
+                    children[childElement.Name] = new List<object?>();
                 children[childElement.Name].Add(value);
             }
         }

@@ -1,4 +1,4 @@
-using Windows.Security.Credentials;
+using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
 
 namespace UniGetUI.Core.SecureSettings
@@ -18,17 +18,17 @@ namespace UniGetUI.Core.SecureSettings
 
             try
             {
-                var vault = new PasswordVault();
-                var newCredential = new PasswordCredential(GitHubResourceName, UserName, token);
                 if (GetToken() is not null)
                     DeleteToken(); // Delete any old token(s)
 
-                vault.Add(newCredential);
+                CoreCredentialStore.SetSecret(GitHubResourceName, UserName, token);
                 Logger.Info("GitHub access token stored/updated securely.");
             }
             catch (Exception ex)
             {
-                Logger.Error("An error occurred while attempting to delete the currently stored GitHub Token");
+                Logger.Error(
+                    "An error occurred while attempting to delete the currently stored GitHub Token"
+                );
                 Logger.Error(ex);
             }
         }
@@ -37,11 +37,14 @@ namespace UniGetUI.Core.SecureSettings
         {
             try
             {
-                var vault = new PasswordVault();
-                var credential = vault.Retrieve(GitHubResourceName, UserName);
-                credential.RetrievePassword();
+                string? token = CoreCredentialStore.GetSecret(GitHubResourceName, UserName);
+                if (token is null)
+                {
+                    return null;
+                }
+
                 Logger.Debug("GitHub access token retrieved.");
-                return credential.Password;
+                return token;
             }
             catch (Exception ex)
             {
@@ -54,17 +57,14 @@ namespace UniGetUI.Core.SecureSettings
         {
             try
             {
-                var vault = new PasswordVault();
-                var credentials = vault.FindAllByResource(GitHubResourceName) ?? [];
-                foreach (var cred in credentials)
-                {
-                    vault.Remove(cred);
-                    Logger.Info("GitHub access token deleted.");
-                }
+                CoreCredentialStore.DeleteSecret(GitHubResourceName, UserName);
+                Logger.Info("GitHub access token deleted.");
             }
             catch (Exception ex)
             {
-                Logger.Error("An error occurred while attempting to delete the currently stored GitHub Token");
+                Logger.Error(
+                    "An error occurred while attempting to delete the currently stored GitHub Token"
+                );
                 Logger.Error(ex);
             }
         }

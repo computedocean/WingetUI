@@ -55,7 +55,7 @@ public abstract partial class AbstractOperation
 
         public OperationMetadata()
         {
-            Identifier  =  new Random().NextInt64(1000000, 9999999).ToString();
+            Identifier = new Random().NextInt64(1000000, 9999999).ToString();
         }
     }
 
@@ -80,9 +80,8 @@ public abstract partial class AbstractOperation
         VerboseDetails,
         ProgressIndicator,
         Information,
-        Error
+        Error,
     }
-
 
     public struct InnerOperation
     {
@@ -96,5 +95,4 @@ public abstract partial class AbstractOperation
             op.IsInnerOperation = true;
         }
     }
-
 }

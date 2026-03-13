@@ -3,8 +3,8 @@
 
 #define MyAppVersion "3.3.7"
 #define MyAppName "UniGetUI"
-#define MyAppPublisher "Martí Climent"
-#define MyAppURL "https://github.com/marticliment/UniGetUI"
+#define MyAppPublisher "Devolutions Inc."
+#define MyAppURL "https://github.com/Devolutions/UniGetUI"
 #define MyAppExeName "UniGetUI.exe"
 
 #define public Dependency_Path_NetCoreCheck "InstallerExtras\"
@@ -20,10 +20,11 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-AppPublisherURL="https://www.marticliment.com/unigetui/"
+AppPublisherURL="https://devolutions.net/unigetui/"
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 VersionInfoVersion=3.3.7.0
+VersionInfoProductVersion=3.3.7.0
 DefaultDirName="{autopf64}\UniGetUI"
 DisableProgramGroupPage=yes
 DisableDirPage=no

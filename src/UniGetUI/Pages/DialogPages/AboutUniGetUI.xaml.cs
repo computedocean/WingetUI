@@ -11,12 +11,11 @@ namespace UniGetUI.Interface
     /// <summary>
     /// An empty page that can be used on its own or navigated to within a Frame.
     /// </summary>
-
     public sealed partial class AboutUniGetUI : Page
     {
-
         public event EventHandler? Close;
         private int previousSelectedIndex;
+
         public AboutUniGetUI()
         {
             InitializeComponent();
@@ -24,10 +23,12 @@ namespace UniGetUI.Interface
             SelectorBarItemPage2.Text = CoreTools.Translate("Third-party licenses");
             SelectorBarItemPage3.Text = CoreTools.Translate("Contributors");
             SelectorBarItemPage4.Text = CoreTools.Translate("Translators");
-            SelectorBarItemPage5.Text = CoreTools.Translate("Support me");
         }
 
-        private void SelectorBar_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+        private void SelectorBar_SelectionChanged(
+            SelectorBar sender,
+            SelectorBarSelectionChangedEventArgs args
+        )
         {
             SelectorBarItem selectedItem = sender.SelectedItem;
             int currentSelectedIndex = sender.Items.IndexOf(selectedItem);
@@ -36,15 +37,20 @@ namespace UniGetUI.Interface
                 0 => typeof(Pages.AboutPages.AboutUniGetUI),
                 1 => typeof(ThirdPartyLicenses),
                 2 => typeof(Contributors),
-                3 => typeof(Translators),
-                _ => typeof(SupportMe),
+                _ => typeof(Translators),
             };
-            SlideNavigationTransitionEffect slideNavigationTransitionEffect = currentSelectedIndex - previousSelectedIndex > 0 ? SlideNavigationTransitionEffect.FromRight : SlideNavigationTransitionEffect.FromLeft;
+            SlideNavigationTransitionEffect slideNavigationTransitionEffect =
+                currentSelectedIndex - previousSelectedIndex > 0
+                    ? SlideNavigationTransitionEffect.FromRight
+                    : SlideNavigationTransitionEffect.FromLeft;
 
-            ContentFrame.Navigate(pageType, null, new SlideNavigationTransitionInfo { Effect = slideNavigationTransitionEffect });
+            ContentFrame.Navigate(
+                pageType,
+                null,
+                new SlideNavigationTransitionInfo { Effect = slideNavigationTransitionEffect }
+            );
 
             previousSelectedIndex = currentSelectedIndex;
-
         }
 
         private void CloseButton_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)

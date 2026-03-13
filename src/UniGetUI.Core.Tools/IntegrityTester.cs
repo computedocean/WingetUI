@@ -10,8 +10,8 @@ public static class IntegrityTester
 {
     public class MismatchedHash
     {
-        public string Got;
-        public string Expected;
+        public string Got = string.Empty;
+        public string Expected = string.Empty;
     }
 
     public struct Result
@@ -21,15 +21,15 @@ public static class IntegrityTester
         public Dictionary<string, MismatchedHash> CorruptedFiles;
     }
 
-    private static string GetMD5(string fullPath, bool canRetry)
+    private static string GetSHA256(string fullPath, bool canRetry)
     {
         try
         {
-            using (var md5 = MD5.Create())
+            using (var sha256 = SHA256.Create())
             {
                 using (var stream = File.OpenRead(fullPath))
                 {
-                    var hashBytes = md5.ComputeHash(stream);
+                    var hashBytes = sha256.ComputeHash(stream);
                     return BitConverter.ToString(hashBytes).Replace("-", "");
                 }
             }
@@ -39,7 +39,7 @@ public static class IntegrityTester
             if (canRetry)
             {
                 Task.Delay(1000).GetAwaiter().GetResult();
-                return GetMD5(fullPath, false);
+                return GetSHA256(fullPath, false);
             }
 
             return $"{ex.GetType()}: {ex.Message}";
@@ -48,10 +48,15 @@ public static class IntegrityTester
 
     public static Result CheckIntegrity(bool allowRetry = true)
     {
-        string integrityTreePath = Path.Join(CoreData.UniGetUIExecutableDirectory, "IntegrityTree.json");
+        string integrityTreePath = Path.Join(
+            CoreData.UniGetUIExecutableDirectory,
+            "IntegrityTree.json"
+        );
         if (!File.Exists(integrityTreePath))
         {
-            Logger.Error("/IntegrityTree.json does not exist, integrity check will not be performed!");
+            Logger.Error(
+                "/IntegrityTree.json does not exist, integrity check will not be performed!"
+            );
             return new()
             {
                 Passed = false,
@@ -65,7 +70,10 @@ public static class IntegrityTester
 
         try
         {
-            data = JsonSerializer.Deserialize<Dictionary<string, string>>(rawData, SerializationHelpers.DefaultOptions);
+            data = JsonSerializer.Deserialize<Dictionary<string, string>>(
+                rawData,
+                SerializationHelpers.DefaultOptions
+            );
         }
         catch (Exception ex)
         {
@@ -80,7 +88,12 @@ public static class IntegrityTester
                 Passed = false,
                 MissingFiles = [],
                 CorruptedFiles = new()
-                { {"", new MismatchedHash() {Got = rawData, Expected = "A valid JSON"} } },
+                {
+                    {
+                        "",
+                        new MismatchedHash() { Got = rawData, Expected = "A valid JSON" }
+                    },
+                },
             };
         }
 
@@ -97,11 +110,13 @@ public static class IntegrityTester
                 continue;
             }
 
-            var currentMd5 = GetMD5(fullPath, allowRetry).ToLower();
-            if (currentMd5 != expectedHash.ToLower())
+            var currentHash = GetSHA256(fullPath, allowRetry).ToLower();
+            if (currentHash != expectedHash.ToLower())
             {
-                mismatches.Add($"/{file}", new() { Expected = expectedHash, Got = currentMd5 });
-                Logger.Error($"File {file} expected to have md5 {expectedHash}, but had {currentMd5} insetad");
+                mismatches.Add($"/{file}", new() { Expected = expectedHash, Got = currentHash });
+                Logger.Error(
+                    $"File {file} expected to have sha256 {expectedHash}, but had {currentHash} instead"
+                );
             }
         }
 
@@ -109,7 +124,7 @@ public static class IntegrityTester
         {
             Passed = !misses.Any() && !mismatches.Any(),
             MissingFiles = misses,
-            CorruptedFiles = mismatches
+            CorruptedFiles = mismatches,
         };
 
         if (result.Passed)
@@ -138,7 +153,9 @@ public static class IntegrityTester
         {
             Builder.Append("Corrupted files: ");
             foreach (var (file, hashes) in result.CorruptedFiles)
-                Builder.Append($"\n - {file} (md5 mismatch, got {hashes.Got} but expected {hashes.Expected} ");
+                Builder.Append(
+                    $"\n - {file} (sha256 mismatch, got {hashes.Got} but expected {hashes.Expected} "
+                );
             Builder.Append('\n');
         }
 

@@ -7,7 +7,7 @@ on:
 
 jobs:
   load-icons:
-    if: github.repository == 'marticliment/UniGetUI'
+    if: github.repository == 'Devolutions/UniGetUI'
     runs-on: windows-latest
 
     steps:
@@ -43,4 +43,6 @@ jobs:
           commit-message: "Update icons and screenshots from the excel file"
           branch: pull-request/update-icons-and-screenshots
           body-path: pr_body.md
+
+
 

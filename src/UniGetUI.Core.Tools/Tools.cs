@@ -1,16 +1,18 @@
 using System.Collections;
 using System.Diagnostics;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
-using Windows.Networking.Connectivity;
-using ABI.Windows.ApplicationModel.UserDataTasks;
 using UniGetUI.Core.Classes;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Language;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
+#if WINDOWS
+using Windows.Networking.Connectivity;
+#endif
 
 namespace UniGetUI.Core.Tools
 {
@@ -24,13 +26,12 @@ namespace UniGetUI.Core.Tools
                 IWebProxy? proxy = null;
                 ICredentials? creds = null;
 
-                if (Settings.Get(Settings.K.EnableProxy)) proxyUri = Settings.GetProxyUrl();
-                if (Settings.Get(Settings.K.EnableProxyAuth)) creds = Settings.GetProxyCredentials();
-                if (proxyUri is not null) proxy = new WebProxy()
-                {
-                    Address = proxyUri,
-                    Credentials = creds
-                };
+                if (Settings.Get(Settings.K.EnableProxy))
+                    proxyUri = Settings.GetProxyUrl();
+                if (Settings.Get(Settings.K.EnableProxyAuth))
+                    creds = Settings.GetProxyCredentials();
+                if (proxyUri is not null)
+                    proxy = new WebProxy() { Address = proxyUri, Credentials = creds };
 
                 return new()
                 {
@@ -88,8 +89,8 @@ namespace UniGetUI.Core.Tools
         /// </summary>
         public static void RelaunchProcess()
         {
-            Logger.Debug("Launching process: " + Environment.GetCommandLineArgs()[0].Replace(".dll", ".exe"));
-            Process.Start(Environment.GetCommandLineArgs()[0].Replace(".dll", ".exe"));
+            Logger.Debug("Launching process: " + CoreData.UniGetUIExecutableFile);
+            Process.Start(CoreData.UniGetUIExecutableFile);
             Logger.Warn("About to kill process");
             Environment.Exit(0);
         }
@@ -109,41 +110,43 @@ namespace UniGetUI.Core.Tools
             command = command.Replace(";", "").Replace("&", "").Trim();
             Logger.Debug($"Begin \"which\" search for command {command}");
 
-            string PATH = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User) + ";";
-            PATH += Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine) + ";";
-            PATH += Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Process);
-            PATH = PATH.Replace(";;", ";").Trim(';');
+            string pathValue = GetSearchPath();
 
             Process process = new()
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = Path.Join(Environment.SystemDirectory, "where.exe"),
+                    FileName = OperatingSystem.IsWindows()
+                        ? Path.Join(Environment.SystemDirectory, "where.exe")
+                        : "which",
                     Arguments = command,
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     CreateNoWindow = true,
-                    StandardOutputEncoding = CodePagesEncodingProvider.Instance.GetEncoding(CoreData.CODE_PAGE),
-                    StandardErrorEncoding = CodePagesEncodingProvider.Instance.GetEncoding(CoreData.CODE_PAGE),
-                }
+                    StandardOutputEncoding = GetCommandOutputEncoding(),
+                    StandardErrorEncoding = GetCommandOutputEncoding(),
+                },
             };
             if (updateEnv)
             {
                 process.StartInfo = UpdateEnvironmentVariables(process.StartInfo);
             }
-            process.StartInfo.Environment["PATH"] = PATH;
+            process.StartInfo.Environment["PATH"] = pathValue;
 
             try
             {
                 process.Start();
-                string[] lines = process.StandardOutput.ReadToEnd()
+                string[] lines = process
+                    .StandardOutput.ReadToEnd()
                     .Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries);
 
                 process.WaitForExit();
 
                 if (process.ExitCode is not 0)
-                    Logger.Warn($"Call to WhichMultiple with file {command} returned non-zero status {process.ExitCode}");
+                    Logger.Warn(
+                        $"Call to WhichMultiple with file {command} returned non-zero status {process.ExitCode}"
+                    );
 
                 if (lines.Length is 0)
                 {
@@ -151,12 +154,15 @@ namespace UniGetUI.Core.Tools
                     return [];
                 }
 
-                Logger.Debug($"Command {command} was found on {lines[0]} (with {lines.Length-1} more occurrences)");
+                Logger.Debug(
+                    $"Command {command} was found on {lines[0]} (with {lines.Length - 1} more occurrences)"
+                );
                 return lines.ToList();
             }
             catch
             {
-                if (updateEnv) return WhichMultiple(command, false);
+                if (updateEnv)
+                    return WhichMultiple(command, false);
                 throw;
             }
         }
@@ -164,7 +170,7 @@ namespace UniGetUI.Core.Tools
         public static Tuple<bool, string> Which(string command, bool updateEnv = true)
         {
             var paths = WhichMultiple(command, updateEnv);
-            return new(paths.Any(), paths.Any() ? paths[0]: "");
+            return new(paths.Any(), paths.Any() ? paths[0] : "");
         }
 
         /// <summary>
@@ -174,13 +180,20 @@ namespace UniGetUI.Core.Tools
         /// <returns>The formatted string</returns>
         public static string FormatAsName(string name)
         {
-            name =
-                name.Replace(".install", "").Replace(".portable", "").Replace("-", " ").Replace("_", " ").Split("/")[^1]
-                    .Split(":")[0];
+            name = name.Replace(".install", "")
+                .Replace(".portable", "")
+                .Replace("-", " ")
+                .Replace("_", " ")
+                .Split("/")[^1]
+                .Split(":")[0];
             string newName = "";
             for (int i = 0; i < name.Length; i++)
             {
-                if (i == 0 || name[i - 1] == ' ' || name[i - 1] == '[' /* for vcpkg options */)
+                if (
+                    i == 0
+                    || name[i - 1] == ' '
+                    || name[i - 1] == '[' /* for vcpkg options */
+                )
                 {
                     newName += name[i].ToString().ToUpper();
                 }
@@ -203,7 +216,8 @@ namespace UniGetUI.Core.Tools
         {
             Random random = new();
             const string pool = "abcdefghijklmnopqrstuvwxyz0123456789";
-            IEnumerable<char> chars = Enumerable.Range(0, length)
+            IEnumerable<char> chars = Enumerable
+                .Range(0, length)
                 .Select(_ => pool[random.Next(0, pool.Length)]);
             return new string(chars.ToArray());
         }
@@ -214,16 +228,29 @@ namespace UniGetUI.Core.Tools
         /// <param name="path">The path of the batch file</param>
         /// <param name="WindowTitle">The title of the window</param>
         /// <param name="RunAsAdmin">Whether the batch file should be launched elevated or not</param>
-        public static async Task LaunchBatchFile(string path, string WindowTitle = "", bool RunAsAdmin = false)
+        public static async Task LaunchBatchFile(
+            string path,
+            string WindowTitle = "",
+            bool RunAsAdmin = false
+        )
         {
             try
             {
                 using Process p = new();
-                p.StartInfo.FileName = "cmd.exe";
-                p.StartInfo.Arguments = "/C start \"" + WindowTitle + "\" \"" + path + "\"";
-                p.StartInfo.UseShellExecute = true;
+                if (OperatingSystem.IsWindows())
+                {
+                    p.StartInfo.FileName = "cmd.exe";
+                    p.StartInfo.Arguments = "/C start \"" + WindowTitle + "\" \"" + path + "\"";
+                    p.StartInfo.UseShellExecute = true;
+                    p.StartInfo.Verb = RunAsAdmin ? "runas" : "";
+                }
+                else
+                {
+                    p.StartInfo.FileName = "/bin/sh";
+                    p.StartInfo.ArgumentList.Add(path);
+                    p.StartInfo.UseShellExecute = false;
+                }
                 p.StartInfo.CreateNoWindow = true;
-                p.StartInfo.Verb = RunAsAdmin ? "runas" : "";
                 p.Start();
                 await p.WaitForExitAsync();
             }
@@ -241,8 +268,14 @@ namespace UniGetUI.Core.Tools
         {
             try
             {
-                return new WindowsPrincipal(WindowsIdentity.GetCurrent())
-                    .IsInRole(WindowsBuiltInRole.Administrator);
+                if (!OperatingSystem.IsWindows())
+                {
+                    return string.Equals(Environment.UserName, "root", StringComparison.Ordinal);
+                }
+
+                return new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(
+                    WindowsBuiltInRole.Administrator
+                );
             }
             catch (Exception e)
             {
@@ -252,18 +285,20 @@ namespace UniGetUI.Core.Tools
             }
         }
 
-        public static Task<long> GetFileSizeAsLongAsync(Uri? url)
-            => Task.Run(() => GetFileSizeAsLong(url));
-
+        public static Task<long> GetFileSizeAsLongAsync(Uri? url) =>
+            Task.Run(() => GetFileSizeAsLong(url));
 
         public static long GetFileSizeAsLong(Uri? url)
         {
-            if (url is null) return 0;
+            if (url is null)
+                return 0;
 
             try
             {
                 using HttpClient client = new(CoreTools.GenericHttpClientParameters);
-                HttpResponseMessage response = client.Send(new HttpRequestMessage(HttpMethod.Head, url));
+                HttpResponseMessage response = client.Send(
+                    new HttpRequestMessage(HttpMethod.Head, url)
+                );
                 return response.Content.Headers.ContentLength ?? 0;
             }
             catch (Exception e)
@@ -282,17 +317,29 @@ namespace UniGetUI.Core.Tools
                 var handler = CoreTools.GenericHttpClientParameters;
                 handler.AllowAutoRedirect = false;
                 using HttpClient client = new(handler);
-                HttpResponseMessage response = client.Send(new HttpRequestMessage(HttpMethod.Head, url));
+                HttpResponseMessage response = client.Send(
+                    new HttpRequestMessage(HttpMethod.Head, url)
+                );
 
-                if (response.StatusCode is HttpStatusCode.Moved or HttpStatusCode.Redirect
-                    or HttpStatusCode.RedirectMethod or HttpStatusCode.TemporaryRedirect
-                    or HttpStatusCode.PermanentRedirect)
+                if (
+                    response.StatusCode
+                    is HttpStatusCode.Moved
+                        or HttpStatusCode.Redirect
+                        or HttpStatusCode.RedirectMethod
+                        or HttpStatusCode.TemporaryRedirect
+                        or HttpStatusCode.PermanentRedirect
+                )
                 {
-                    return GetFileName(response.Headers.Location ??
-                                       throw new HttpRequestException("A redirect code was returned but no new location was given"));
+                    return GetFileName(
+                        response.Headers.Location
+                            ?? throw new HttpRequestException(
+                                "A redirect code was returned but no new location was given"
+                            )
+                    );
                 }
 
-                return response.Content.Headers.ContentDisposition?.FileName ?? Path.GetFileName(url.LocalPath);
+                return response.Content.Headers.ContentDisposition?.FileName
+                    ?? Path.GetFileName(url.LocalPath);
             }
             catch (Exception e)
             {
@@ -302,11 +349,9 @@ namespace UniGetUI.Core.Tools
             }
         }
 
-        public static Task<string> GetFileNameAsync(Uri url)
-            => Task.Run(() => GetFileName(url));
+        public static Task<string> GetFileNameAsync(Uri url) => Task.Run(() => GetFileName(url));
 
-
-        public struct Version: IComparable
+        public struct Version : IComparable
         {
             public static readonly Version Null = new(-1, -1, -1, -1);
 
@@ -325,46 +370,49 @@ namespace UniGetUI.Core.Tools
 
             public int CompareTo(object? other_)
             {
-                if (other_ is not Version other) return 0;
+                if (other_ is not Version other)
+                    return 0;
 
                 int major = Major.CompareTo(other.Major);
-                if (major != 0) return major;
+                if (major != 0)
+                    return major;
 
                 int minor = Minor.CompareTo(other.Minor);
-                if (minor != 0) return minor;
+                if (minor != 0)
+                    return minor;
 
                 int patch = Patch.CompareTo(other.Patch);
-                if (patch != 0) return patch;
+                if (patch != 0)
+                    return patch;
 
                 return Remainder.CompareTo(other.Remainder);
             }
 
-            public static bool operator ==(Version left, Version right)
-                => left.CompareTo(right) == 0;
+            public static bool operator ==(Version left, Version right) =>
+                left.CompareTo(right) == 0;
 
-            public static bool operator !=(Version left, Version right)
-                => left.CompareTo(right) != 0;
+            public static bool operator !=(Version left, Version right) =>
+                left.CompareTo(right) != 0;
 
-            public static bool operator >=(Version left, Version right)
-                => left.CompareTo(right) >= 0;
+            public static bool operator >=(Version left, Version right) =>
+                left.CompareTo(right) >= 0;
 
-            public static bool operator <=(Version left, Version right)
-                => left.CompareTo(right) <= 0;
+            public static bool operator <=(Version left, Version right) =>
+                left.CompareTo(right) <= 0;
 
-            public static bool operator >(Version left, Version right)
-                => left.CompareTo(right) > 0;
+            public static bool operator >(Version left, Version right) => left.CompareTo(right) > 0;
 
-            public static bool operator <(Version left, Version right)
-                => left.CompareTo(right) < 0;
+            public static bool operator <(Version left, Version right) => left.CompareTo(right) < 0;
 
-            public bool Equals(Version other)
-                => Major == other.Major && Minor == other.Minor && Patch == other.Patch && Remainder == other.Remainder;
+            public bool Equals(Version other) =>
+                Major == other.Major
+                && Minor == other.Minor
+                && Patch == other.Patch
+                && Remainder == other.Remainder;
 
-            public override bool Equals(object? obj)
-                => obj is Version other && Equals(other);
+            public override bool Equals(object? obj) => obj is Version other && Equals(other);
 
-            public override int GetHashCode()
-                => HashCode.Combine(Major, Minor, Patch, Remainder);
+            public override int GetHashCode() => HashCode.Combine(Major, Minor, Patch, Remainder);
         }
 
         /// <summary>
@@ -384,8 +432,11 @@ namespace UniGetUI.Core.Tools
 
                 foreach (char c in Version)
                 {
-                    if (char.IsDigit(c)) versionItems[dotCount] += c;
-                    else if (!first && separators.Contains(c)) if (dotCount < 3) dotCount++;
+                    if (char.IsDigit(c))
+                        versionItems[dotCount] += c;
+                    else if (!first && separators.Contains(c))
+                        if (dotCount < 3)
+                            dotCount++;
                     first = false;
                 }
 
@@ -413,7 +464,8 @@ namespace UniGetUI.Core.Tools
         /// <returns>The safe version of the query</returns>
         public static string EnsureSafeQueryString(string query)
         {
-            return query.Replace(";", string.Empty)
+            return query
+                .Replace(";", string.Empty)
                 .Replace("&", string.Empty)
                 .Replace("|", string.Empty)
                 .Replace(">", string.Empty)
@@ -462,15 +514,19 @@ namespace UniGetUI.Core.Tools
         /// Enables GSudo cache for the current process
         /// </summary>
         private static bool _isCaching;
+
         public static async Task CacheUACForCurrentProcess()
         {
             if (Settings.Get(Settings.K.ProhibitElevation))
             {
-                Logger.Error("Elevation is prohibited, CacheUACForCurrentProcess() call will be ignored");
+                Logger.Error(
+                    "Elevation is prohibited, CacheUACForCurrentProcess() call will be ignored"
+                );
                 return;
             }
 
-            while (_isCaching) await Task.Delay(100);
+            while (_isCaching)
+                await Task.Delay(100);
 
             try
             {
@@ -488,7 +544,7 @@ namespace UniGetUI.Core.Tools
                         RedirectStandardInput = true,
                         CreateNoWindow = true,
                         StandardOutputEncoding = Encoding.UTF8,
-                    }
+                    },
                 };
                 p.Start();
                 await p.WaitForExitAsync();
@@ -508,11 +564,15 @@ namespace UniGetUI.Core.Tools
         {
             if (Settings.Get(Settings.K.ProhibitElevation))
             {
-                Logger.Error("Elevation is prohibited, ResetUACForCurrentProcess() call will be ignored");
+                Logger.Error(
+                    "Elevation is prohibited, ResetUACForCurrentProcess() call will be ignored"
+                );
                 return;
             }
 
-            Logger.Info("Resetting administrator rights cache for process id " + Environment.ProcessId);
+            Logger.Info(
+                "Resetting administrator rights cache for process id " + Environment.ProcessId
+            );
             using Process p = new()
             {
                 StartInfo = new ProcessStartInfo
@@ -525,7 +585,7 @@ namespace UniGetUI.Core.Tools
                     RedirectStandardInput = true,
                     CreateNoWindow = true,
                     StandardOutputEncoding = Encoding.UTF8,
-                }
+                },
             };
             p.Start();
             await p.WaitForExitAsync();
@@ -550,23 +610,13 @@ namespace UniGetUI.Core.Tools
         /// <param name="targetPath">The location of the real folder where to point</param>
         public static void CreateSymbolicLinkDir(string linkPath, string targetPath)
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "cmd.exe",
-                Arguments = $"/c mklink /D \"{linkPath}\" \"{targetPath}\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
+            Directory.CreateSymbolicLink(linkPath, targetPath);
 
-            Process? p = Process.Start(startInfo);
-            p?.WaitForExit();
-
-            if (p is null || p.ExitCode != 0)
+            if (!Directory.Exists(linkPath))
             {
                 throw new InvalidOperationException(
-                    $"The operation did not complete successfully: \n{p?.StandardOutput.ReadToEnd()}\n{p?.StandardError.ReadToEnd()}\n");
+                    $"The symbolic link '{linkPath}' was not created successfully."
+                );
             }
         }
 
@@ -601,17 +651,39 @@ namespace UniGetUI.Core.Tools
         /// <returns></returns>
         public static ProcessStartInfo UpdateEnvironmentVariables(ProcessStartInfo info)
         {
-            foreach (DictionaryEntry env in Environment.GetEnvironmentVariables(EnvironmentVariableTarget.Machine))
+            if (!OperatingSystem.IsWindows())
+            {
+                foreach (DictionaryEntry env in Environment.GetEnvironmentVariables())
+                {
+                    info.Environment[env.Key?.ToString() ?? "UNKNOWN"] = env.Value?.ToString();
+                }
+
+                return info;
+            }
+
+            foreach (
+                DictionaryEntry env in Environment.GetEnvironmentVariables(
+                    EnvironmentVariableTarget.Machine
+                )
+            )
             {
                 info.Environment[env.Key?.ToString() ?? "UNKNOWN"] = env.Value?.ToString();
             }
 
-            foreach (DictionaryEntry env in Environment.GetEnvironmentVariables(EnvironmentVariableTarget.User))
+            foreach (
+                DictionaryEntry env in Environment.GetEnvironmentVariables(
+                    EnvironmentVariableTarget.User
+                )
+            )
             {
                 string key = env.Key.ToString() ?? "";
                 string newValue = env.Value?.ToString() ?? "";
-                if (info.Environment.TryGetValue(key, out string? oldValue) && oldValue is not null &&
-                    oldValue.Contains(';') && newValue != "")
+                if (
+                    info.Environment.TryGetValue(key, out string? oldValue)
+                    && oldValue is not null
+                    && oldValue.Contains(';')
+                    && newValue != ""
+                )
                 {
                     info.Environment[key] = oldValue + ";" + newValue;
                 }
@@ -627,27 +699,48 @@ namespace UniGetUI.Core.Tools
         /// <summary>
         /// Pings the update server and 3 well-known sites to check for internet availability
         /// </summary>
-        public static async Task WaitForInternetConnection()
-            => await TaskRecycler<int>.RunOrAttachAsync_VOID(_waitForInternetConnection);
+        public static async Task WaitForInternetConnection() =>
+            await TaskRecycler<int>.RunOrAttachAsync_VOID(_waitForInternetConnection);
 
         public static void _waitForInternetConnection()
         {
-            if (Settings.Get(Settings.K.DisableWaitForInternetConnection)) return;
+            if (Settings.Get(Settings.K.DisableWaitForInternetConnection))
+                return;
 
             Logger.Debug("Checking for internet connectivity...");
             bool internetLost = false;
 
+#if WINDOWS
             var profile = NetworkInformation.GetInternetConnectionProfile();
-            while (profile is null || profile.GetNetworkConnectivityLevel() is not NetworkConnectivityLevel.InternetAccess)
+            while (
+                profile is null
+                || profile.GetNetworkConnectivityLevel()
+                    is not NetworkConnectivityLevel.InternetAccess
+            )
             {
                 Thread.Sleep(1000);
                 profile = NetworkInformation.GetInternetConnectionProfile();
                 if (!internetLost)
                 {
-                    Logger.Warn("User is not connected to the internet, waiting for an internet connectio to be available...");
+                    Logger.Warn(
+                        "User is not connected to the internet, waiting for an internet connectio to be available..."
+                    );
                     internetLost = true;
                 }
             }
+#else
+            while (!NetworkInterface.GetIsNetworkAvailable())
+            {
+                Thread.Sleep(1000);
+                if (!internetLost)
+                {
+                    Logger.Warn(
+                        "User is not connected to the internet, waiting for an internet connection to be available..."
+                    );
+                    internetLost = true;
+                }
+            }
+#endif
             Logger.Debug("Internet connectivity was established.");
         }
 
@@ -656,13 +749,20 @@ namespace UniGetUI.Core.Tools
             int done = (int)((progressPercent / 100.0) * (length));
             int rest = length - done;
 
-            return new StringBuilder()
+            StringBuilder builder = new StringBuilder()
                 .Append('[')
-                .Append(new string('#', done))
-                .Append(new string('.', rest))
-                .Append($"] {progressPercent}%")
-                .Append(extra is null ? "" : $" ({extra})")
-                .ToString();
+                .Append('#', done)
+                .Append('.', rest)
+                .Append("] ")
+                .Append(progressPercent)
+                .Append('%');
+
+            if (extra is not null)
+            {
+                builder.Append(" (").Append(extra).Append(')');
+            }
+
+            return builder.ToString();
         }
 
         public static string FormatAsSize(long number, int decimals = 1)
@@ -699,7 +799,14 @@ namespace UniGetUI.Core.Tools
         {
             try
             {
-                if (!File.Exists(path)) throw new FileNotFoundException($"The file {path} was not found");
+                if (!File.Exists(path))
+                    throw new FileNotFoundException($"The file {path} was not found");
+
+                if (!OperatingSystem.IsWindows())
+                {
+                    Launch(Path.GetDirectoryName(path));
+                    return;
+                }
 
                 Process p = new()
                 {
@@ -709,7 +816,7 @@ namespace UniGetUI.Core.Tools
                         Arguments = $"/select, \"{path}\"",
                         UseShellExecute = true,
                         CreateNoWindow = true,
-                    }
+                    },
                 };
                 p.Start();
                 await p.WaitForExitAsync();
@@ -725,7 +832,8 @@ namespace UniGetUI.Core.Tools
         {
             try
             {
-                if (path is null) return;
+                if (path is null)
+                    return;
 
                 var p = new Process()
                 {
@@ -734,7 +842,7 @@ namespace UniGetUI.Core.Tools
                         FileName = path,
                         UseShellExecute = true,
                         CreateNoWindow = true,
-                    }
+                    },
                 };
                 p.Start();
             }
@@ -749,23 +857,54 @@ namespace UniGetUI.Core.Tools
             return LanguageEngine?.Locale ?? "Unset/Unknown";
         }
 
-        private static readonly HashSet<char> _illegalPathChars = Path.GetInvalidFileNameChars().ToHashSet();
-        public static string MakeValidFileName(string name)
-            => string.Concat(name.Where(x => !_illegalPathChars.Contains(x)));
+        private static readonly HashSet<char> _illegalPathChars = Path.GetInvalidFileNameChars()
+            .ToHashSet();
 
+        public static string MakeValidFileName(string name) =>
+            string.Concat(name.Where(x => !_illegalPathChars.Contains(x)));
 
         // Safely wait for a task that may throw an exception we don't care about
         public static async void FinalizeDangerousTask(Task t)
         {
             try
             {
-                await t.ConfigureAwait(false);   
+                await t.ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 Logger.Error($"Task {t} crashed with exception:");
                 Logger.Error(ex);
             }
+        }
+
+        private static Encoding GetCommandOutputEncoding() =>
+            OperatingSystem.IsWindows()
+                ? CodePagesEncodingProvider.Instance.GetEncoding(CoreData.CODE_PAGE)
+                    ?? Encoding.UTF8
+                : Encoding.UTF8;
+
+        private static string GetSearchPath()
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+            }
+
+            string separator = Path.PathSeparator.ToString();
+            string pathValue =
+                (
+                    Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User)
+                    ?? string.Empty
+                ) + separator;
+            pathValue +=
+                (
+                    Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine)
+                    ?? string.Empty
+                ) + separator;
+            pathValue +=
+                Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Process)
+                ?? string.Empty;
+            return pathValue.Replace(separator + separator, separator).Trim(Path.PathSeparator);
         }
     }
 }
