@@ -29,6 +29,7 @@ jobs:
     outputs:
       package-env: ${{ steps.info.outputs.package-env }}
       package-version: ${{ steps.info.outputs.package-version }}
+      onedrive-version: ${{ steps.info.outputs.onedrive-version }}
       draft-release: ${{ steps.info.outputs.draft-release }}
       skip-publish: ${{ steps.info.outputs.skip-publish }}
       dry-run: ${{ steps.info.outputs.dry-run }}
@@ -67,7 +68,10 @@ jobs:
           }
 
           echo "package-env=$PackageEnv" >> $Env:GITHUB_OUTPUT
+          $OneDriveVersion = "$PackageVersion.0"
+
           echo "package-version=$PackageVersion" >> $Env:GITHUB_OUTPUT
+          echo "onedrive-version=$OneDriveVersion" >> $Env:GITHUB_OUTPUT
           echo "draft-release=$($DraftRelease.ToString().ToLower())" >> $Env:GITHUB_OUTPUT
           echo "skip-publish=$($SkipPublish.ToString().ToLower())" >> $Env:GITHUB_OUTPUT
           echo "dry-run=$($DryRun.ToString().ToLower())" >> $Env:GITHUB_OUTPUT
@@ -85,6 +89,8 @@ jobs:
     permissions:
       contents: read
     env:
+      UNIGETUI_GITHUB_CLIENT_ID: ${{ secrets.UNIGETUI_GITHUB_CLIENT_ID }}
+      UNIGETUI_GITHUB_CLIENT_SECRET: ${{ secrets.UNIGETUI_GITHUB_CLIENT_SECRET }}
       NUGET_PACKAGES: ${{ github.workspace }}\.nuget\packages
     strategy:
       fail-fast: false
@@ -95,16 +101,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Validate GitHub OAuth secrets
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:UNIGETUI_GITHUB_CLIENT_ID)) {
+            throw "UNIGETUI_GITHUB_CLIENT_ID is not configured for this build environment."
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:UNIGETUI_GITHUB_CLIENT_SECRET)) {
+            throw "UNIGETUI_GITHUB_CLIENT_SECRET is not configured for this build environment."
+          }
+
+          Write-Host "::notice::GitHub OAuth secrets are configured for this build."
+
       - name: Install .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 8.0.x
+          global-json-file: global.json
 
       - name: Cache NuGet packages
         uses: actions/cache@v5
         with:
           path: ${{ env.NUGET_PACKAGES }}
-          key: ${{ runner.os }}-nuget-${{ hashFiles('src/**/*.csproj', 'src/**/*.props', 'src/**/*.targets', 'src/**/*.sln') }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('global.json', 'src/**/*.csproj', 'src/**/*.props', 'src/**/*.targets', 'src/**/*.sln') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
 
@@ -180,11 +199,20 @@ jobs:
         shell: pwsh
         run: |
           $Platform = '${{ matrix.platform }}'
+          [xml]$BuildProps = Get-Content "src/Directory.Build.props"
+          $PortableTargetFramework = @($BuildProps.Project.PropertyGroup | Where-Object { $_.PortableTargetFramework } | Select-Object -First 1).PortableTargetFramework
+          $WindowsTargetPlatformVersion = @($BuildProps.Project.PropertyGroup | Where-Object { $_.WindowsTargetPlatformVersion } | Select-Object -First 1).WindowsTargetPlatformVersion
+
+          if ([string]::IsNullOrWhiteSpace($PortableTargetFramework) -or [string]::IsNullOrWhiteSpace($WindowsTargetPlatformVersion)) {
+            throw "Could not resolve the target framework from src/Directory.Build.props"
+          }
+
+          $TargetFramework = "$PortableTargetFramework-windows$WindowsTargetPlatformVersion"
           dotnet publish src/UniGetUI/UniGetUI.csproj /noLogo /p:Configuration=Release /p:Platform=$Platform -p:RuntimeIdentifier=win-$Platform -v m
           if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 
           # Stage binaries
-          $PublishDir = "src/UniGetUI/bin/$Platform/Release/net8.0-windows10.0.26100.0/win-$Platform/publish"
+          $PublishDir = "src/UniGetUI/bin/$Platform/Release/$TargetFramework/win-$Platform/publish"
           if (Test-Path "unigetui_bin") { Remove-Item "unigetui_bin" -Recurse -Force }
           New-Item "unigetui_bin" -ItemType Directory | Out-Null
           Get-ChildItem $PublishDir | Move-Item -Destination "unigetui_bin" -Force
@@ -212,10 +240,6 @@ jobs:
             -CertificateName '${{ secrets.CODE_SIGNING_CERTIFICATE_NAME }}' `
             -TimestampServer '${{ vars.CODE_SIGNING_TIMESTAMP_SERVER }}'
 
-      - name: Generate integrity tree
-        shell: pwsh
-        run: .\scripts\generate-integrity-tree.ps1 -Path $PWD/unigetui_bin -MinOutput
-
       - name: Build installer
         shell: pwsh
         run: |
@@ -223,28 +247,35 @@ jobs:
           $OutputDir = Join-Path $PWD "output"
           New-Item $OutputDir -ItemType Directory -ErrorAction SilentlyContinue | Out-Null
 
+          .\scripts\refresh-integrity-tree.ps1 -Path $PWD/unigetui_bin -FailOnUnexpectedFiles
+
           # Configure Inno Setup to use AzureSignTool
           $IssPath = "UniGetUI.iss"
 
           # Build the installer (signing of the installer itself happens in the next step)
           # Temporarily remove SignTool line so ISCC doesn't try to sign during build
           $issContent = Get-Content $IssPath -Raw
-          $issContentNoSign = $issContent -Replace '(?m)^SignTool=.*$', '; SignTool=azsign (disabled for CI, signed separately)'
-          $issContentNoSign = $issContentNoSign -Replace '(?m)^SignedUninstaller=yes', 'SignedUninstaller=no'
-          Set-Content $IssPath $issContentNoSign -NoNewline
 
-          $InstallerBaseName = "UniGetUI.Installer.$Platform"
-          & ISCC.exe $IssPath /F"$InstallerBaseName" /O"$OutputDir"
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          try {
+            $issContentNoSign = $issContent -Replace '(?m)^SignTool=.*$', '; SignTool=azsign (disabled for CI, signed separately)'
+            $issContentNoSign = $issContentNoSign -Replace '(?m)^SignedUninstaller=yes', 'SignedUninstaller=no'
+            Set-Content $IssPath $issContentNoSign -NoNewline
 
-          # Restore original ISS content
-          Set-Content $IssPath $issContent -NoNewline
+            $InstallerBaseName = "UniGetUI.Installer.$Platform"
+            & ISCC.exe $IssPath /F"$InstallerBaseName" /O"$OutputDir"
+            if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          }
+          finally {
+            Set-Content $IssPath $issContent -NoNewline
+          }
 
       - name: Stage output
         shell: pwsh
         run: |
           $Platform = '${{ matrix.platform }}'
           New-Item "output" -ItemType Directory -ErrorAction SilentlyContinue | Out-Null
+
+          .\scripts\refresh-integrity-tree.ps1 -Path $PWD/unigetui_bin -FailOnUnexpectedFiles
 
           # Zip
           Compress-Archive -Path "unigetui_bin/*" -DestinationPath "output/UniGetUI.$Platform.zip" -CompressionLevel Optimal
@@ -277,10 +308,150 @@ jobs:
         run: |
           Remove-Item "unigetui_bin" -Recurse -Force -ErrorAction SilentlyContinue
 
+  build-avalonia:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    needs: [preflight]
+    environment: ${{ needs.preflight.outputs.package-env }}
+    permissions:
+      contents: read
+    env:
+      UNIGETUI_GITHUB_CLIENT_ID: ${{ secrets.UNIGETUI_GITHUB_CLIENT_ID }}
+      UNIGETUI_GITHUB_CLIENT_SECRET: ${{ secrets.UNIGETUI_GITHUB_CLIENT_SECRET }}
+      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macos-arm64
+            runtime: osx-arm64
+          - os: macos-latest
+            name: macos-x64
+            runtime: osx-x64
+          - os: ubuntu-latest
+            name: linux-x64
+            runtime: linux-x64
+          - os: ubuntu-latest
+            name: linux-arm64
+            runtime: linux-arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('global.json', 'src/**/*.csproj', 'src/**/*.props', 'src/**/*.targets', 'src/**/*.sln') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Set version
+        shell: pwsh
+        run: |
+          $PackageVersion = '${{ needs.preflight.outputs.package-version }}'
+          ./scripts/set-version.ps1 -Version $PackageVersion
+
+      - name: Restore dependencies
+        working-directory: src
+        run: dotnet restore UniGetUI.Avalonia/UniGetUI.Avalonia.csproj
+
+      - name: Publish
+        working-directory: src
+        run: |
+          dotnet publish UniGetUI.Avalonia/UniGetUI.Avalonia.csproj \
+            --configuration Release \
+            --runtime ${{ matrix.runtime }} \
+            --self-contained true \
+            --output ../bin/${{ matrix.name }}
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p output
+
+          # .tar.gz
+          tar -czf output/UniGetUI.${{ matrix.name }}.tar.gz -C bin/${{ matrix.name }} .
+
+          # .dmg — create a staging folder, then convert to a compressed read-only image
+          DMG_STAGING=$(mktemp -d)
+          trap "rm -rf '$DMG_STAGING'" EXIT
+          mkdir -p "$DMG_STAGING/UniGetUI"
+          cp -R bin/${{ matrix.name }}/. "$DMG_STAGING/UniGetUI/"
+          hdiutil create \
+            -volname "UniGetUI" \
+            -srcfolder "$DMG_STAGING" \
+            -ov \
+            -format UDZO \
+            output/UniGetUI.${{ matrix.name }}.dmg
+
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: |
+          $Version    = '${{ needs.preflight.outputs.package-version }}'
+          $Parts      = $Version -split '-', 2
+          $BaseVersion = $Parts[0]
+          $Prerelease  = if ($Parts.Count -gt 1) { $Parts[1] } else { $null }
+
+          # deb: use tilde notation for pre-releases (Ubuntu 18.04+ compatible)
+          $DebVersion   = if ($Prerelease) { "${BaseVersion}~${Prerelease}" } else { $Version }
+          # rpm: pre-release encoded in Release/Iteration field (RHEL 8+ / RPM 4.14+)
+          $RpmVersion   = $BaseVersion
+          $RpmIteration = if ($Prerelease) { "0.${Prerelease}" } else { '1' }
+
+          # Map .NET RID -> package arch names
+          $DebArch, $RpmArch = switch ('${{ matrix.runtime }}') {
+            'linux-arm64' { 'arm64',  'aarch64' }
+            default       { 'amd64',  'x86_64'  }
+          }
+
+          New-Item -ItemType Directory -Force -Path output | Out-Null
+
+          # .tar.gz
+          & tar -czf "output/UniGetUI.${{ matrix.name }}.tar.gz" -C "bin/${{ matrix.name }}" .
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+          # .deb — Ubuntu 18.04+ (glibc 2.27, Debian policy 3.9.6)
+          & ./scripts/package-linux.ps1 `
+              -PackageType  deb `
+              -SourceDir    "bin/${{ matrix.name }}" `
+              -OutputPath   "output/UniGetUI.${{ matrix.name }}.deb" `
+              -Version      $DebVersion `
+              -Architecture $DebArch
+
+          # .rpm — RHEL 8+ (RPM 4.14, glibc 2.28)
+          & ./scripts/package-linux.ps1 `
+              -PackageType  rpm `
+              -SourceDir    "bin/${{ matrix.name }}" `
+              -OutputPath   "output/UniGetUI.${{ matrix.name }}.rpm" `
+              -Version      $RpmVersion `
+              -Iteration    $RpmIteration `
+              -Architecture $RpmArch
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: UniGetUI-${{ matrix.name }}
+          path: output/*
+
   publish:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
-    needs: [preflight, build]
+    needs: [preflight, build, build-avalonia]
     if: ${{ fromJSON(needs.preflight.outputs.skip-publish) == false }}
     environment: ${{ needs.preflight.outputs.package-env }}
     permissions:
@@ -382,11 +553,13 @@ jobs:
           $PackageVersion = '${{ needs.preflight.outputs.package-version }}'
           New-Item -Path "onedrive-staging" -ItemType Directory -Force | Out-Null
 
+          $OneDriveVersion = '${{ needs.preflight.outputs.onedrive-version }}'
+
           $Mappings = @{
-            "output/UniGetUI-release-x64/UniGetUI.Installer.x64.exe" = "Devolutions.UniGetUI.win-x64.$PackageVersion.exe"
-            "output/UniGetUI-release-arm64/UniGetUI.Installer.arm64.exe" = "Devolutions.UniGetUI.win-arm64.$PackageVersion.exe"
-            "output/UniGetUI-release-x64/UniGetUI.x64.zip" = "Devolutions.UniGetUI.win-x64.$PackageVersion.zip"
-            "output/UniGetUI-release-arm64/UniGetUI.arm64.zip" = "Devolutions.UniGetUI.win-arm64.$PackageVersion.zip"
+            "output/UniGetUI-release-x64/UniGetUI.Installer.x64.exe" = "Devolutions.UniGetUI.win-x64.$OneDriveVersion.exe"
+            "output/UniGetUI-release-arm64/UniGetUI.Installer.arm64.exe" = "Devolutions.UniGetUI.win-arm64.$OneDriveVersion.exe"
+            "output/UniGetUI-release-x64/UniGetUI.x64.zip" = "Devolutions.UniGetUI.win-x64.$OneDriveVersion.zip"
+            "output/UniGetUI-release-arm64/UniGetUI.arm64.zip" = "Devolutions.UniGetUI.win-arm64.$OneDriveVersion.zip"
           }
 
           foreach ($entry in $Mappings.GetEnumerator()) {
@@ -404,7 +577,7 @@ jobs:
           azure_client_id: ${{ secrets.ONEDRIVE_AUTOMATION_CLIENT_ID }}
           azure_client_secret: ${{ secrets.ONEDRIVE_AUTOMATION_CLIENT_SECRET }}
           conflict_behavior: replace
-          destination_path: /UniGetUI/${{ needs.preflight.outputs.package-version }}
+          destination_path: /UniGetUI/${{ needs.preflight.outputs.onedrive-version }}
           remote: releases
           source_path: Devolutions.UniGetUI.*
           working_directory: onedrive-staging

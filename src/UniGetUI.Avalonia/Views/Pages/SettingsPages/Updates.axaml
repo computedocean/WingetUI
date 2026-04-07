@@ -1,0 +1,81 @@
+<UserControl x:Class="UniGetUI.Avalonia.Views.Pages.SettingsPages.Updates"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:UniGetUI.Avalonia.ViewModels.Pages.SettingsPages"
+             xmlns:settings="using:UniGetUI.Avalonia.Views.Controls.Settings"
+             xmlns:t="using:UniGetUI.Avalonia.MarkupExtensions"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             x:DataType="vm:UpdatesViewModel">
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Orientation="Vertical" Spacing="0">
+
+            <settings:TranslatedTextBlock Text="Update checking"
+                                          FontWeight="SemiBold"
+                                          Margin="44,32,4,8"/>
+
+            <settings:CheckboxCard SettingName="DisableAutoCheckforUpdates"
+                                   Text="{t:Translate Check for package updates periodically}"
+                                   StateChangedCommand="{Binding UpdateAutoCheckEnabledCommand}"
+                                   CornerRadius="8,8,0,0"/>
+
+            <settings:ComboboxCard x:Name="UpdatesCheckIntervalSelector"
+                                   SettingName="UpdatesCheckInterval"
+                                   Text="{t:Translate Check for updates every:}"
+                                   ValueChangedCommand="{Binding ShowRestartRequiredCommand}"
+                                   BorderThickness="1,0"
+                                   CornerRadius="0,0,8,8"
+                                   IsEnabled="{Binding IsAutoCheckEnabled}"/>
+
+            <settings:TranslatedTextBlock Text="Automatic updates"
+                                          FontWeight="SemiBold"
+                                          Margin="44,32,4,8"/>
+
+            <settings:CheckboxCard SettingName="AutomaticallyUpdatePackages"
+                                   Text="{t:Translate Install available updates automatically}"
+                                   CornerRadius="8,8,0,0"
+                                   IsEnabled="{Binding IsAutoCheckEnabled}"/>
+
+            <settings:CheckboxCard SettingName="DisableAUPOnMeteredConnections"
+                                   ForceInversion="True"
+                                   Text="{t:Translate Do not automatically install updates when the network connection is metered}"
+                                   BorderThickness="1,0"
+                                   CornerRadius="0"
+                                   IsEnabled="{Binding IsAutoCheckEnabled}"/>
+
+            <settings:CheckboxCard SettingName="DisableAUPOnBattery"
+                                   ForceInversion="True"
+                                   Text="{t:Translate Do not automatically install updates when the device runs on battery}"
+                                   BorderThickness="1,1,1,0"
+                                   CornerRadius="0"
+                                   IsEnabled="{Binding IsAutoCheckEnabled}"/>
+
+            <settings:CheckboxCard SettingName="DisableAUPOnBatterySaver"
+                                   ForceInversion="True"
+                                   Text="{t:Translate Do not automatically install updates when the battery saver is on}"
+                                   CornerRadius="0,0,8,8"
+                                   IsEnabled="{Binding IsAutoCheckEnabled}"/>
+
+            <settings:TranslatedTextBlock Text="Related settings"
+                                          FontWeight="SemiBold"
+                                          Margin="44,32,4,8"/>
+
+            <settings:SettingsCard BorderThickness="1,1,1,0"
+                                   CornerRadius="8,8,0,0"
+                                   IsClickEnabled="True"
+                                   Command="{Binding NavigateToOperationsCommand}"
+                                   Header="{t:Translate Package operation preferences}"
+                                   Description="{t:Translate Text='Change how UniGetUI handles install, update and uninstall operations.'}"/>
+
+            <settings:SettingsCard CornerRadius="0,0,8,8"
+                                   IsClickEnabled="True"
+                                   Command="{Binding NavigateToAdministratorCommand}"
+                                   Header="{t:Translate Administrator rights and other dangerous settings}"
+                                   Description="{t:Translate Text='Reduce UAC prompts, elevate installations by default, unlock certain dangerous features, etc.'}"/>
+
+        </StackPanel>
+    </ScrollViewer>
+
+</UserControl>

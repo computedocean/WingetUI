@@ -1,0 +1,329 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="using:UniGetUI.Avalonia.Views"
+        xmlns:vm="using:UniGetUI.Avalonia.ViewModels"
+        xmlns:controls="using:UniGetUI.Avalonia.Views.Controls"
+        xmlns:t="using:UniGetUI.Avalonia.MarkupExtensions"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="750"
+        x:Class="UniGetUI.Avalonia.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="UniGetUI"
+        Width="1450"
+        MinWidth="700"
+        MinHeight="500">
+    <Panel>
+        <!-- Main content pushed below the native title bar -->
+        <Grid x:Name="MainContentGrid"
+              ColumnDefinitions="Auto,*"
+              RowDefinitions="*,4,Auto"
+              Background="{DynamicResource AppWindowBackground}"
+              Margin="{Binding $parent[Window].WindowDecorationMargin}">
+
+            <!-- ── Sidebar (spans all rows) ── -->
+            <ContentControl Grid.Column="0" Grid.RowSpan="3"
+                            Width="{Binding Sidebar.PaneWidth}"
+                            Content="{Binding Sidebar}"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Stretch">
+                <ContentControl.DataTemplates>
+                    <DataTemplate DataType="vm:SidebarViewModel">
+                        <views:SidebarView/>
+                    </DataTemplate>
+                </ContentControl.DataTemplates>
+            </ContentControl>
+
+            <!-- Vertical separator (spans all rows) -->
+            <Border Grid.Column="0" Grid.RowSpan="3"
+                    Width="1"
+                    HorizontalAlignment="Right"
+                    Opacity="0.2"
+                    Background="{DynamicResource SystemBaseMediumColor}"/>
+
+            <!-- ── Banners + page content ── -->
+            <Grid Grid.Column="1" Grid.Row="0" RowDefinitions="Auto,*" Margin="0,10">
+                <StackPanel Grid.Row="0" Spacing="0">
+                    <StackPanel.DataTemplates>
+                        <DataTemplate DataType="vm:InfoBarViewModel">
+                            <controls:InfoBar/>
+                        </DataTemplate>
+                    </StackPanel.DataTemplates>
+                    <ContentControl Content="{Binding UpdatesBanner}"/>
+                    <ContentControl Content="{Binding ErrorBanner}"/>
+                    <ContentControl Content="{Binding WinGetWarningBanner}"/>
+                    <ContentControl Content="{Binding TelemetryWarner}"/>
+                </StackPanel>
+                <ContentControl Grid.Row="1"
+                                Content="{Binding CurrentPageContent}"
+                                HorizontalContentAlignment="Stretch"
+                                VerticalContentAlignment="Stretch"/>
+            </Grid>
+
+            <!-- ── GridSplitter (only visible when operations are present) ── -->
+            <GridSplitter Grid.Column="1" Grid.Row="1"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          IsVisible="{Binding OperationsPanelVisible}"
+                          Background="{DynamicResource AppSplitterBackground}"
+                          Opacity="0.8"/>
+
+            <!-- ── Operations panel ── -->
+            <Border Grid.Column="1" Grid.Row="2"
+                    IsVisible="{Binding OperationsPanelVisible}"
+                    BorderThickness="0,1,0,0"
+                    BorderBrush="{DynamicResource AppBorderBrush}"
+                    Background="{DynamicResource AppOperationsPanelBackground}">
+                <ScrollViewer MaxHeight="220"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Operations}"
+                                  Margin="8,4,8,4">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:OperationViewModel">
+                                <Border Background="{Binding BackgroundBrush}"
+                                        CornerRadius="6"
+                                        Padding="10,6"
+                                        Margin="0,3,0,3">
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+
+                                        <!-- Package icon -->
+                                        <Image Grid.Column="0"
+                                               Source="{Binding PackageIcon}"
+                                               Width="32" Height="24"
+                                               Margin="0,0,10,0"
+                                               VerticalAlignment="Center"
+                                               Stretch="Uniform"/>
+
+                                        <!-- Centre: title, live line, progress, badges -->
+                                        <StackPanel Grid.Column="1"
+                                                    Spacing="3"
+                                                    VerticalAlignment="Center"
+                                                    Margin="0,0,8,0">
+
+                                            <TextBlock Text="{Binding Title}"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="13"
+                                                       TextTrimming="CharacterEllipsis"/>
+
+                                            <Button Content="{Binding LiveLine}"
+                                                    Command="{Binding ShowDetailsCommand}"
+                                                    FontSize="11"
+                                                    Opacity="0.65"
+                                                    HorizontalAlignment="Left"
+                                                    Padding="0"
+                                                    Background="Transparent"
+                                                    BorderThickness="0"
+                                                    CornerRadius="0"
+                                                    Cursor="Hand"/>
+
+                                            <ProgressBar IsIndeterminate="{Binding ProgressIndeterminate}"
+                                                         Value="{Binding ProgressValue}"
+                                                         Minimum="0" Maximum="100"
+                                                         Height="3"
+                                                         CornerRadius="2"
+                                                         Foreground="{Binding ProgressBrush}"/>
+
+                                            <!-- Badge icon-buttons (Admin, Interactive, …) -->
+                                            <ItemsControl ItemsSource="{Binding Badges}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal" Spacing="4"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:OperationBadgeVm">
+                                                        <Button Background="{DynamicResource AppBadgeBackground}"
+                                                                BorderThickness="0"
+                                                                CornerRadius="4"
+                                                                Padding="5,2"
+                                                                ToolTip.Tip="{Binding Primary}">
+                                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                                <controls:SvgIcon Path="{Binding IconPath}"
+                                                                                  Width="12" Height="12"
+                                                                                  Foreground="White"/>
+                                                                <TextBlock Text="{Binding Label}"
+                                                                           FontSize="10"
+                                                                           Opacity="0.8"/>
+                                                            </StackPanel>
+                                                            <Button.Flyout>
+                                                                <Flyout>
+                                                                    <StackPanel Spacing="6" MaxWidth="240">
+                                                                        <TextBlock Text="{Binding Label}"
+                                                                                   FontWeight="SemiBold"
+                                                                                   TextWrapping="Wrap"/>
+                                                                        <TextBlock Text="{Binding Primary}"
+                                                                                   Opacity="0.85"
+                                                                                   TextWrapping="Wrap"/>
+                                                                        <TextBlock Text="{Binding Secondary}"
+                                                                                   Opacity="0.7"
+                                                                                   FontSize="11"
+                                                                                   TextWrapping="Wrap"/>
+                                                                    </StackPanel>
+                                                                </Flyout>
+                                                            </Button.Flyout>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                        </StackPanel>
+
+                                        <!-- Split-button: Cancel/Close + "…" menu -->
+                                        <Border Grid.Column="2"
+                                                CornerRadius="6"
+                                                ClipToBounds="True"
+                                                VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="{Binding ButtonText}"
+                                                        Command="{Binding ButtonCommand}"
+                                                        Padding="12,6"
+                                                        CornerRadius="0"
+                                                        FontSize="12"/>
+                                                <Border Width="1"
+                                                        VerticalAlignment="Stretch"
+                                                        Background="{DynamicResource AppBorderBrush}"
+                                                        Opacity="0.3"/>
+                                                <Button Width="32"
+                                                        Padding="4"
+                                                        CornerRadius="0"
+                                                        Flyout="{Binding OpMenu}">
+                                                    <TextBlock Text="⋯" FontSize="14"/>
+                                                </Button>
+                                            </StackPanel>
+                                        </Border>
+
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+
+        </Grid>
+
+        <!-- ── Title bar: drag area + search box ── -->
+        <Grid x:Name="TitleBarGrid"
+              Height="{Binding $parent[Window].WindowDecorationMargin.Top}"
+              VerticalAlignment="Top"
+              ColumnDefinitions="*,Auto,*">
+
+            <!-- Drag area — sits behind everything so interactive controls still work -->
+            <Border Grid.Column="0" Grid.ColumnSpan="3"
+                    Background="{DynamicResource AppTitleBarBackground}"
+                    IsHitTestVisible="True"
+                    PointerPressed="TitleBar_PointerPressed"/>
+
+            <!-- Left: hamburger + app name -->
+            <StackPanel x:Name="HamburgerPanel"
+                        Grid.Column="0"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal"
+                        Margin="65,0,8,0"
+                        Spacing="8">
+                <Button Width="32" Height="32"
+                        Padding="4"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        CornerRadius="4"
+                        ToolTip.Tip="{t:Translate Toggle navigation panel}"
+                        Command="{Binding ToggleSidebarCommand}">
+                    <PathIcon Width="14" Height="14"
+                              Data="M1,1 H15 V3 H1 Z M1,7 H15 V9 H1 Z M1,13 H15 V15 H1 Z"/>
+                </Button>
+                <TextBlock Text="UniGetUI"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- Centre: search box — vertically centred, no platform-specific margin -->
+            <StackPanel Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal"
+                        Spacing="0">
+                <TextBox Width="300"
+                         MinHeight="20"
+                         Height="30"
+                         FontSize="15"
+                         Margin="0,5,0,0"
+                         CornerRadius="4,0,0,4"
+                         Watermark="{Binding GlobalSearchPlaceholder}"
+                         IsEnabled="{Binding GlobalSearchEnabled}"
+                         Text="{Binding GlobalSearchText}"
+                         KeyDown="SearchBox_KeyDown"/>
+                <Button Height="30"
+                        Width="30"
+                        Padding="3"
+                        Margin="0,5,0,0"
+                        CornerRadius="0,4,4,0"
+                        IsEnabled="{Binding GlobalSearchEnabled}"
+                        Command="{Binding SubmitGlobalSearchCommand}">
+                    <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/search.svg"
+                                      Width="18"
+                                      Height="18"/>
+                </Button>
+            </StackPanel>
+
+            <!-- Right column: avatar centred + Linux window buttons on the far right -->
+            <Panel Grid.Column="2">
+                <controls:UserAvatarControl x:Name="AvatarControl"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Height="50"
+                                            Margin="0,10,0,0"/>
+
+                <!-- Linux only: min / max / close (IsVisible set in code-behind) -->
+                <StackPanel x:Name="LinuxWindowButtons"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Margin="0,0,4,0"
+                            Spacing="0"
+                            IsVisible="False">
+                    <!-- Minimize: horizontal line -->
+                    <Button Width="46" Height="32" Padding="0"
+                            Background="Transparent" BorderThickness="0" CornerRadius="0"
+                            ToolTip.Tip="{t:Translate Minimize}"
+                            Click="MinimizeButton_Click">
+                        <Path Stroke="{DynamicResource SystemBaseHighColor}"
+                              StrokeThickness="1.5"
+                              StrokeLineCap="Round"
+                              Data="M2,0 H10"
+                              Width="12" Height="2"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Button>
+                    <!-- Maximize / Restore: square outline, geometry swapped in code-behind -->
+                    <Button x:Name="MaximizeButton"
+                            Width="46" Height="32" Padding="0"
+                            Background="Transparent" BorderThickness="0" CornerRadius="0"
+                            ToolTip.Tip="{t:Translate Maximize}"
+                            Click="MaximizeButton_Click">
+                        <Path x:Name="MaximizeIcon"
+                              Stroke="{DynamicResource SystemBaseHighColor}"
+                              StrokeThickness="1.5"
+                              StrokeLineCap="Round"
+
+                              Data="M0,0 H10 V10 H0 Z"
+                              Width="12" Height="12"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Button>
+                    <!-- Close: X -->
+                    <Button Width="46" Height="32" Padding="0"
+                            Background="Transparent" BorderThickness="0" CornerRadius="0"
+                            ToolTip.Tip="{t:Translate Close}"
+                            Click="CloseButton_Click">
+                        <Path Stroke="{DynamicResource SystemBaseHighColor}"
+                              StrokeThickness="1.5"
+                              StrokeLineCap="Round"
+                              Data="M0,0 L10,10 M10,0 L0,10"
+                              Width="12" Height="12"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Button>
+                </StackPanel>
+            </Panel>
+        </Grid>
+    </Panel>
+</Window>

@@ -30,7 +30,6 @@ public partial class AutoUpdater
     private const string REG_SKIP_HASH_VALIDATION = "UpdaterSkipHashValidation";
     private const string REG_SKIP_SIGNER_THUMBPRINT_CHECK = "UpdaterSkipSignerThumbprintCheck";
     private const string REG_DISABLE_TLS_VALIDATION = "UpdaterDisableTlsValidation";
-    private const string REG_USE_LEGACY_GITHUB = "UpdaterUseLegacyGithub";
 
     private static readonly string[] DEVOLUTIONS_CERT_THUMBPRINTS =
     [
@@ -39,21 +38,23 @@ public partial class AutoUpdater
         "50f753333811ff11f1920274afde3ffd4468b210",
     ];
 
+#if !DEBUG
+    private static readonly string[] RELEASE_IGNORED_REGISTRY_VALUES =
+    [
+        REG_PRODUCTINFO_KEY,
+        REG_ALLOW_UNSAFE_URLS,
+        REG_SKIP_HASH_VALIDATION,
+        REG_SKIP_SIGNER_THUMBPRINT_CHECK,
+        REG_DISABLE_TLS_VALIDATION,
+    ];
+#endif
+
     private static readonly AutoUpdaterJsonContext ProductInfoJsonContext = new(
-        SerializationHelpers.DefaultOptions
+        new JsonSerializerOptions(SerializationHelpers.DefaultOptions)
     );
 
     public static Window Window = null!;
     public static InfoBar Banner = null!;
-
-    //------------------------------------------------------------------------------------------------------------------
-    private const string STABLE_ENDPOINT =
-        "https://www.marticliment.com/versions/unigetui/stable.ver";
-    private const string BETA_ENDPOINT = "https://www.marticliment.com/versions/unigetui/beta.ver";
-    private const string STABLE_INSTALLER_URL =
-        "https://github.com/Devolutions/UniGetUI/releases/latest/download/UniGetUI.Installer.exe";
-    private const string BETA_INSTALLER_URL =
-        "https://github.com/Devolutions/UniGetUI/releases/download/$TAG/UniGetUI.Installer.exe";
 
     //------------------------------------------------------------------------------------------------------------------
     public static bool ReleaseLockForAutoupdate_Notification;
@@ -227,23 +228,7 @@ public partial class AutoUpdater
 
     private static async Task<UpdateCandidate> GetUpdateCandidate(UpdaterOverrides updaterOverrides)
     {
-        if (updaterOverrides.UseLegacyGithub)
-        {
-            return await CheckForUpdatesFromLegacyGitHub(updaterOverrides);
-        }
-
-        try
-        {
-            return await CheckForUpdatesFromProductInfo(updaterOverrides);
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn(
-                "Productinfo updater source failed. Falling back to legacy GitHub updater source."
-            );
-            Logger.Warn(ex);
-            return await CheckForUpdatesFromLegacyGitHub(updaterOverrides);
-        }
+        return await CheckForUpdatesFromProductInfo(updaterOverrides);
     }
 
     /// <summary>
@@ -337,56 +322,6 @@ public partial class AutoUpdater
     }
 
     /// <summary>
-    /// Legacy updater source. Kept for compatibility and manual fallback testing.
-    /// </summary>
-    private static async Task<UpdateCandidate> CheckForUpdatesFromLegacyGitHub(
-        UpdaterOverrides updaterOverrides
-    )
-    {
-        string endpoint = Settings.Get(Settings.K.EnableUniGetUIBeta)
-            ? BETA_ENDPOINT
-            : STABLE_ENDPOINT;
-        string installerDownloadUrl = Settings.Get(Settings.K.EnableUniGetUIBeta)
-            ? BETA_INSTALLER_URL
-            : STABLE_INSTALLER_URL;
-
-        Logger.Warn("Using legacy GitHub updater source due to registry override.");
-        Logger.Debug($"Begin check for updates on endpoint {endpoint}");
-
-        string[] updateResponse;
-        using (HttpClient client = new(CreateHttpClientHandler(updaterOverrides)))
-        {
-            client.Timeout = TimeSpan.FromSeconds(600);
-            client.DefaultRequestHeaders.UserAgent.ParseAdd(CoreData.UserAgentString);
-            updateResponse = (await client.GetStringAsync(endpoint)).Split("////");
-        }
-
-        if (updateResponse.Length >= 3)
-        {
-            int latestVersion = int.Parse(
-                updateResponse[0].Replace("\n", "").Replace("\r", "").Trim()
-            );
-            string installerHash = updateResponse[1].Replace("\n", "").Replace("\r", "").Trim();
-            string versionName = updateResponse[2].Replace("\n", "").Replace("\r", "").Trim();
-            Logger.Debug(
-                $"Got response from endpoint: ({latestVersion}, {versionName}, {installerHash})"
-            );
-            return new UpdateCandidate(
-                latestVersion > CoreData.BuildNumber,
-                versionName,
-                installerHash,
-                installerDownloadUrl.Replace("$TAG", versionName),
-                "LegacyGitHub"
-            );
-        }
-
-        Logger.Warn($"Received update string is {updateResponse[0]}");
-        throw new FormatException(
-            "The updates file does not follow the FloatVersion////Sha256Hash////VersionName format"
-        );
-    }
-
-    /// <summary>
     /// Checks whether the downloaded updater matches the hash.
     /// </summary>
     private static async Task<bool> CheckInstallerHash(
@@ -432,9 +367,11 @@ public partial class AutoUpdater
 
         try
         {
+#pragma warning disable SYSLIB0057
             X509Certificate signerCertificate = X509Certificate.CreateFromSignedFile(
                 installerLocation
             );
+#pragma warning restore SYSLIB0057
             using X509Certificate2 cert = new(signerCertificate);
 
             string signerThumbprint = NormalizeThumbprint(cert.Thumbprint ?? string.Empty);
@@ -697,9 +634,7 @@ public partial class AutoUpdater
             || uri.Host.Equals(
                 "release-assets.githubusercontent.com",
                 StringComparison.OrdinalIgnoreCase
-            )
-            || uri.Host.Equals("marticliment.com", StringComparison.OrdinalIgnoreCase)
-            || uri.Host.EndsWith("marticliment.com", StringComparison.OrdinalIgnoreCase);
+            );
     }
 
     private static ProductInfoFile SelectInstallerFile(List<ProductInfoFile> files)
@@ -745,13 +680,13 @@ public partial class AutoUpdater
     {
         if (Version.TryParse(rawVersion, out Version? parsed))
         {
-            return parsed;
+            return CoreTools.NormalizeVersionForComparison(parsed);
         }
 
         string sanitized = rawVersion.Trim().TrimStart('v', 'V');
         if (Version.TryParse(sanitized, out parsed))
         {
-            return parsed;
+            return CoreTools.NormalizeVersionForComparison(parsed);
         }
 
         Logger.Warn($"Could not parse version '{rawVersion}', using fallback '{fallbackVersion}'");
@@ -767,38 +702,63 @@ public partial class AutoUpdater
 
     private static UpdaterOverrides LoadUpdaterOverrides()
     {
-        using RegistryKey? key = Registry.CurrentUser.OpenSubKey(REGISTRY_PATH);
+        using RegistryKey? key = Registry.LocalMachine.OpenSubKey(REGISTRY_PATH);
 
-        string productInfoUrl =
-            GetRegistryString(key, REG_PRODUCTINFO_URL) ?? DEFAULT_PRODUCTINFO_URL;
-        string productInfoProductKey =
-            GetRegistryString(key, REG_PRODUCTINFO_KEY) ?? DEFAULT_PRODUCTINFO_KEY;
-
-        bool allowUnsafeUrls = GetRegistryBool(key, REG_ALLOW_UNSAFE_URLS);
-        bool skipHashValidation = GetRegistryBool(key, REG_SKIP_HASH_VALIDATION);
-        bool skipSignerThumbprintCheck = GetRegistryBool(key, REG_SKIP_SIGNER_THUMBPRINT_CHECK);
-        bool disableTlsValidation = GetRegistryBool(key, REG_DISABLE_TLS_VALIDATION);
-        bool useLegacyGithub = GetRegistryBool(key, REG_USE_LEGACY_GITHUB);
-
+#if DEBUG
         if (key is not null)
         {
-            Logger.Info($"Updater registry overrides loaded from HKCU\\{REGISTRY_PATH}");
+            Logger.Info($"Updater registry overrides loaded from HKLM\\{REGISTRY_PATH}");
         }
 
         return new UpdaterOverrides(
-            productInfoUrl,
-            productInfoProductKey,
-            allowUnsafeUrls,
-            skipHashValidation,
-            skipSignerThumbprintCheck,
-            disableTlsValidation,
-            useLegacyGithub
+            GetRegistryString(key, REG_PRODUCTINFO_URL) ?? DEFAULT_PRODUCTINFO_URL,
+            GetRegistryString(key, REG_PRODUCTINFO_KEY) ?? DEFAULT_PRODUCTINFO_KEY,
+            GetRegistryBool(key, REG_ALLOW_UNSAFE_URLS),
+            GetRegistryBool(key, REG_SKIP_HASH_VALIDATION),
+            GetRegistryBool(key, REG_SKIP_SIGNER_THUMBPRINT_CHECK),
+            GetRegistryBool(key, REG_DISABLE_TLS_VALIDATION)
         );
+#else
+        LogIgnoredReleaseOverrides(key);
+        string productInfoUrl =
+            GetRegistryString(key, REG_PRODUCTINFO_URL) ?? DEFAULT_PRODUCTINFO_URL;
+
+        return new UpdaterOverrides(
+            productInfoUrl,
+            DEFAULT_PRODUCTINFO_KEY,
+            false,
+            false,
+            false,
+            false
+        );
+#endif
     }
+
+#if !DEBUG
+    private static void LogIgnoredReleaseOverrides(RegistryKey? key)
+    {
+        if (key is null)
+        {
+            return;
+        }
+
+        foreach (string valueName in RELEASE_IGNORED_REGISTRY_VALUES)
+        {
+            if (key.GetValue(valueName) is not null)
+            {
+                Logger.Warn(
+                    $"Release build is ignoring updater registry value HKLM\\{REGISTRY_PATH}\\{valueName}."
+                );
+            }
+        }
+    }
+#endif
 
     private static string? GetRegistryString(RegistryKey? key, string valueName)
     {
+#pragma warning disable CA1416
         object? value = key?.GetValue(valueName);
+#pragma warning restore CA1416
         if (value is null)
         {
             return null;
@@ -813,9 +773,12 @@ public partial class AutoUpdater
         return parsedValue.Trim();
     }
 
+#if DEBUG
     private static bool GetRegistryBool(RegistryKey? key, string valueName)
     {
+#pragma warning disable CA1416
         object? value = key?.GetValue(valueName);
+#pragma warning restore CA1416
         if (value is null)
         {
             return false;
@@ -837,6 +800,7 @@ public partial class AutoUpdater
             || normalized.Equals("yes", StringComparison.OrdinalIgnoreCase)
             || normalized.Equals("on", StringComparison.OrdinalIgnoreCase);
     }
+#endif
 
     private sealed record UpdateCandidate(
         bool IsUpgradable,
@@ -852,8 +816,7 @@ public partial class AutoUpdater
         bool AllowUnsafeUrls,
         bool SkipHashValidation,
         bool SkipSignerThumbprintCheck,
-        bool DisableTlsValidation,
-        bool UseLegacyGithub
+        bool DisableTlsValidation
     );
 
     private sealed class ProductInfoProduct

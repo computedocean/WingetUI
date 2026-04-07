@@ -1,10 +1,12 @@
 using System.Diagnostics;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using UniGetUI.Core.Data;
+using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
 using UniGetUI.Interface.Enums;
 using UniGetUI.PackageEngine.Classes.Manager;
-using UniGetUI.PackageEngine.Classes.Manager.ManagerHelpers;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.ManagerClasses.Classes;
 using UniGetUI.PackageEngine.ManagerClasses.Manager;
@@ -101,111 +103,153 @@ namespace UniGetUI.PackageEngine.Managers.PipManager
                 + $"@{proxyUri.AbsoluteUri.Replace($"{proxyUri.Scheme}://", "")}";
         }
 
+        // In-memory cache of all PyPI package names, shared across searches
+        private static string[]? _cachedNames;
+        private static DateTime _cacheTimestamp = DateTime.MinValue;
+        private static readonly object _cacheLock = new();
+        private const int CacheMaxAgeHours = 24;
+        private const int MaxSearchResults = 20;
+
+        // Shared HTTP client and bounded concurrency for version fetches
+        private static readonly HttpClient _httpClient = CreateSharedHttpClient();
+        private static readonly SemaphoreSlim _versionFetchSemaphore = new(6, 6);
+
+        private static HttpClient CreateSharedHttpClient()
+        {
+            var client = new HttpClient(CoreTools.GenericHttpClientParameters);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(CoreData.UserAgentString);
+            return client;
+        }
+
         protected override IReadOnlyList<Package> FindPackages_UnSafe(string query)
         {
-            List<Package> Packages = [];
-
-            var (found, path) = CoreTools.Which("parse_pip_search.exe");
-            if (!found)
+            INativeTaskLogger logger = TaskLogger.CreateNew(LoggableTaskType.FindPackages);
+            try
             {
-                Process proc = new()
+                string[] allNames = GetOrRefreshIndex(logger);
+
+                string queryLower = query.ToLowerInvariant();
+                string[] matches = allNames
+                    .Where(n => n.Contains(queryLower, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(n => n.StartsWith(queryLower, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                    .ThenBy(n => n.Length)
+                    .Take(MaxSearchResults)
+                    .ToArray();
+
+                logger.Log($"Matched {matches.Length} packages for query '{query}'");
+
+                // Fetch latest version for each match in parallel, bounded to 6 concurrent requests
+                var versionTasks = matches
+                    .Select(FetchLatestVersionAsync)
+                    .ToArray();
+                Task.WhenAll(versionTasks).GetAwaiter().GetResult();
+
+                List<Package> packages = [];
+                for (int i = 0; i < matches.Length; i++)
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = Status.ExecutablePath,
-                        Arguments =
-                            Status.ExecutableCallArgs
-                            + " install parse_pip_search "
-                            + GetProxyArgument(),
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true,
-                    },
-                };
-                IProcessTaskLogger aux_logger = TaskLogger.CreateNew(
-                    LoggableTaskType.InstallManagerDependency,
-                    proc
-                );
-                proc.Start();
+                    string version = versionTasks[i].Result ?? "latest";
+                    packages.Add(new Package(
+                        CoreTools.FormatAsName(matches[i]),
+                        matches[i],
+                        version,
+                        DefaultSource,
+                        this,
+                        new(PackageScope.Global)
+                    ));
+                }
 
-                aux_logger.AddToStdOut(proc.StandardOutput.ReadToEnd());
-                aux_logger.AddToStdErr(proc.StandardError.ReadToEnd());
+                logger.Close(0);
+                return packages;
+            }
+            catch (Exception e)
+            {
+                logger.Error(e);
+                logger.Close(1);
+                throw;
+            }
+        }
 
-                proc.WaitForExit();
-                aux_logger.Close(proc.ExitCode);
-                path = "parse_pip_search.exe";
+        private static string[] GetOrRefreshIndex(INativeTaskLogger logger)
+        {
+            lock (_cacheLock)
+            {
+                if (_cachedNames is not null && (DateTime.Now - _cacheTimestamp).TotalHours < CacheMaxAgeHours)
+                    return _cachedNames;
             }
 
-            using Process p = new()
+            string cacheFile = Path.Join(CoreData.UniGetUICacheDirectory_Data, "pip_simple_index.cache");
+
+            // Use file cache if fresh enough
+            if (File.Exists(cacheFile) && (DateTime.Now - File.GetLastWriteTime(cacheFile)).TotalHours < CacheMaxAgeHours)
             {
-                StartInfo = new ProcessStartInfo
+                logger.Log($"Loading PyPI index from file cache ({File.GetLastWriteTime(cacheFile):g})");
+                string[] cached = File.ReadAllLines(cacheFile);
+                if (cached.Length > 0)
                 {
-                    FileName = path,
-                    Arguments = "\"" + query + "\" " + GetProxyArgument(),
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    StandardOutputEncoding = System.Text.Encoding.UTF8,
-                },
-            };
-
-            p.StartInfo = CoreTools.UpdateEnvironmentVariables(p.StartInfo);
-            IProcessTaskLogger logger = TaskLogger.CreateNew(LoggableTaskType.FindPackages, p);
-            p.Start();
-
-            string? line;
-            bool DashesPassed = false;
-            while ((line = p.StandardOutput.ReadLine()) is not null)
-            {
-                logger.AddToStdOut(line);
-                if (!DashesPassed)
-                {
-                    if (line.Contains("----"))
-                    {
-                        DashesPassed = true;
-                    }
+                    lock (_cacheLock) { _cachedNames = cached; _cacheTimestamp = File.GetLastWriteTime(cacheFile); }
+                    return cached;
                 }
-                else
-                {
-                    string[] elements = line.Split('|');
-                    if (elements.Length < 2)
-                    {
-                        continue;
-                    }
-
-                    for (int i = 0; i < elements.Length; i++)
-                    {
-                        elements[i] = elements[i].Trim();
-                    }
-
-                    if (
-                        FALSE_PACKAGE_IDS.Contains(elements[0])
-                        || FALSE_PACKAGE_VERSIONS.Contains(elements[1])
-                    )
-                    {
-                        continue;
-                    }
-
-                    Packages.Add(
-                        new Package(
-                            CoreTools.FormatAsName(elements[0]),
-                            elements[0],
-                            elements[1],
-                            DefaultSource,
-                            this,
-                            new(PackageScope.Global)
-                        )
-                    );
-                }
+                logger.Error("PyPI index file cache was empty, re-downloading...");
             }
 
-            logger.AddToStdErr(p.StandardError.ReadToEnd());
-            p.WaitForExit();
-            logger.Close(p.ExitCode);
+            // Download fresh index
+            logger.Log("Downloading PyPI simple index (one-time ~38 MB download, cached for 24 h)...");
+            using HttpClient client = new(CoreTools.GenericHttpClientParameters);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(CoreData.UserAgentString);
+            client.DefaultRequestHeaders.Add("Accept", "application/vnd.pypi.simple.v1+json");
 
-            return Packages;
+            HttpResponseMessage response = client.GetAsync("https://pypi.org/simple/").GetAwaiter().GetResult();
+            if (!response.IsSuccessStatusCode)
+                throw new HttpRequestException($"PyPI simple index returned {(int)response.StatusCode} {response.ReasonPhrase}");
+
+            string json = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+
+            var projects = (JsonNode.Parse(json) as JsonObject)?["projects"] as JsonArray;
+            string[] names = projects?
+                .Select(p => p?["name"]?.GetValue<string>())
+                .Where(n => !string.IsNullOrEmpty(n))
+                .Select(n => n!)
+                .ToArray() ?? [];
+
+            if (names.Length == 0)
+                throw new InvalidDataException("PyPI simple index returned 0 packages — response may be malformed");
+
+            logger.Log($"Downloaded {names.Length} package names from PyPI");
+
+            // Update memory cache before attempting file write so searches work even if file write fails
+            lock (_cacheLock) { _cachedNames = names; _cacheTimestamp = DateTime.Now; }
+
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(cacheFile)!);
+                File.WriteAllLines(cacheFile, names);
+            }
+            catch (Exception e)
+            {
+                logger.Error($"Could not write PyPI index file cache to {cacheFile}: {e.Message}");
+            }
+
+            return names;
+        }
+
+        private static async Task<string?> FetchLatestVersionAsync(string packageName)
+        {
+            await _versionFetchSemaphore.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                string json = await _httpClient
+                    .GetStringAsync($"https://pypi.org/pypi/{Uri.EscapeDataString(packageName)}/json")
+                    .ConfigureAwait(false);
+                return (JsonNode.Parse(json) as JsonObject)?["info"]?["version"]?.GetValue<string>();
+            }
+            catch
+            {
+                return null;
+            }
+            finally
+            {
+                _versionFetchSemaphore.Release();
+            }
         }
 
         protected override IReadOnlyList<Package> GetAvailableUpdates_UnSafe()
@@ -364,6 +408,8 @@ namespace UniGetUI.PackageEngine.Managers.PipManager
         public override IReadOnlyList<string> FindCandidateExecutableFiles()
         {
             var FoundPaths = CoreTools.WhichMultiple("python");
+            if (!OperatingSystem.IsWindows() && !FoundPaths.Any())
+                FoundPaths = CoreTools.WhichMultiple("python3");
             List<string> Paths = [];
 
             if (FoundPaths.Any())
@@ -404,6 +450,21 @@ namespace UniGetUI.PackageEngine.Managers.PipManager
             out string callArguments
         )
         {
+            // On non-Windows, prefer pip3/pip as standalone executables (avoids "No module named pip"
+            // errors on systems where pip is installed as a command but not as a Python module).
+            // Fall back to python/python3 + "-m pip" if no standalone pip is found.
+            if (!OperatingSystem.IsWindows())
+            {
+                var pipPaths = CoreTools.WhichMultiple("pip3").Concat(CoreTools.WhichMultiple("pip")).ToList();
+                if (pipPaths.Count > 0)
+                {
+                    found = true;
+                    path = pipPaths[0];
+                    callArguments = "";
+                    return;
+                }
+            }
+
             var (_found, _path) = GetExecutableFile();
             found = _found;
             path = _path;
@@ -427,6 +488,7 @@ namespace UniGetUI.PackageEngine.Managers.PipManager
             };
             process.Start();
             version = process.StandardOutput.ReadToEnd().Trim();
+            process.WaitForExit();
 
             if (process.ExitCode is 9009)
             {
@@ -443,6 +505,24 @@ namespace UniGetUI.PackageEngine.Managers.PipManager
                 "false",
                 EnvironmentVariableTarget.Process
             );
+
+            // Pre-warm the package name index in the background so the first search doesn't
+            // need to wait for the ~38 MB download inside the search timeout window.
+            Task.Run(() =>
+            {
+                var logger = TaskLogger.CreateNew(LoggableTaskType.FindPackages);
+                try
+                {
+                    GetOrRefreshIndex(logger);
+                    logger.Close(0);
+                }
+                catch (Exception e)
+                {
+                    logger.Error(e);
+                    logger.Close(1);
+                    Logger.Warn($"Pip: background index pre-warm failed: {e.Message}");
+                }
+            });
         }
     }
 }

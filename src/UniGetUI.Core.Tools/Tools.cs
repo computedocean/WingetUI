@@ -457,6 +457,13 @@ namespace UniGetUI.Core.Tools
             }
         }
 
+        public static System.Version NormalizeVersionForComparison(System.Version version)
+        {
+            return version.Revision >= 0
+                ? new System.Version(version.Major, version.Minor, version.Build)
+                : version;
+        }
+
         /// <summary>
         /// Returns the query that can be safely passed as a command-line parameter
         /// </summary>
@@ -887,7 +894,13 @@ namespace UniGetUI.Core.Tools
         {
             if (!OperatingSystem.IsWindows())
             {
-                return Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+                string currentPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+                if (IsRunningInWsl())
+                {
+                    currentPath = RemoveWindowsHostPathEntries(currentPath);
+                }
+
+                return currentPath;
             }
 
             string separator = Path.PathSeparator.ToString();
@@ -905,6 +918,58 @@ namespace UniGetUI.Core.Tools
                 Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Process)
                 ?? string.Empty;
             return pathValue.Replace(separator + separator, separator).Trim(Path.PathSeparator);
+        }
+
+        private static bool IsRunningInWsl()
+        {
+            if (!OperatingSystem.IsLinux())
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WSL_DISTRO_NAME")))
+            {
+                return true;
+            }
+
+            return !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WSL_INTEROP"));
+        }
+
+        private static string RemoveWindowsHostPathEntries(string pathValue)
+        {
+            if (string.IsNullOrWhiteSpace(pathValue))
+            {
+                return string.Empty;
+            }
+
+            string separator = Path.PathSeparator.ToString();
+            IEnumerable<string> filteredEntries = pathValue
+                .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+                .Select(entry => entry.Trim())
+                .Where(entry => !IsWindowsHostMountPath(entry));
+
+            return string.Join(separator, filteredEntries);
+        }
+
+        private static bool IsWindowsHostMountPath(string pathEntry)
+        {
+            if (!pathEntry.StartsWith("/mnt/", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (pathEntry.Length < 6)
+            {
+                return false;
+            }
+
+            char driveLetter = pathEntry[5];
+            if (!char.IsAsciiLetter(driveLetter))
+            {
+                return false;
+            }
+
+            return pathEntry.Length == 6 || pathEntry[6] == '/';
         }
     }
 }

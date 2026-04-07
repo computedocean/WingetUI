@@ -39,7 +39,16 @@ $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $SrcDir = Join-Path $RepoRoot "src"
 $PublishProject = Join-Path $SrcDir "UniGetUI" "UniGetUI.csproj"
 $BinDir = Join-Path $RepoRoot "unigetui_bin"
-$TargetFramework = "net8.0-windows10.0.26100.0"
+$BuildPropsPath = Join-Path $SrcDir "Directory.Build.props"
+[xml] $BuildProps = Get-Content $BuildPropsPath
+$PortableTargetFramework = @($BuildProps.Project.PropertyGroup | Where-Object { $_.PortableTargetFramework } | Select-Object -First 1).PortableTargetFramework
+$WindowsTargetPlatformVersion = @($BuildProps.Project.PropertyGroup | Where-Object { $_.WindowsTargetPlatformVersion } | Select-Object -First 1).WindowsTargetPlatformVersion
+
+if ([string]::IsNullOrWhiteSpace($PortableTargetFramework) -or [string]::IsNullOrWhiteSpace($WindowsTargetPlatformVersion)) {
+    throw "Could not resolve the target framework from $BuildPropsPath"
+}
+
+$TargetFramework = "$PortableTargetFramework-windows$WindowsTargetPlatformVersion"
 $PublishDir = Join-Path $SrcDir "UniGetUI" "bin" $Platform $Configuration $TargetFramework "win-$Platform" "publish"
 
 # --- Version stamping ---
@@ -57,7 +66,7 @@ Write-Host "Building UniGetUI version: $PackageVersion"
 # --- Test ---
 if (-not $SkipTests) {
     Write-Host "`n=== Running tests ===" -ForegroundColor Cyan
-    dotnet test (Join-Path $SrcDir "UniGetUI.sln") --verbosity q --nologo
+    dotnet test (Join-Path $SrcDir "UniGetUI.sln") --verbosity q --nologo --ignore-failed-sources
     if ($LASTEXITCODE -ne 0) {
         throw "Tests failed with exit code $LASTEXITCODE"
     }
@@ -71,7 +80,7 @@ dotnet clean (Join-Path $SrcDir "UniGetUI.sln") -v m --nologo
 Write-Host "`n=== Fetching winget-cli ($Platform) ===" -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot "fetch-winget-cli.ps1") -Architectures @($Platform) -Force
 
-dotnet publish $PublishProject /noLogo /p:Configuration=$Configuration /p:Platform=$Platform -v m
+dotnet publish $PublishProject /noLogo /p:Configuration=$Configuration /p:Platform=$Platform --ignore-failed-sources -v m
 if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE"
 }
@@ -85,15 +94,14 @@ Get-ChildItem $PublishDir | Move-Item -Destination $BinDir -Force
 # WingetUI.exe alias for backward compat
 Copy-Item (Join-Path $BinDir "UniGetUI.exe") (Join-Path $BinDir "WingetUI.exe") -Force
 
-# --- Integrity tree ---
-Write-Host "`n=== Generating integrity tree ===" -ForegroundColor Cyan
-& (Join-Path $PSScriptRoot "generate-integrity-tree.ps1") -Path $BinDir -MinOutput
-
 # --- Package output ---
 if (Test-Path $OutputPath) { Remove-Item $OutputPath -Recurse -Force }
 New-Item $OutputPath -ItemType Directory | Out-Null
 
 $ZipPath = Join-Path $OutputPath "UniGetUI.$Platform.zip"
+Write-Host "`n=== Refreshing integrity tree before zip packaging ===" -ForegroundColor Cyan
+& (Join-Path $PSScriptRoot "refresh-integrity-tree.ps1") -Path $BinDir -FailOnUnexpectedFiles
+
 Write-Host "`n=== Creating zip: $ZipPath ===" -ForegroundColor Cyan
 Compress-Archive -Path (Join-Path $BinDir "*") -DestinationPath $ZipPath -CompressionLevel Optimal
 
@@ -112,9 +120,24 @@ if (-not $SkipInstaller) {
     if ($IsccPath) {
         Write-Host "`n=== Building installer ===" -ForegroundColor Cyan
         $InstallerBaseName = "UniGetUI.Installer.$Platform"
-        & $IsccPath (Join-Path $RepoRoot "UniGetUI.iss") /F"$InstallerBaseName" /O"$OutputPath"
-        if ($LASTEXITCODE -ne 0) {
-            throw "Inno Setup failed with exit code $LASTEXITCODE"
+        $IssPath = Join-Path $RepoRoot "UniGetUI.iss"
+        $IssContent = Get-Content $IssPath -Raw
+
+        Write-Host "`n=== Refreshing integrity tree before installer packaging ===" -ForegroundColor Cyan
+        & (Join-Path $PSScriptRoot "refresh-integrity-tree.ps1") -Path $BinDir -FailOnUnexpectedFiles
+
+        try {
+            $IssContentNoSign = $IssContent -Replace '(?m)^SignTool=.*$', '; SignTool=azsign (disabled for local build)'
+            $IssContentNoSign = $IssContentNoSign -Replace '(?m)^SignedUninstaller=yes', 'SignedUninstaller=no'
+            Set-Content $IssPath $IssContentNoSign -NoNewline
+
+            & $IsccPath $IssPath /F"$InstallerBaseName" /O"$OutputPath"
+            if ($LASTEXITCODE -ne 0) {
+                throw "Inno Setup failed with exit code $LASTEXITCODE"
+            }
+        }
+        finally {
+            Set-Content $IssPath $IssContent -NoNewline
         }
     } else {
         Write-Warning "Inno Setup 6 (ISCC.exe) not found — skipping installer build."

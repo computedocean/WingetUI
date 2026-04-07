@@ -1,0 +1,61 @@
+<UserControl x:Class="UniGetUI.Avalonia.Views.Pages.SettingsPages.Notifications"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:UniGetUI.Avalonia.ViewModels.Pages.SettingsPages"
+             xmlns:settings="using:UniGetUI.Avalonia.Views.Controls.Settings"
+             xmlns:t="using:UniGetUI.Avalonia.MarkupExtensions"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             x:DataType="vm:NotificationsViewModel">
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Orientation="Vertical">
+
+            <settings:TranslatedTextBlock Text="Notification preferences"
+                                          FontWeight="SemiBold"
+                                          Margin="44,32,4,8"/>
+
+            <!-- Warning shown when system tray is disabled (Windows-only) -->
+            <TextBlock Text="{t:Translate The system tray icon must be enabled in order for notifications to work}"
+                       Margin="0,0,0,8"
+                       HorizontalAlignment="Center"
+                       Foreground="OrangeRed"
+                       IsVisible="{Binding IsSystemTrayWarningVisible}"/>
+
+            <settings:CheckboxCard SettingName="DisableNotifications"
+                                   Text="{t:Translate Enable WingetUI notifications}"
+                                   StateChangedCommand="{Binding UpdateNotificationsEnabledCommand}"
+                                   CornerRadius="8"
+                                   IsEnabled="{Binding IsSystemTrayWarningVisible, Converter={x:Static BoolConverters.Not}}"/>
+
+            <settings:TranslatedTextBlock Text="Notification types"
+                                          FontWeight="SemiBold"
+                                          Margin="44,32,4,8"/>
+
+            <settings:CheckboxCard SettingName="DisableUpdatesNotifications"
+                                   Text="{t:Translate Show a notification when there are available updates}"
+                                   CornerRadius="8,8,0,0"
+                                   IsEnabled="{Binding IsNotificationsEnabled}"/>
+
+            <settings:CheckboxCard SettingName="DisableProgressNotifications"
+                                   Text="{t:Translate Show a silent notification when an operation is running}"
+                                   BorderThickness="1,0"
+                                   CornerRadius="0"
+                                   IsEnabled="{Binding IsNotificationsEnabled}"/>
+
+            <settings:CheckboxCard SettingName="DisableErrorNotifications"
+                                   Text="{t:Translate Show a notification when an operation fails}"
+                                   CornerRadius="0"
+                                   IsEnabled="{Binding IsNotificationsEnabled}"/>
+
+            <settings:CheckboxCard SettingName="DisableSuccessNotifications"
+                                   Text="{t:Translate Show a notification when an operation finishes successfully}"
+                                   BorderThickness="1,0,1,1"
+                                   CornerRadius="0,0,8,8"
+                                   IsEnabled="{Binding IsNotificationsEnabled}"/>
+
+        </StackPanel>
+    </ScrollViewer>
+
+</UserControl>

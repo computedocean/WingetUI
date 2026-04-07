@@ -3,22 +3,28 @@ on:
   push:
     branches: [ "main" ]
     paths:
+      - 'global.json'
       - '**.cs'
+      - '**.axaml'
       - '**.csproj'
       - '**.props'
       - '**.targets'
       - '**.sln'
+      - '**.slnx'
       - 'src/.editorconfig'
       - '.github/workflows/dotnet-test.yml'
 
   pull_request:
     branches: [ "main" ]
     paths:
+      - 'global.json'
       - '**.cs'
+      - '**.axaml'
       - '**.csproj'
       - '**.props'
       - '**.targets'
       - '**.sln'
+      - '**.slnx'
       - 'src/.editorconfig'
       - '.github/workflows/dotnet-test.yml'
 
@@ -36,31 +42,65 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Install .NET Core
+    - name: Install .NET SDK
       uses: actions/setup-dotnet@v5
       with:
-        dotnet-version: 8.0.x
+        global-json-file: global.json
 
     - name: Cache NuGet packages
       uses: actions/cache@v5
       with:
         path: ${{ env.NUGET_PACKAGES }}
-        key: ${{ runner.os }}-nuget-${{ hashFiles('src/**/*.csproj', 'src/**/*.props', 'src/**/*.targets', 'src/**/*.sln') }}
+        key: ${{ runner.os }}-nuget-${{ hashFiles('global.json', 'src/**/*.csproj', 'src/**/*.props', 'src/**/*.targets', 'src/**/*.sln', 'src/**/*.slnx') }}
         restore-keys: |
           ${{ runner.os }}-nuget-
 
+    - name: Restore WinGet CLI cache
+      id: winget-cache
+      uses: actions/cache/restore@v5
+      with:
+        path: src/UniGetUI.PackageEngine.Managers.WinGet/winget-cli_x64
+        key: winget-cli-${{ runner.os }}-x64-${{ hashFiles('scripts/fetch-winget-cli.ps1') }}
+
+    - name: Fetch WinGet CLI bundle
+      if: steps.winget-cache.outputs.cache-hit != 'true'
+      shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        .\scripts\fetch-winget-cli.ps1 -Architectures @('x64') -Force
+
+    - name: Save WinGet CLI cache
+      if: steps.winget-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: src/UniGetUI.PackageEngine.Managers.WinGet/winget-cli_x64
+        key: ${{ steps.winget-cache.outputs.cache-primary-key }}
+
     - name: Install dependencies
       working-directory: src
-      run: dotnet restore UniGetUI.sln
+      run: |
+        dotnet restore UniGetUI.sln
+        dotnet restore UniGetUI.Avalonia.slnx
 
     - name: Check whitespace formatting
       run: dotnet format whitespace src --folder --verify-no-changes --verbosity minimal
 
-    - name: Check code style formatting
+    - name: Check code style formatting (WinUI solution)
       working-directory: src
       run: dotnet format style UniGetUI.sln --no-restore --verify-no-changes --verbosity minimal
 
+    - name: Check code style formatting (Avalonia solution)
+      working-directory: src
+      run: dotnet format style UniGetUI.Avalonia.slnx --no-restore --verify-no-changes --verbosity minimal
+
+    - name: Build Avalonia solution
+      working-directory: src
+      run: dotnet build UniGetUI.Avalonia.slnx --no-restore --verbosity minimal
+
     - name: Run Tests
       working-directory: src
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
       run: dotnet test UniGetUI.sln --no-restore --verbosity q --nologo
 

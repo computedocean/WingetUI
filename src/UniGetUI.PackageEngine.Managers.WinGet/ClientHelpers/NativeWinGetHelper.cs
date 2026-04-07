@@ -16,11 +16,14 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager;
 
 internal sealed class NativeWinGetHelper : IWinGetManagerHelper
 {
-    public WindowsPackageManagerFactory Factory;
+    public WindowsPackageManagerFactory Factory = null!;
     public static WindowsPackageManagerFactory? ExternalFactory;
-    public PackageManager WinGetManager;
+    public PackageManager WinGetManager = null!;
     public static PackageManager? ExternalWinGetManager;
     private readonly WinGet Manager;
+
+    public string ActivationMode { get; private set; } = string.Empty;
+    public string ActivationSource { get; private set; } = string.Empty;
 
     public NativeWinGetHelper(WinGet manager)
     {
@@ -32,23 +35,111 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
             );
         }
 
+        if (TryInitializeBundledFactory())
+        {
+            return;
+        }
+
+        if (TryInitializeStandardFactory())
+        {
+            return;
+        }
+
+        InitializeLowerTrustFactory();
+    }
+
+    private bool TryInitializeBundledFactory()
+    {
         try
         {
-            Factory = new WindowsPackageManagerStandardFactory();
-            WinGetManager = Factory.CreatePackageManager();
-            ExternalFactory = Factory;
-            ExternalWinGetManager = WinGetManager;
+            var factory = new WindowsPackageManagerBundledFactory();
+            var winGetManager = factory.CreatePackageManager();
+            ApplyFactory(
+                factory,
+                winGetManager,
+                "bundled in-proc COM",
+                factory.LibraryPath,
+                "Connected to WinGet API using bundled in-proc activation."
+            );
+            return true;
         }
-        catch
+        catch (WinGetComActivationException ex)
         {
             Logger.Warn(
-                "Couldn't connect to WinGet API, attempting to connect with lower trust... (Are you running as administrator?)"
+                $"Bundled WinGet in-proc activation failed ({ex.HResultHex}: {ex.Reason}), attempting packaged COM activation..."
             );
-            Factory = new WindowsPackageManagerStandardFactory(allowLowerTrustRegistration: true);
-            WinGetManager = Factory.CreatePackageManager();
-            ExternalFactory = Factory;
-            ExternalWinGetManager = WinGetManager;
+            return false;
         }
+        catch (Exception ex)
+        {
+            Logger.Warn(
+                $"Bundled WinGet in-proc activation failed ({ex.Message}), attempting packaged COM activation..."
+            );
+            return false;
+        }
+    }
+
+    private bool TryInitializeStandardFactory()
+    {
+        try
+        {
+            var factory = new WindowsPackageManagerStandardFactory();
+            var winGetManager = factory.CreatePackageManager();
+            ApplyFactory(
+                factory,
+                winGetManager,
+                "packaged COM registration",
+                "system COM registration",
+                "Connected to WinGet API using packaged COM activation."
+            );
+            return true;
+        }
+        catch (WinGetComActivationException ex)
+        {
+            Logger.Warn(
+                $"Packaged WinGet COM activation failed ({ex.HResultHex}: {ex.Reason}), attempting lower-trust activation..."
+            );
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn(
+                $"Packaged WinGet COM activation failed ({ex.Message}), attempting lower-trust activation..."
+            );
+            return false;
+        }
+    }
+
+    private void InitializeLowerTrustFactory()
+    {
+        var factory = new WindowsPackageManagerStandardFactory(allowLowerTrustRegistration: true);
+        var winGetManager = factory.CreatePackageManager();
+        ApplyFactory(
+            factory,
+            winGetManager,
+            "lower-trust COM registration",
+            "system COM registration (allow lower trust)",
+            "Connected to WinGet API using lower-trust COM activation."
+        );
+    }
+
+    private void ApplyFactory(
+        WindowsPackageManagerFactory factory,
+        PackageManager winGetManager,
+        string activationMode,
+        string activationSource,
+        string successMessage
+    )
+    {
+        Factory = factory;
+        WinGetManager = winGetManager;
+        ActivationMode = activationMode;
+        ActivationSource = activationSource;
+        ExternalFactory = factory;
+        ExternalWinGetManager = winGetManager;
+
+        Logger.Info(successMessage);
+        Logger.Info($"WinGet activation mode selected: {ActivationMode} | Source: {ActivationSource}");
     }
 
     public IReadOnlyList<Package> FindPackages_UnSafe(string query)
@@ -181,12 +272,25 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
         List<Package> packages = [];
         foreach (
             var nativePackage in TaskRecycler<IReadOnlyList<CatalogPackage>>.RunOrAttach(
-                GetLocalWinGetPackages
+                GetWinGetPackagesForUpdates
             )
         )
         {
-            if (nativePackage.IsUpdateAvailable)
+            try
             {
+                if (!nativePackage.IsUpdateAvailable)
+                {
+                    continue;
+                }
+
+                if (nativePackage.DefaultInstallVersion is null)
+                {
+                    Logger.Warn(
+                        $"WinGet package {nativePackage.Id} has IsUpdateAvailable=true but DefaultInstallVersion is null, skipping"
+                    );
+                    continue;
+                }
+
                 IManagerSource source;
                 source = Manager.SourcesHelper.Factory.GetSourceOrDefault(
                     nativePackage.DefaultInstallVersion.PackageCatalog.Info.Name
@@ -220,6 +324,10 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
                     );
                 }
             }
+            catch (Exception ex)
+            {
+                LogSkippedPackage(logger, nativePackage, "listing available updates", ex);
+            }
         }
 
         logger.Close(0);
@@ -237,39 +345,90 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
             )
         )
         {
-            IManagerSource source;
-            var availableVersions = nativePackage.AvailableVersions?.ToArray() ?? [];
-            if (availableVersions.Length > 0)
+            try
             {
-                var installPackage = nativePackage.GetPackageVersionInfo(availableVersions[0]);
-                source = Manager.SourcesHelper.Factory.GetSourceOrDefault(
-                    installPackage.PackageCatalog.Info.Name
+                IManagerSource source;
+                var availableVersions = nativePackage.AvailableVersions?.ToArray() ?? [];
+                if (availableVersions.Length > 0)
+                {
+                    var installPackage = nativePackage.GetPackageVersionInfo(availableVersions[0]);
+                    source = Manager.SourcesHelper.Factory.GetSourceOrDefault(
+                        installPackage.PackageCatalog.Info.Name
+                    );
+                }
+                else
+                {
+                    source = Manager.GetLocalSource(nativePackage.Id);
+                }
+
+                string version = nativePackage.InstalledVersion.Version;
+                if (version == "Unknown")
+                    version = WinGetPkgOperationHelper.GetLastInstalledVersion(nativePackage.Id);
+
+                logger.Log(
+                    $"Found package {nativePackage.Name} {nativePackage.Id} on source {source.Name}"
                 );
+                var UniGetUIPackage = new Package(
+                    nativePackage.Name,
+                    nativePackage.Id,
+                    version,
+                    source,
+                    Manager
+                );
+                NativePackageHandler.AddPackage(UniGetUIPackage, nativePackage);
+                packages.Add(UniGetUIPackage);
             }
-            else
+            catch (Exception ex)
             {
-                source = Manager.GetLocalSource(nativePackage.Id);
+                LogSkippedPackage(logger, nativePackage, "listing installed packages", ex);
             }
-
-            string version = nativePackage.InstalledVersion.Version;
-            if (version == "Unknown")
-                version = WinGetPkgOperationHelper.GetLastInstalledVersion(nativePackage.Id);
-
-            logger.Log(
-                $"Found package {nativePackage.Name} {nativePackage.Id} on source {source.Name}"
-            );
-            var UniGetUIPackage = new Package(
-                nativePackage.Name,
-                nativePackage.Id,
-                version,
-                source,
-                Manager
-            );
-            NativePackageHandler.AddPackage(UniGetUIPackage, nativePackage);
-            packages.Add(UniGetUIPackage);
         }
         logger.Close(0);
         return packages;
+    }
+
+    private static void LogSkippedPackage(
+        INativeTaskLogger logger,
+        CatalogPackage nativePackage,
+        string operation,
+        Exception ex
+    )
+    {
+        string packageDescription = DescribePackage(nativePackage);
+        logger.Error($"Skipping WinGet package while {operation}: {packageDescription}");
+        logger.Error(ex);
+        Logger.Warn(
+            $"Skipping WinGet package while {operation}: {packageDescription}. {ex.GetType().Name}: {ex.Message}"
+        );
+    }
+
+    private static string DescribePackage(CatalogPackage nativePackage)
+    {
+        try
+        {
+            string id = nativePackage.Id;
+            if (!string.IsNullOrWhiteSpace(id))
+            {
+                return id;
+            }
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            string name = nativePackage.Name;
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                return name;
+            }
+        }
+        catch
+        {
+        }
+
+        return "<unknown package>";
     }
 
     private IReadOnlyList<CatalogPackage> GetLocalWinGetPackages()
@@ -314,6 +473,56 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
 
         logger.Close(0);
         return foundPackages;
+    }
+
+    private IReadOnlyList<CatalogPackage> GetWinGetPackagesForUpdates()
+    {
+        var logger = Manager.TaskLogger.CreateNew(LoggableTaskType.OtherTask);
+        logger.Log("OtherTask: GetWinGetPackagesForUpdates");
+
+        try
+        {
+            CreateCompositePackageCatalogOptions createCompositePackageCatalogOptions = Factory.CreateCreateCompositePackageCatalogOptions();
+            foreach (var catalogRef in WinGetManager.GetPackageCatalogs().ToArray())
+            {
+                logger.Log($"Adding catalog {catalogRef.Info.Name} to composite catalog");
+                createCompositePackageCatalogOptions.Catalogs.Add(catalogRef);
+            }
+
+            createCompositePackageCatalogOptions.CompositeSearchBehavior = CompositeSearchBehavior.RemotePackagesFromAllCatalogs;
+            var updateSearchCatalogRef = WinGetManager.CreateCompositePackageCatalog(createCompositePackageCatalogOptions);
+            updateSearchCatalogRef.AcceptSourceAgreements = true;
+            var connectResult = updateSearchCatalogRef.Connect();
+
+            if (connectResult.Status != ConnectResultStatus.Ok)
+            {
+                logger.Error("Failed to connect to update catalog. Aborting.");
+                throw new InvalidOperationException("WinGet: Failed to connect to update catalog.");
+            }
+
+            FindPackagesOptions findPackagesOptions = Factory.CreateFindPackagesOptions();
+            PackageMatchFilter filter = Factory.CreatePackageMatchFilter();
+            filter.Field = PackageMatchField.Id;
+            filter.Option = PackageFieldMatchOption.StartsWithCaseInsensitive;
+            filter.Value = "";
+            findPackagesOptions.Filters.Add(filter);
+
+            var taskResult = connectResult.PackageCatalog.FindPackages(findPackagesOptions);
+            List<CatalogPackage> foundPackages = [];
+            foreach (var match in taskResult.Matches.ToArray())
+            {
+                if (match.CatalogPackage.InstalledVersion is not null)
+                    foundPackages.Add(match.CatalogPackage);
+            }
+
+            logger.Close(0);
+            return foundPackages;
+        }
+        catch
+        {
+            logger.Close(1);
+            throw;
+        }
     }
 
     public IReadOnlyList<IManagerSource> GetSources_UnSafe()

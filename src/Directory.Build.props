@@ -4,14 +4,14 @@
         <!-- IF BUILD FAILS DUE TO MISSING Microsoft.Management.Deployment NAMESPACE,
             TOGGLE THE LAST NUMBER OF THE LINE BELOW 1 UNIT UP OR DOWN, AND REBUILD-->
 
-        <SdkVersion>8.0.407</SdkVersion>
+        <SdkVersion>10.0.103</SdkVersion>
         <Authors>Devolutions Inc. and the contributors</Authors>
         <PublisherName>Devolutions Inc.</PublisherName>
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
     <PropertyGroup>
-        <PortableTargetFramework>net8.0</PortableTargetFramework>
+        <PortableTargetFramework>net10.0</PortableTargetFramework>
         <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
         <WindowsTargetFramework>$(PortableTargetFramework)-windows$(WindowsTargetPlatformVersion)</WindowsTargetFramework>
     </PropertyGroup>
@@ -36,12 +36,6 @@
     <PropertyGroup Condition="$([System.String]::Copy('$(TargetFramework)').Contains('-windows'))">
         <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
         <WindowsSdkPackageVersion>10.0.26100.56</WindowsSdkPackageVersion>
-        <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-        <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
-        <RuntimeIdentifier
-            Condition="'$(Platform)' != '' and '$(Platform)' != 'AnyCPU' and '$(Platform)' != 'Any CPU'"
-            >win-$(Platform)</RuntimeIdentifier
-        >
     </PropertyGroup>
 
     <PropertyGroup>
@@ -49,6 +43,11 @@
         <PublishSelfContained>true</PublishSelfContained>
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
         <Configurations>Debug;Release</Configurations>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <EnableAvaloniaDiagnostics>false</EnableAvaloniaDiagnostics>
+        <EnableAvaloniaDiagnostics Condition="'$(Configuration)' == 'Debug'">true</EnableAvaloniaDiagnostics>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)' == 'Release'">

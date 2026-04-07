@@ -2,7 +2,11 @@
 
 ## Project Overview
 
-UniGetUI is a WinUI 3 desktop app (C#/.NET 8, Windows App SDK) providing a GUI for CLI package managers (WinGet, Scoop, Chocolatey, Pip, Npm, .NET Tool, PowerShell Gallery, Cargo, Vcpkg). Solution lives in `src/UniGetUI.sln`.
+UniGetUI is a WinUI 3 desktop app (C#/.NET 10, Windows App SDK) providing a GUI for CLI package managers (WinGet, Scoop, Chocolatey, Pip, Npm, .NET Tool, PowerShell Gallery, Cargo, Vcpkg).
+
+Solution entry points:
+- `src/UniGetUI.sln` - official Windows application based on WinUI 3
+- `src/UniGetUI.Avalonia.slnx` - experimental cross-platform Avalonia port
 
 ## Architecture
 
@@ -12,7 +16,7 @@ The codebase follows a **layered, modular structure** with ~40 projects:
 - **`UniGetUI.Core.*`** - Shared infrastructure: `Logger`, `Settings`, `Tools` (includes `CoreTools.Translate()`), `IconEngine`, `LanguageEngine`
 - **`UniGetUI.PackageEngine.Interfaces`** - Contracts: `IPackageManager`, `IPackage`, `IManagerSource`, `IPackageDetails`
 - **`UniGetUI.PackageEngine.PackageManagerClasses`** - Base implementations: `PackageManager` (abstract), `Package`, helpers (`BasePkgDetailsHelper`, `BasePkgOperationHelper`, `BaseSourceHelper`)
-- **`UniGetUI.PackageEngine.Managers.*`** - Concrete manager implementations (one project per manager: `WinGet`, `Scoop`, `Chocolatey`, `Pip`, `Npm`, etc.)
+- **`UniGetUI.PackageEngine.Managers.*`** - Concrete manager implementations (one project per manager: `WinGet`, `Scoop`, `Chocolatey`, `Pip`, `npm`, etc.)
 - **`UniGetUI.PackageEngine.Operations`** - Install/update/uninstall operation orchestration
 - **`UniGetUI.Interface.*`** - Enums, telemetry, background API
 
@@ -44,10 +48,24 @@ dotnet test --verbosity q --nologo
 dotnet publish src/UniGetUI/UniGetUI.csproj /p:Configuration=Release /p:Platform=x64
 ```
 
-- Target framework: `net8.0-windows10.0.26100.0` (min `10.0.19041`)
+- Target framework: `net10.0-windows10.0.26100.0` (min `10.0.19041`)
 - Build generates secrets via `src/UniGetUI/Services/generate-secrets.ps1` and integrity tree via `scripts/generate-integrity-tree.ps1`
 - Self-contained, publish-trimmed (partial), Windows App SDK self-contained
 - Tests use **xUnit** (`[Fact]`, `Assert.*`)
+
+## Avalonia DevTools (Developer-Only)
+
+Use these rules when changing Avalonia diagnostics/devtools behavior:
+
+- Build-time switch is `EnableAvaloniaDiagnostics` in `src/Directory.Build.props`.
+- Default policy: enabled in `Debug`, disabled in `Release`.
+- `src/UniGetUI.Avalonia/UniGetUI.Avalonia.csproj` must condition `AvaloniaUI.DiagnosticsSupport` on `$(EnableAvaloniaDiagnostics)`.
+- Compile-time diagnostics code in `src/UniGetUI.Avalonia/Program.cs` must be gated by `#if AVALONIA_DIAGNOSTICS_ENABLED` (not `#if DEBUG`).
+- Runtime controls are developer-only and intentionally not listed in `cli-arguments.md`.
+- Runtime precedence in `Program.cs`: CLI flags > `UNIGETUI_AVALONIA_DEVTOOLS` environment variable > `Auto` default.
+- Accepted runtime env/CLI values for mode parsing: `auto`, `enabled`, `disabled`, `on`, `off`, `true`, `false`, `1`, `0`.
+- `Auto` mode must remain WSL-safe (DevTools disabled by default on WSL).
+- If diagnostics were excluded at build time, runtime toggle requests should log a no-op warning.
 
 ## Key Patterns & Conventions
 
@@ -77,6 +95,7 @@ Use `CoreTools.Translate("text")` for all user-facing strings. Parameterized: `C
 | Purpose | Path |
 |---|---|
 | Solution | `src/UniGetUI.sln` |
+| Experimental cross-platform solution | `src/UniGetUI.Avalonia.slnx` |
 | Shared build props | `src/Directory.Build.props` |
 | Version info | `src/SharedAssemblyInfo.cs` |
 | Manager interface | `src/UniGetUI.PAckageEngine.Interfaces/IPackageManager.cs` |
