@@ -1,10 +1,14 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Avalonia.ViewModels.Pages;
 using UniGetUI.Avalonia.Views;
 using UniGetUI.Core.Logging;
+using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
+using UniGetUI.Interface.Enums;
+using UniGetUI.Interface.Telemetry;
 using UniGetUI.PackageEngine.Classes.Manager.Classes;
 using UniGetUI.PackageEngine.Classes.Packages.Classes;
 using UniGetUI.PackageEngine.Enums;
@@ -44,7 +48,9 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         MainSubtitle_StillLoading = CoreTools.Translate("Loading packages"),
         NoMatches_BackgroundText = CoreTools.Translate("No results were found matching the input criteria"),
     })
-    { }
+    {
+        ViewModel.PackagesLoaded += reason => { _ = WhenPackagesLoaded(); };
+    }
 
     protected override void GenerateToolBar(PackagesPageViewModel vm)
     {
@@ -73,7 +79,8 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         updateAsAdmin.Click += (_, _) => _ = LaunchUpdate(vm.FilteredPackages.GetCheckedPackages(), elevated: true);
         updateSkipHash.Click += (_, _) => _ = LaunchUpdate(vm.FilteredPackages.GetCheckedPackages(), no_integrity: true);
         updateInteractive.Click += (_, _) => _ = LaunchUpdate(vm.FilteredPackages.GetCheckedPackages(), interactive: true);
-        downloadInstallers.Click += (_, _) => { /* TODO: download-only operation not yet ported */ };
+        downloadInstallers.Click += (_, _) => _ = AvaloniaPackageOperationHelper.DownloadSelectedAsync(
+            vm.FilteredPackages.GetCheckedPackages(), TEL_InstallReferral.ALREADY_INSTALLED);
         uninstallSelected.Click += (_, _) => _ = LaunchUninstallFromUpdates(vm.FilteredPackages.GetCheckedPackages());
 
         // ── Toolbar buttons ─────────────────────────────────────────────────
@@ -83,8 +90,6 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         ViewModel.AddToolbarSeparator();
         ViewModel.AddToolbarButton("info_round", CoreTools.Translate("Package details"),
             () => _ = ShowDetailsForPackage(SelectedItem), showLabel: false);
-        ViewModel.AddToolbarButton("share", CoreTools.Translate("Share"),
-            () => vm.RequestShareCommand.Execute(SelectedItem), showLabel: false);
         ViewModel.AddToolbarSeparator();
         ViewModel.AddToolbarButton("pin", CoreTools.Translate("Ignore selected packages"), async () =>
         {
@@ -97,9 +102,6 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         });
         ViewModel.AddToolbarButton("clipboard_list", CoreTools.Translate("Manage ignored updates"),
             () => vm.RequestManageIgnoredCommand.Execute(null));
-        ViewModel.AddToolbarSeparator();
-        ViewModel.AddToolbarButton("help", CoreTools.Translate("Help"),
-            () => vm.RequestHelpCommand.Execute(null));
     }
 
     // ─── Context menu ─────────────────────────────────────────────────────────
@@ -107,28 +109,28 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
     {
         var menuUpdate = new MenuItem
         {
-            Header = CoreTools.AutoTranslated("Update"),
+            Header = ShortcutHeader(CoreTools.Translate("Update"), MainActionShortcut),
             Icon = LoadMenuIcon("update"),
         };
         menuUpdate.Click += (_, _) => _ = LaunchUpdate([SelectedItem!]);
 
         var menuUpdateOptions = new MenuItem
         {
-            Header = CoreTools.AutoTranslated("Update options"),
+            Header = ShortcutHeader(CoreTools.Translate("Update options"), OptionsShortcut),
             Icon = LoadMenuIcon("options"),
         };
         menuUpdateOptions.Click += (_, _) => _ = ShowInstallationOptionsForPackage(SelectedItem);
 
         _menuOpenInstallLocation = new MenuItem
         {
-            Header = CoreTools.AutoTranslated("Open install location"),
+            Header = CoreTools.Translate("Open install location"),
             Icon = LoadMenuIcon("launch"),
         };
         _menuOpenInstallLocation.Click += (_, _) => OpenInstallLocation(SelectedItem);
 
         _menuAsAdmin = new MenuItem
         {
-            Header = CoreTools.AutoTranslated("Update as administrator"),
+            Header = CoreTools.Translate("Update as administrator"),
             Icon = LoadMenuIcon("uac"),
             IsVisible = OperatingSystem.IsWindows(),
         };
@@ -136,42 +138,43 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
 
         _menuInteractive = new MenuItem
         {
-            Header = CoreTools.AutoTranslated("Interactive update"),
+            Header = CoreTools.Translate("Interactive update"),
             Icon = LoadMenuIcon("interactive"),
         };
         _menuInteractive.Click += (_, _) => _ = LaunchUpdate([SelectedItem!], interactive: true);
 
         _menuSkipHash = new MenuItem
         {
-            Header = CoreTools.AutoTranslated("Skip hash check"),
+            Header = CoreTools.Translate("Skip hash check"),
             Icon = LoadMenuIcon("checksum"),
         };
         _menuSkipHash.Click += (_, _) => _ = LaunchUpdate([SelectedItem!], no_integrity: true);
 
         _menuDownloadInstaller = new MenuItem
         {
-            Header = CoreTools.AutoTranslated("Download installer"),
+            Header = CoreTools.Translate("Download installer"),
             Icon = LoadMenuIcon("download"),
         };
-        _menuDownloadInstaller.Click += (_, _) => { /* TODO: download-only operation not yet ported */ };
+        _menuDownloadInstaller.Click += (_, _) => _ = AvaloniaPackageOperationHelper.AskLocationAndDownloadAsync(
+            SelectedItem, TEL_InstallReferral.ALREADY_INSTALLED);
 
         var menuUninstallThenUpdate = new MenuItem
         {
-            Header = CoreTools.AutoTranslated("Uninstall package, then update it"),
+            Header = CoreTools.Translate("Uninstall package, then update it"),
             Icon = LoadMenuIcon("undelete"),
         };
         menuUninstallThenUpdate.Click += (_, _) => _ = LaunchUninstallThenUpdate(SelectedItem);
 
         var menuUninstall = new MenuItem
         {
-            Header = CoreTools.AutoTranslated("Uninstall package"),
+            Header = CoreTools.Translate("Uninstall package"),
             Icon = LoadMenuIcon("delete"),
         };
         menuUninstall.Click += (_, _) => _ = LaunchUninstallFromUpdates([SelectedItem!]);
 
         var menuIgnore = new MenuItem
         {
-            Header = CoreTools.AutoTranslated("Ignore updates for this package"),
+            Header = CoreTools.Translate("Ignore updates for this package"),
             Icon = LoadMenuIcon("pin"),
         };
         menuIgnore.Click += (_, _) =>
@@ -185,7 +188,7 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
 
         var menuSkipVersion = new MenuItem
         {
-            Header = CoreTools.AutoTranslated("Skip this version"),
+            Header = CoreTools.Translate("Skip this version"),
             Icon = LoadMenuIcon("skip"),
         };
         menuSkipVersion.Click += (_, _) =>
@@ -228,16 +231,9 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
             menuPause.Items.Add(item);
         }
 
-        var menuShare = new MenuItem
-        {
-            Header = CoreTools.AutoTranslated("Share this package"),
-            Icon = LoadMenuIcon("share"),
-        };
-        menuShare.Click += (_, _) => ViewModel.RequestShareCommand.Execute(SelectedItem);
-
         var menuDetails = new MenuItem
         {
-            Header = CoreTools.AutoTranslated("Package details"),
+            Header = ShortcutHeader(CoreTools.Translate("Package details"), DetailsShortcut),
             Icon = LoadMenuIcon("info_round"),
         };
         menuDetails.Click += (_, _) => _ = ShowDetailsForPackage(SelectedItem);
@@ -260,7 +256,6 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         menu.Items.Add(menuSkipVersion);
         menu.Items.Add(menuPause);
         menu.Items.Add(new Separator());
-        menu.Items.Add(menuShare);
         menu.Items.Add(menuDetails);
 
         return menu;
@@ -339,6 +334,8 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
             var opts = await InstallOptionsFactory.LoadApplicableAsync(
                 pkg, elevated: elevated, interactive: interactive, no_integrity: no_integrity);
             var op = new UpdatePackageOperation(pkg, opts);
+            op.OperationSucceeded += (_, _) => TelemetryHandler.UpdatePackage(pkg, TEL_OP_RESULT.SUCCESS);
+            op.OperationFailed += (_, _) => TelemetryHandler.UpdatePackage(pkg, TEL_OP_RESULT.FAILED);
             AvaloniaOperationRegistry.Add(op);
             _ = op.MainThread();
         }
@@ -350,6 +347,8 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         {
             var opts = await InstallOptionsFactory.LoadApplicableAsync(pkg);
             var op = new UninstallPackageOperation(pkg, opts);
+            op.OperationSucceeded += (_, _) => TelemetryHandler.UninstallPackage(pkg, TEL_OP_RESULT.SUCCESS);
+            op.OperationFailed += (_, _) => TelemetryHandler.UninstallPackage(pkg, TEL_OP_RESULT.FAILED);
             AvaloniaOperationRegistry.Add(op);
             _ = op.MainThread();
         }
@@ -361,10 +360,133 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         var uninstallOpts = await InstallOptionsFactory.LoadApplicableAsync(package);
         var updateOpts = await InstallOptionsFactory.LoadApplicableAsync(package);
         var uninstallOp = new UninstallPackageOperation(package, uninstallOpts);
+        uninstallOp.OperationSucceeded += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.SUCCESS);
+        uninstallOp.OperationFailed += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.FAILED);
         var updateOp = new UpdatePackageOperation(package, updateOpts, req: uninstallOp);
+        updateOp.OperationSucceeded += (_, _) => TelemetryHandler.UpdatePackage(package, TEL_OP_RESULT.SUCCESS);
+        updateOp.OperationFailed += (_, _) => TelemetryHandler.UpdatePackage(package, TEL_OP_RESULT.FAILED);
         AvaloniaOperationRegistry.Add(uninstallOp);
         AvaloniaOperationRegistry.Add(updateOp);
         _ = uninstallOp.MainThread();
         _ = updateOp.MainThread();
+    }
+
+    // ─── Auto-update on load ──────────────────────────────────────────────────
+
+    private static async Task WhenPackagesLoaded()
+    {
+        try
+        {
+            var upgradable = UpgradablePackagesLoader.Instance.Packages
+                .Where(p => p.Tag is not PackageTag.OnQueue and not PackageTag.BeingProcessed)
+                .ToList();
+
+            if (upgradable.Count == 0) return;
+
+            if (Settings.Get(Settings.K.DisableAUPOnBattery) && IsOnBattery())
+            {
+                Logger.Warn("Updates will not be installed automatically because the device is on battery.");
+                ShowAvailableUpdatesNotification(upgradable);
+            }
+            else if (Settings.Get(Settings.K.DisableAUPOnBatterySaver) && IsBatterySaverOn())
+            {
+                Logger.Warn("Updates will not be installed automatically because battery saver is enabled.");
+                ShowAvailableUpdatesNotification(upgradable);
+            }
+            else if (Settings.Get(Settings.K.DisableAUPOnMeteredConnections) && IsOnMeteredConnection())
+            {
+                Logger.Warn("Updates will not be installed automatically because the current internet connection is metered.");
+                ShowAvailableUpdatesNotification(upgradable);
+            }
+            else if (Settings.Get(Settings.K.AutomaticallyUpdatePackages))
+            {
+                _ = AvaloniaPackageOperationHelper.UpdateAllAsync();
+                ShowUpgradingPackagesNotification(upgradable);
+            }
+            else if (Environment.GetCommandLineArgs().Contains("--updateapps"))
+            {
+                _ = AvaloniaPackageOperationHelper.UpdateAllAsync();
+                ShowUpgradingPackagesNotification(upgradable);
+                Logger.Warn("Automatic install of updates has been enabled via Command Line (user settings have been overriden)");
+            }
+            else
+            {
+                foreach (var package in upgradable)
+                {
+                    var opts = await InstallOptionsFactory.LoadApplicableAsync(package);
+                    if (opts.AutoUpdatePackage)
+                        await LaunchUpdate([package]);
+                }
+                ShowAvailableUpdatesNotification(upgradable);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex);
+        }
+    }
+
+    private static void ShowAvailableUpdatesNotification(IReadOnlyList<IPackage> upgradable)
+    {
+        if (OperatingSystem.IsWindows())
+            WindowsAppNotificationBridge.ShowUpdatesAvailableNotification(upgradable);
+        else if (OperatingSystem.IsMacOS())
+            MacOsNotificationBridge.ShowUpdatesAvailableNotification(upgradable);
+    }
+
+    private static void ShowUpgradingPackagesNotification(IReadOnlyList<IPackage> upgradable)
+    {
+        if (OperatingSystem.IsWindows())
+            WindowsAppNotificationBridge.ShowUpgradingPackagesNotification(upgradable);
+        else if (OperatingSystem.IsMacOS())
+            MacOsNotificationBridge.ShowUpgradingPackagesNotification(upgradable);
+    }
+
+    // ─── Battery / power helpers (Windows P/Invoke) ───────────────────────────
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SYSTEM_POWER_STATUS
+    {
+        public byte ACLineStatus;     // 0 = battery, 1 = AC, 255 = unknown
+        public byte BatteryFlag;
+        public byte BatteryLifePercent;
+        public byte SystemStatusFlag; // bit 0: battery saver active
+        public uint BatteryLifeTime;
+        public uint BatteryFullLifeTime;
+    }
+
+#pragma warning disable CA1416
+    [DllImport("kernel32.dll")]
+    private static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS status);
+#pragma warning restore CA1416
+
+    private static bool IsOnBattery()
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+#pragma warning disable CA1416
+        return GetSystemPowerStatus(out var s) && s.ACLineStatus == 0;
+#pragma warning restore CA1416
+    }
+
+    private static bool IsBatterySaverOn()
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+#pragma warning disable CA1416
+        return GetSystemPowerStatus(out var s) && (s.SystemStatusFlag & 0x01) != 0;
+#pragma warning restore CA1416
+    }
+
+    private static bool IsOnMeteredConnection()
+    {
+#if WINDOWS
+        var costType = Windows.Networking.Connectivity.NetworkInformation
+            .GetInternetConnectionProfile()
+            ?.GetConnectionCost()
+            .NetworkCostType;
+        return costType is Windows.Networking.Connectivity.NetworkCostType.Fixed
+            or Windows.Networking.Connectivity.NetworkCostType.Variable;
+#else
+        return false;
+#endif
     }
 }

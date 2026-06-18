@@ -37,6 +37,15 @@
         Text="UniGetUI startup page:"
       />
 
+      <UserControl Height="16" />
+      <widgets:CheckboxCard
+        CornerRadius="8"
+        SettingName="UseClassicMode"
+        StateChanged="ShowRestartBanner"
+        Text="Use classic mode"
+        WarningText="Restart UniGetUI to apply this change"
+      />
+
       <widgets:TranslatedTextBlock
         Margin="4,32,4,8"
         FontWeight="SemiBold"
@@ -55,7 +64,7 @@
         ButtonText="Open"
         Click="EditAutostartSettings_Click"
         CornerRadius="0,0,8,8"
-        Text="Manage WingetUI autostart behaviour from the Settings app"
+        Text="Manage UniGetUI autostart behaviour from the Settings app"
       />
 
       <widgets:TranslatedTextBlock Margin="4,32,4,8" FontWeight="SemiBold" Text="Package lists" />

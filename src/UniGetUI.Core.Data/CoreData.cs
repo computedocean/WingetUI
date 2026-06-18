@@ -8,6 +8,10 @@ namespace UniGetUI.Core.Data
     {
         private const string GitHubReleasePageBaseUrl = "https://github.com/Devolutions/UniGetUI/releases/tag/";
         private const string GitHubReleaseApiBaseUrl = "https://api.github.com/repos/Devolutions/UniGetUI/releases/tags/";
+        private const string BundledModernAppDirectoryName = "Avalonia";
+        private const string ClassicExecutableName = "UniGetUI.exe";
+        private const string BundledPingetExecutableName = "pinget.exe";
+        public const string ReleaseNotesUrl = "https://devolutions.net/unigetui/release-notes/";
 
         private static int? __code_page;
         public static int CODE_PAGE
@@ -57,7 +61,7 @@ namespace UniGetUI.Core.Data
 
         public static string GetGitHubReleasePageUrl()
         {
-            return GetGitHubReleasePageUrlFromTag(GetGitHubReleaseTag());
+            return ReleaseNotesUrl;
         }
 
         public static string GetGitHubReleasePageUrlFromTag(string releaseTag)
@@ -326,23 +330,47 @@ namespace UniGetUI.Core.Data
         {
             get
             {
-                string? dir = Path.GetDirectoryName(
-                    System.Reflection.Assembly.GetExecutingAssembly().Location
-                );
-                if (dir is not null)
+                string dir = NormalizeDirectoryPath(AppContext.BaseDirectory);
+                if (!string.IsNullOrEmpty(dir))
                 {
-                    return dir;
+                    return ResolveInstallationDirectory(dir);
                 }
 
-                Logger.Error(
-                    "System.Reflection.Assembly.GetExecutingAssembly().Location returned an empty path"
-                );
+                Logger.Error("AppContext.BaseDirectory returned an empty path");
 
-                return AppContext.BaseDirectory.TrimEnd(
-                    Path.DirectorySeparatorChar,
-                    Path.AltDirectorySeparatorChar
-                );
+                return ResolveInstallationDirectory(NormalizeDirectoryPath(AppContext.BaseDirectory));
             }
+        }
+
+        public static string ResolveInstallationDirectory(
+            string executableDirectory,
+            Func<string, bool>? fileExists = null,
+            Func<string, bool>? directoryExists = null
+        )
+        {
+            fileExists ??= File.Exists;
+            directoryExists ??= Directory.Exists;
+
+            string normalizedDirectory = NormalizeDirectoryPath(executableDirectory);
+            if (!string.Equals(
+                    Path.GetFileName(normalizedDirectory),
+                    BundledModernAppDirectoryName,
+                    StringComparison.OrdinalIgnoreCase
+                ))
+            {
+                return normalizedDirectory;
+            }
+
+            string? parentDirectory = Path.GetDirectoryName(normalizedDirectory);
+            if (string.IsNullOrEmpty(parentDirectory))
+            {
+                return normalizedDirectory;
+            }
+
+            parentDirectory = NormalizeDirectoryPath(parentDirectory);
+            return IsInstallRoot(parentDirectory, fileExists, directoryExists)
+                ? parentDirectory
+                : normalizedDirectory;
         }
 
         /// <summary>
@@ -369,6 +397,12 @@ namespace UniGetUI.Core.Data
         }
 
         public static string ElevatorPath = "";
+
+        /// <summary>
+        /// Extra arguments to insert between the elevator binary and the elevated command.
+        /// For example, "-A" when using sudo with an askpass helper on Linux.
+        /// </summary>
+        public static string ElevatorArgs = "";
 
         /// <summary>
         /// This method will return the most appropriate data directory.
@@ -593,6 +627,14 @@ namespace UniGetUI.Core.Data
             return Environment.GetEnvironmentVariable("HOME") ?? AppContext.BaseDirectory;
         }
 
+        private static string NormalizeDirectoryPath(string path)
+        {
+            return Path.GetFullPath(path).TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar
+            );
+        }
+
         private static string NormalizeExecutablePath(string path)
         {
             if (
@@ -604,6 +646,19 @@ namespace UniGetUI.Core.Data
             }
 
             return path;
+        }
+
+        private static bool IsInstallRoot(
+            string directory,
+            Func<string, bool> fileExists,
+            Func<string, bool> directoryExists
+        )
+        {
+            return fileExists(Path.Join(directory, ClassicExecutableName))
+                   || fileExists(Path.Join(directory, BundledPingetExecutableName))
+                   || fileExists(Path.Join(directory, "IntegrityTree.json"))
+                   || directoryExists(Path.Join(directory, "Assets", "Utilities"))
+                   || directoryExists(Path.Join(directory, "Assets", "Data"));
         }
     }
 }

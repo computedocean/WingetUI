@@ -1,4 +1,5 @@
 using Microsoft.Management.Deployment;
+using Microsoft.Win32;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
@@ -34,6 +35,12 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
         OperationType operation
     )
     {
+        // Pinget 0.4.x does not accept --accept-source-agreements, --disable-interactivity,
+        // or --proxy on any verb; --accept-package-agreements, --force, --location, and
+        // --interactive are accepted on install/uninstall but rejected on upgrade.
+        bool usePinget =
+            ((WinGet)Manager).SelectedCliToolKind == WinGetCliToolKind.BundledPinget;
+
         List<string> parameters =
         [
             operation switch
@@ -46,11 +53,14 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
         ];
 
         parameters.AddRange(GetIdNamePiece(package).Split(" "));
-        parameters.AddRange([
-            "--source",
-            package.Source.IsVirtualManager ? "winget" : package.Source.Name,
-        ]);
-        parameters.AddRange(["--accept-source-agreements", "--disable-interactivity"]);
+        if (!package.Source.IsVirtualManager)
+        {
+            parameters.AddRange(["--source", package.Source.Name]);
+        }
+        if (!usePinget)
+        {
+            parameters.AddRange(["--accept-source-agreements", "--disable-interactivity"]);
+        }
 
         // package.OverridenInstallationOptions.Scope is meaningless in WinGet packages. Default is unspecified, hence the _ => [].
         parameters.AddRange(
@@ -75,7 +85,15 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
             parameters.AddRange(["--version", $"\"{options.Version}\""]);
         }
 
-        parameters.Add(options.InteractiveInstallation ? "--interactive" : "--silent");
+        if (usePinget && operation is OperationType.Update)
+        {
+            // pinget upgrade only supports --silent (no --interactive).
+            parameters.Add("--silent");
+        }
+        else
+        {
+            parameters.Add(options.InteractiveInstallation ? "--interactive" : "--silent");
+        }
 
         if (operation is OperationType.Update)
         {
@@ -89,11 +107,26 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
             }
             parameters.Add("--include-unknown");
 
-            if (
-                Settings.Get(Settings.K.WinGetForceLocationOnUpdate)
-                && options.CustomInstallLocation != ""
-            )
-                parameters.AddRange(["--location", $"\"{options.CustomInstallLocation}\""]);
+            if (!usePinget)
+            {
+                // For portable packages, always preserve the actual current install
+                // location read from the registry. A stale CustomInstallLocation in the
+                // saved InstallOptions would otherwise leave --location off and cause
+                // WinGet to uninstall the portable from its custom path and reinstall to
+                // the default portable root, silently deleting the original directory.
+                var detectedLocation = TryGetPortableInstallLocation(package);
+                if (detectedLocation is not null)
+                {
+                    parameters.AddRange(["--location", $"\"{detectedLocation}\""]);
+                }
+                else if (
+                    options.CustomInstallLocation != ""
+                    && Settings.Get(Settings.K.WinGetForceLocationOnUpdate)
+                )
+                {
+                    parameters.AddRange(["--location", $"\"{options.CustomInstallLocation}\""]);
+                }
+            }
         }
         else if (operation is OperationType.Install)
         {
@@ -103,7 +136,11 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
 
         if (operation is not OperationType.Uninstall)
         {
-            parameters.AddRange(["--accept-package-agreements", "--force"]);
+            // pinget upgrade does not accept --accept-package-agreements or --force.
+            if (!(usePinget && operation is OperationType.Update))
+            {
+                parameters.AddRange(["--accept-package-agreements", "--force"]);
+            }
 
             if (options.SkipHashCheck)
                 parameters.Add("--ignore-security-hash");
@@ -182,7 +219,10 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
             Logger.Error(ex);
         }
 
-        parameters.Add(WinGet.GetProxyArgument());
+        if (!usePinget)
+        {
+            parameters.Add(WinGet.GetProxyArgument());
+        }
 
         parameters.AddRange(
             operation switch
@@ -329,5 +369,69 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
         if (val is null || val == "")
             val = "Unknown";
         return val;
+    }
+
+    /// <summary>
+    /// For portable WinGet packages, reads the current install location from the Windows registry
+    /// ARP entry (written by WinGet at install time). Returns null if the package is not portable
+    /// or the location cannot be determined.
+    /// </summary>
+    private static string? TryGetPortableInstallLocation(IPackage package)
+    {
+        try
+        {
+            foreach (
+                var hive in new RegistryKey[] { Registry.CurrentUser, Registry.LocalMachine }
+            )
+            {
+                using var uninstallKey = hive.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Uninstall"
+                );
+                if (uninstallKey is null)
+                    continue;
+
+                foreach (var name in uninstallKey.GetSubKeyNames())
+                {
+                    using var entry = uninstallKey.OpenSubKey(name);
+                    if (entry is null)
+                        continue;
+
+                    if (
+                        entry.GetValue("WinGetPackageIdentifier") is not string pkgId
+                        || !string.Equals(pkgId, package.Id, StringComparison.OrdinalIgnoreCase)
+                    )
+                        continue;
+
+                    if (
+                        entry.GetValue("WinGetInstallerType") is not string installerType
+                        || !string.Equals(
+                            installerType,
+                            "portable",
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                        return null;
+
+                    if (
+                        entry.GetValue("InstallLocation") is string location
+                        && location.Length > 0
+                    )
+                    {
+                        Logger.Info(
+                            $"Auto-detected portable install location for {package.Id}: {location}"
+                        );
+                        return location;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn(
+                $"Failed to auto-detect portable install location for {package.Id}: {ex.Message}"
+            );
+        }
+
+        return null;
     }
 }

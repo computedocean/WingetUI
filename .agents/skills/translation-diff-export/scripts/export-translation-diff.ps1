@@ -12,6 +12,8 @@ param(
 
     [string]$OutputDir = 'generated/translation-diff-export',
 
+    [switch]$ActiveOnly,
+
     [switch]$KeepIntermediate
 )
 
@@ -284,8 +286,13 @@ function Test-IntentionalSourceEqualValue {
     return $false
 }
 
+. ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..\..\scripts\translation\Languages\IntentionalSourceEqualValues.ps1')))
+
 function Sync-TranslatedWorkingCopy {
     param(
+        [Parameter(Mandatory = $true)]
+        [string]$LanguageCode,
+
         [Parameter(Mandatory = $true)]
         [System.Collections.IDictionary]$CurrentSourceMap,
 
@@ -311,7 +318,9 @@ function Sync-TranslatedWorkingCopy {
         }
 
         if ($translatedValue -ceq $sourceValue) {
-            continue
+            if (-not (Test-IntentionalSourceEqualValue -LanguageCode $LanguageCode -SourceValue $sourceValue -TargetValue $translatedValue)) {
+                continue
+            }
         }
 
         if ($null -ne $PreviousSourceMap -and $PreviousSourceMap.Contains($key)) {
@@ -324,6 +333,34 @@ function Sync-TranslatedWorkingCopy {
     }
 
     Write-OrderedJsonMap -Path $TranslatedPatchPath -Map $syncedMap
+}
+
+function Get-FilteredPatchMap {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Collections.IDictionary]$Map,
+
+        [Parameter(Mandatory = $true)]
+        [System.Collections.IDictionary]$NeutralMap,
+
+        [Parameter(Mandatory = $true)]
+        [switch]$ActiveOnly
+    )
+
+    if (-not $ActiveOnly.IsPresent) {
+        return $Map
+    }
+
+    $activeKeys = Split-TranslationMapAtBoundary -Map $NeutralMap
+    $filteredMap = New-OrderedStringMap
+    foreach ($entry in $activeKeys.ActiveMap.GetEnumerator()) {
+        $key = [string]$entry.Key
+        if ($Map.Contains($key)) {
+            $filteredMap[$key] = [string]$Map[$key]
+        }
+    }
+
+    return $filteredMap
 }
 
 Assert-Command -Name 'git'
@@ -431,6 +468,9 @@ foreach ($entry in $neutralMap.GetEnumerator()) {
     }
 }
 
+$sourcePatchMap = Get-FilteredPatchMap -Map $sourcePatchMap -NeutralMap $neutralMap -ActiveOnly:$ActiveOnly
+$referencePatchMap = Get-FilteredPatchMap -Map $referencePatchMap -NeutralMap $neutralMap -ActiveOnly:$ActiveOnly
+
 if (Test-Path -Path $sourcePatchPath -PathType Leaf) {
     $previousSourceMap = Read-OrderedJsonMap -Path $sourcePatchPath
 }
@@ -440,7 +480,7 @@ else {
 
 Write-OrderedJsonMap -Path $sourcePatchPath -Map $sourcePatchMap
 Write-OrderedJsonMap -Path $referencePatchPath -Map $referencePatchMap
-Sync-TranslatedWorkingCopy -CurrentSourceMap $sourcePatchMap -TranslatedPatchPath $translatedPatchPath -PreviousSourceMap $previousSourceMap
+Sync-TranslatedWorkingCopy -LanguageCode $languageCode -CurrentSourceMap $sourcePatchMap -TranslatedPatchPath $translatedPatchPath -PreviousSourceMap $previousSourceMap
 
 $mergedTargetPath = Join-Path ([System.IO.Path]::GetDirectoryName($targetPath)) ('{0}.merged.json' -f [System.IO.Path]::GetFileNameWithoutExtension($targetPath))
 $skillsRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
@@ -460,6 +500,9 @@ Write-Output "Created source patch: $sourcePatchPath"
 Write-Output "Refreshed translated working copy: $translatedPatchPath"
 Write-Output "Created reference patch: $referencePatchPath"
 Write-Output "Created translation handoff prompt: $promptPath"
+if ($ActiveOnly.IsPresent) {
+    Write-Output 'Patch scope: active translation keys only'
+}
 if ($KeepIntermediate.IsPresent) {
     Write-Output "Kept intermediate files under: $tmpRoot"
 }

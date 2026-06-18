@@ -184,7 +184,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
                     Manager.Name,
                     CoreTools.MakeValidFileName(Id)
                 );
-                return path is null ? null : new Uri("file:///" + path);
+                return path is null ? null : new Uri((path.StartsWith('/') ? "file://" : "file:///") + path);
             }
             catch (Exception ex)
             {
@@ -294,6 +294,11 @@ namespace UniGetUI.PackageEngine.PackageClasses
         {
             foreach (var p in GetInstalledPackages())
             {
+                if (p.NormalizedVersion == CoreTools.Version.Null || this.NormalizedNewVersion == CoreTools.Version.Null)
+                {
+                    continue;
+                }
+
                 if (p.NormalizedVersion >= this.NormalizedNewVersion)
                 {
                     return true;
@@ -343,7 +348,7 @@ namespace UniGetUI.PackageEngine.PackageClasses
                 Name = Name,
                 Version = VersionString,
                 Source = Source.Name,
-                ManagerName = Manager.Name,
+                ManagerName = Manager.Id,
                 InstallationOptions = await InstallOptionsFactory.LoadForPackageAsync(this),
                 Updates = new SerializableUpdatesOptions
                 {
@@ -371,8 +376,10 @@ namespace UniGetUI.PackageEngine.PackageClasses
 
         private static string GenerateIconId(Package p)
         {
-            return (
-                p.Manager.Name switch
+            string iconId;
+            try
+            {
+                iconId = p.Manager.Name switch
                 {
                     "Winget" => p.Source.Name switch
                     {
@@ -399,8 +406,14 @@ namespace UniGetUI.PackageEngine.PackageClasses
                     "Chocolatey" => p.Id.Replace(".install", "").Replace(".portable", ""),
                     "vcpkg" => p.Id.Split(":")[0].Split("[")[0],
                     _ => p.Id,
-                }
-            )
+                };
+            }
+            catch
+            {
+                iconId = p.Id;
+            }
+
+            return iconId
                 .ToLower()
                 .Replace('_', '-')
                 .Replace('.', '-')

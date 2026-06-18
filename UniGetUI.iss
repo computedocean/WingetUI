@@ -29,7 +29,10 @@ DefaultDirName="{autopf64}\UniGetUI"
 DisableProgramGroupPage=yes
 DisableDirPage=no
 DirExistsWarning=no
-CloseApplications=no
+; Force-close any process holding files we overwrite (backstop for the kill in PrepareToInstall).
+CloseApplications=force
+CloseApplicationsFilter=*.exe,*.dll
+RestartApplications=no
 ; Default to per-user install mode and let the dialog opt into all-users installs when needed.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
@@ -97,24 +100,70 @@ begin
   WizardForm.Bevel1.Visible := True;
 end;
 
-procedure TaskKill(FileName: String);
+// Kills all instances of an image and loops until none remain (taskkill returns 0 while killing, 128 when none left).
+procedure TaskKillWait(FileName: String);
 var
-  ResultCode: Integer;
+  ResultCode, Attempts: Integer;
 begin
-    Exec('taskkill.exe', '/f /im ' + '"' + FileName + '"', '', SW_HIDE,
-     ewWaitUntilTerminated, ResultCode);
+    Attempts := 0;
+    repeat
+        if not Exec('taskkill.exe', '/f /im "' + FileName + '"', '', SW_HIDE,
+            ewWaitUntilTerminated, ResultCode) then
+            Break;
+        if ResultCode <> 0 then
+            Break;
+        Sleep(500);
+        Attempts := Attempts + 1;
+    until Attempts >= 10;
 end;
 
-procedure TripleKill(FileName1: String; FileName2: String; FileName3: String);
-var
-  ResultCode: Integer;
+procedure KillRunningApps;
 begin
-    Exec('taskkill.exe', '/f /im ' + '"' + FileName1 + '"', '', SW_HIDE,
-     ewWaitUntilTerminated, ResultCode);
-    Exec('taskkill.exe', '/f /im ' + '"' + FileName2 + '"', '', SW_HIDE,
-     ewWaitUntilTerminated, ResultCode);     
-    Exec('taskkill.exe', '/f /im ' + '"' + FileName3 + '"', '', SW_HIDE,
-     ewWaitUntilTerminated, ResultCode);
+    TaskKillWait('WingetUI.exe');
+    TaskKillWait('UniGetUI.exe');
+    TaskKillWait('UniGetUI.Avalonia.exe');
+    // Elevator (gsudo cache) and pinget live in {app} and lock their own files.
+    TaskKillWait('UniGetUI Elevator.exe');
+    TaskKillWait('pinget.exe');
+    Sleep(1000); // let the OS release file handles before copying
+
+end;
+
+function GetCurrentProcessId: Cardinal; external 'GetCurrentProcessId@kernel32.dll stdcall';
+
+function UpdateMarkerPath(): String;
+begin
+    Result := ExpandConstant('{app}\.unigetui-update-in-progress');
+end;
+
+// Marker holds our PID; the app blocks only while this installer runs. Name MUST match UpdateInProgressGuard.MarkerFileName.
+procedure WriteUpdateMarker;
+var
+    Pid: Int64;
+begin
+    ForceDirectories(ExpandConstant('{app}'));
+    Pid := GetCurrentProcessId;
+    SaveStringToFile(UpdateMarkerPath(), IntToStr(Pid), False);
+end;
+
+procedure RemoveUpdateMarker;
+begin
+    DeleteFile(UpdateMarkerPath());
+end;
+
+// Runs before any file is copied: shut everything down, then mark the copy window.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+    KillRunningApps;
+    WriteUpdateMarker;
+    Result := '';
+end;
+
+// Clear the marker once the copy is done, before the post-install launch.
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+    if CurStep = ssPostInstall then
+        RemoveUpdateMarker;
 end;
 
 function CmdLineParamExists(const Value: string): Boolean;
@@ -137,6 +186,8 @@ procedure ExitProcess(exitCode:integer);
 
 procedure DeinitializeSetup();
 begin
+    RemoveUpdateMarker; // also clear on abort, before ssPostInstall
+
     if (CustomExitCode <> 0) then
     begin
         DelTree(ExpandConstant('{tmp}'), True, True, True);
@@ -197,7 +248,6 @@ Name: "portableinstall"; Description: "{cm:PortInst}"; GroupDescription: "{cm:In
 Name: "regularinstall"; Description: "{cm:RegInst}"; GroupDescription: "{cm:InstallType}"; Flags: exclusive   
 Name: "regularinstall\startmenuicon"; Description: "{cm:RegStartMmenuIcon}"; GroupDescription: "{cm:ShCuts}"; 
 Name: "regularinstall\desktopicon"; Description: "{cm:RegDesktopIcon}"; GroupDescription: "{cm:ShCuts}";
-Name: "regularinstall\chocoinstall"; Description: "{cm:ChocoInstall}"; GroupDescription: "{cm:ShCuts}";
 
 [Registry]
 Root: HKCU; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "WingetUI"; ValueData: """{app}\UniGetUI.exe"" --daemon"; Flags: uninsdeletevalue noerror; Tasks: regularinstall;
@@ -221,11 +271,9 @@ Root: HKA; Subkey: "Software\Classes\UniGetUI.PackageBundle\shell\open\command";
 Source: "{srcexe}"; DestDir: "{app}"; DestName: "UniGetUI.Installer.exe"; Flags: external ignoreversion; Tasks: regularinstall; Check: not CmdLineParamExists('/NoDeployInstaller');
 ; Deploy integrity tree
 Source: "unigetui_bin\IntegrityTree.json"; DestDir: "{app}"; Flags: createallsubdirs ignoreversion recursesubdirs;
-; Deploy executable files
-Source: "unigetui_bin\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: TripleKill('WingetUI.exe', 'UniGetUI.exe', 'choco.exe');
+; Deploy executable files (running instances already killed in PrepareToInstall).
+Source: "unigetui_bin\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion;
 Source: "unigetui_bin\*"; DestDir: "{app}"; Flags: createallsubdirs ignoreversion recursesubdirs;
-; Deploy chocolatey (unless disabled)
-Source: "src\UniGetUI.PackageEngine.Managers.Chocolatey\choco-cli\*"; DestDir: "{userpf}\..\UniGetUI\Chocolatey"; Flags: createallsubdirs ignoreversion recursesubdirs uninsneveruninstall; Tasks: regularinstall\chocoinstall; Check: not CmdLineParamExists('/NoChocolatey');
 ; Make installation portable (if required)
 Source: "InstallerExtras\ForceUniGetUIPortable"; DestDir: "{app}"; Tasks: portableinstall
 
@@ -238,7 +286,6 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: re
 ; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File -NonInteractive ""{tmp}\EnsureWinGet.ps1"""; StatusMsg: "Ensuring WinGet is properly installed... (this may take a while)"; WorkingDir: {app}; Check: not CmdLineParamExists('/NoWinGet'); Flags: runhidden
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: runasoriginaluser nowait postinstall; Check: not CmdLineParamExists('/NoAutoStart');
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--migrate-wingetui-to-unigetui"; StatusMsg: "Removing old icons...";
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--enable-setting UseSystemChocolatey"; Check: CmdLineParamExists('/EnableSystemChocolatey');
 
 
 [UninstallRun]    
@@ -246,3 +293,4 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "--enable-setting UseSystemChocol
 ; Filename: "{app}\{#MyAppExeName}"; Parameters: "--uninstall-unigetui"; Flags: skipifdoesntexist runhidden;
 Filename: {sys}\taskkill.exe; Parameters: "/f /im WingetUI.exe"; Flags: skipifdoesntexist runhidden; RunOnceId: "KillWingetUI"
 Filename: {sys}\taskkill.exe; Parameters: "/f /im UniGetUI.exe"; Flags: skipifdoesntexist runhidden; RunOnceId: "KillUniGetUI"
+Filename: {sys}\taskkill.exe; Parameters: "/f /im UniGetUI.Avalonia.exe"; Flags: skipifdoesntexist runhidden; RunOnceId: "KillUniGetUIAvalonia"

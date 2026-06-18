@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -15,6 +16,7 @@ using UniGetUI.Avalonia.ViewModels;
 using UniGetUI.Avalonia.Views.Controls;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
+using UniGetUI.Interface.Telemetry;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.PackageEngine.Operations;
@@ -68,7 +70,16 @@ public class SourceTreeNode : INotifyPropertyChanged
     public string? PackageID { get; init; }
     public string? Version { get; init; }
     public string? Source { get; init; }
-    public List<SourceTreeNode> Children { get; } = [];
+    public AvaloniaList<SourceTreeNode> Children { get; }
+
+    public bool HasChildren => Children.Count > 0;
+
+    public SourceTreeNode()
+    {
+        Children = new AvaloniaList<SourceTreeNode>();
+        Children.CollectionChanged += (_, _) =>
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasChildren)));
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -89,14 +100,33 @@ public class SourceTreeNode : INotifyPropertyChanged
 
 public partial class PackagesPageViewModel : ViewModelBase
 {
-    public double FilterPaneColumnWidth => IsFilterPaneOpen ? 220.0 : 0.0;
-    partial void OnIsFilterPaneOpenChanged(bool _) => OnPropertyChanged(nameof(FilterPaneColumnWidth));
+    // Live width of the filter pane. Code-behind keeps this in sync with the GridSplitter
+    // so the toolbar's main button (bound to FilterPaneColumnWidth) tracks resizes.
+    private double _trackedFilterPaneWidth = 220.0;
+    public double TrackedFilterPaneWidth
+    {
+        get => _trackedFilterPaneWidth;
+        set
+        {
+            if (Math.Abs(_trackedFilterPaneWidth - value) < 0.5) return;
+            _trackedFilterPaneWidth = value;
+            if (IsFilterPaneOpen) OnPropertyChanged(nameof(FilterPaneColumnWidth));
+        }
+    }
+
+    public double FilterPaneColumnWidth => IsFilterPaneOpen ? _trackedFilterPaneWidth : 0.0;
+    partial void OnIsFilterPaneOpenChanged(bool value)
+    {
+        OnPropertyChanged(nameof(FilterPaneColumnWidth));
+        Settings.SetDictionaryItem(Settings.K.HideToggleFilters, PageName, !value);
+    }
 
     // ─── Static config (set once in constructor) ──────────────────────────────
     public readonly string PageName;
     public readonly bool MegaQueryBoxEnabled;
     public readonly bool DisableFilterOnQueryChange;
     public readonly bool DisableReload;
+    public readonly bool LoadsOnStart;
     public readonly bool RoleIsUpdateLike;
     public bool SimilarSearchEnabled { get; private set; }
     public readonly string NoPackagesText;
@@ -123,6 +153,7 @@ public partial class PackagesPageViewModel : ViewModelBase
     [ObservableProperty] private string _globalQueryText = "";
     [ObservableProperty] private bool _newVersionHeaderVisible;
     [ObservableProperty] private bool _reloadButtonVisible;
+    [ObservableProperty] private string _reloadButtonTooltip = "";
     [ObservableProperty] private bool _isFilterPaneOpen;
     [ObservableProperty] private PackageViewMode _viewMode;
     [ObservableProperty] private int _sortFieldIndex;
@@ -143,6 +174,11 @@ public partial class PackagesPageViewModel : ViewModelBase
     public AvaloniaList<SourceTreeNode> SourceNodes { get; } = new();
     public AvaloniaList<object> ToolBarItems { get; } = new();
 
+    // Labels of toolbar buttons that can be hidden to collapse the menu bar to icon-only
+    // on narrow windows (buttons created with showLabel: false are never tracked here).
+    private readonly List<TextBlock> _collapsibleToolbarLabels = new();
+    private bool _toolbarLabelsCollapsed;
+
     // ─── Internal state ───────────────────────────────────────────────────────
     private string _searchQuery = "";
     public string QueryBackup { get; set; } = "";
@@ -153,6 +189,7 @@ public partial class PackagesPageViewModel : ViewModelBase
     protected ConcurrentDictionary<IPackageManager, SourceTreeNode> RootNodeForManager = new();
     protected ConcurrentDictionary<IManagerSource, SourceTreeNode> NodesForSources = new();
     private readonly SourceTreeNode _localPackagesNode = new() { PackageName = "local" };
+    private bool _isSynchronizingSourceSelection;
 
     // ─── Events (replace abstract methods) ───────────────────────────────────
     public event Action<ReloadReason>? PackagesLoaded;
@@ -165,11 +202,6 @@ public partial class PackagesPageViewModel : ViewModelBase
     public event Action? HelpRequested;
     /// <summary>Fired when the ViewModel wants to show the Manage-Ignored-Updates dialog.</summary>
     public event Action? ManageIgnoredRequested;
-    /// <summary>
-    /// Fired when the ViewModel has built a share URL.
-    /// Arguments: (packageName, url). Both null means "nothing to share".
-    /// </summary>
-    public event Action<string?, string?>? SharePackageRequested;
 
     // ─── Constructor ─────────────────────────────────────────────────────────
     public PackagesPageViewModel(PackagesPageData data)
@@ -180,6 +212,7 @@ public partial class PackagesPageViewModel : ViewModelBase
         DisableFilterOnQueryChange = data.DisableFilterOnQueryChange;
         MegaQueryBoxEnabled = data.MegaQueryBlockEnabled;
         DisableReload = data.DisableReload;
+        LoadsOnStart = !data.DisableAutomaticPackageLoadOnStart;
         _showLastCheckedTime = data.ShowLastLoadTime;
         NoPackagesText = data.NoPackages_BackgroundText;
         NoMatchesText = data.NoMatches_BackgroundText;
@@ -192,6 +225,11 @@ public partial class PackagesPageViewModel : ViewModelBase
         SearchBoxPlaceholder = CoreTools.Translate("Search for packages");
 
         AllPackagesChecked = data.PackagesAreCheckedByDefault;
+        FilteredPackages.SelectionStateChanged += (_, _) =>
+        {
+            if (_suppressSelectionRecompute) return;
+            AllPackagesChecked = FilteredPackages.GetSelectionState();
+        };
 
         Loader = data.Loader;
         Loader.StartedLoading += Loader_StartedLoading;
@@ -206,6 +244,10 @@ public partial class PackagesPageViewModel : ViewModelBase
         ViewMode = Enum.IsDefined(typeof(PackageViewMode), savedMode)
             ? (PackageViewMode)savedMode
             : PackageViewMode.List;
+
+        // Restore per-page filter pane open/closed state (default: open).
+        // Use backing field to avoid writing to settings during construction.
+        _isFilterPaneOpen = !Settings.GetDictionaryItem<string, bool>(Settings.K.HideToggleFilters, PageName);
 
         _localPackagesNode.PackageName = CoreTools.Translate("Local");
 
@@ -234,47 +276,71 @@ public partial class PackagesPageViewModel : ViewModelBase
         var icon = new SvgIcon
         {
             Path = $"avares://UniGetUI.Avalonia/Assets/Symbols/{svgName}.svg",
-            Width = 16,
-            Height = 16,
+            Width = 20,
+            Height = 20,
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         content.Children.Add(icon);
         if (showLabel)
         {
-            content.Children.Add(new TextBlock
+            var labelBlock = new TextBlock
             {
                 Text = label,
                 FontSize = 12,
                 VerticalAlignment = VerticalAlignment.Center,
-            });
+                IsVisible = !_toolbarLabelsCollapsed,
+            };
+            content.Children.Add(labelBlock);
+            _collapsibleToolbarLabels.Add(labelBlock);
         }
 
         var btn = new Button
         {
-            Height = 36,
-            Padding = new Thickness(8, 4),
+            Height = 40,
+            Padding = new Thickness(10, 4),
             CornerRadius = new CornerRadius(4),
             Content = content,
         };
         ToolTip.SetTip(btn, label);
+        AutomationProperties.SetName(btn, label);
         btn.Click += (_, _) => onClick();
         ToolBarItems.Add(btn);
         return btn;
     }
 
+    /// <summary>
+    /// Collapses the menu bar to icon-only (or restores labels) on narrow windows,
+    /// mirroring the WinUI CommandBar's DefaultLabelPosition behavior.
+    /// </summary>
+    public void SetToolbarLabelsCollapsed(bool collapsed)
+    {
+        if (_toolbarLabelsCollapsed == collapsed) return;
+        _toolbarLabelsCollapsed = collapsed;
+        foreach (var label in _collapsibleToolbarLabels)
+            label.IsVisible = !collapsed;
+    }
+
     /// <summary>Adds a thin vertical separator to the toolbar.</summary>
     public void AddToolbarSeparator()
     {
-        ToolBarItems.Add(new Separator
+        object? borderResource = null;
+        Application.Current?.Resources.TryGetResource(
+            "AppBorderBrush",
+            Application.Current?.ActualThemeVariant,
+            out borderResource);
+
+        var sep = new Separator
         {
             Width = 1,
-            Height = 30,
+            Height = 32,
             Margin = new Thickness(4, 4),
-            Background = Application.Current?.FindResource("AppBorderBrush") as IBrush
-                         ?? new SolidColorBrush(Color.FromArgb(60, 255, 255, 255)),
-        });
+            Background = borderResource as IBrush
+                         ?? new SolidColorBrush(Color.FromArgb(80, 128, 128, 128)),
+        };
+        AutomationProperties.SetAccessibilityView(sep, AccessibilityView.Raw);
+        ToolBarItems.Add(sep);
     }
 
     public async Task ShowInfoDialog(Window owner, string title, string message)
@@ -344,11 +410,13 @@ public partial class PackagesPageViewModel : ViewModelBase
         {
             foreach (var pkg in e.AddedPackages)
             {
-                if (_wrappedPackages.Any(w => w.Package.Equals(pkg))) continue;
+                if (_wrappedPackages.Any(w => w.Package.GetVersionedHash() == pkg.GetVersionedHash())) continue;
                 _wrappedPackages.Add(new PackageWrapper(pkg, this));
                 AddPackageToSourcesList(pkg);
             }
-            var toRemove = _wrappedPackages.Where(w => e.RemovedPackages.Contains(w.Package)).ToList();
+            var toRemove = _wrappedPackages
+                .Where(w => e.RemovedPackages.Any(r => r.GetVersionedHash() == w.Package.GetVersionedHash()))
+                .ToList();
             foreach (var wrapper in toRemove) { wrapper.Dispose(); _wrappedPackages.Remove(wrapper); }
         }
         else
@@ -374,6 +442,7 @@ public partial class PackagesPageViewModel : ViewModelBase
         }
         IsLoading = false;
         _lastLoadTime = DateTime.Now;
+        ReloadButtonTooltip = CoreTools.Translate("Last checked: {0}", _lastLoadTime.ToString(CultureInfo.CurrentCulture));
         FilterPackages();
         PackagesLoaded?.Invoke(ReloadReason.External);
     }
@@ -447,14 +516,17 @@ public partial class PackagesPageViewModel : ViewModelBase
             _ => pkg => FilterHelpers.NameOrIdContains(pkg, query, filters),
         };
 
-        var selectedSources = GetSelectedSourceNodes();
+        var (visibleSources, visibleManagers) = GetSelectedSourceFilters();
         Func<IPackage, bool> sourceFilter = SourceNodes.Count == 0
             ? _ => true   // sources not yet loaded — show everything
-            : selectedSources.Count == 0
+            : visibleSources.Count == 0 && visibleManagers.Count == 0
                 ? _ => false  // sources loaded but none selected — show nothing
-                : pkg => selectedSources.Any(n =>
-                    n.PackageName.TrimEnd('.', ' ') == pkg.Source.Manager.DisplayName
-                    || n.PackageName.TrimEnd('.', ' ') == pkg.Source.Name);
+                : pkg =>
+                    visibleSources.Contains(pkg.Source)
+                    || (
+                        !pkg.Manager.Capabilities.SupportsCustomSources
+                        && visibleManagers.Contains(pkg.Manager)
+                    );
 
         var results = FilteredPackages.ApplyToList(
             _wrappedPackages.Where(w => matchFunc(w.Package) && sourceFilter(w.Package))
@@ -466,7 +538,14 @@ public partial class PackagesPageViewModel : ViewModelBase
         UpdateSubtitle();
         PackageCountUpdated?.Invoke();
 
-        if (FilteredPackages.Count == 0)
+        bool loadingOrPending = Loader.IsLoading || (LoadsOnStart && !Loader.IsLoaded);
+
+        if (loadingOrPending && FilteredPackages.Count == 0)
+        {
+            BackgroundText = _stillLoadingSubtitle;
+            BackgroundTextVisible = true;
+        }
+        else if (FilteredPackages.Count == 0)
         {
             BackgroundText = string.IsNullOrWhiteSpace(query) ? NoPackagesText : NoMatchesText;
             BackgroundTextVisible = !MegaQueryBoxEnabled || !string.IsNullOrWhiteSpace(query);
@@ -483,7 +562,6 @@ public partial class PackagesPageViewModel : ViewModelBase
         if (!Loader.IsLoading && (!Loader.IsLoaded
             || reason is ReloadReason.External or ReloadReason.Manual or ReloadReason.Automated))
         {
-            Loader.ClearPackages(emitFinishSignal: false);
             await Loader.ReloadPackages();
         }
     }
@@ -543,10 +621,19 @@ public partial class PackagesPageViewModel : ViewModelBase
     public bool SearchMode_Exact { get => SearchMode == SearchMode.Exact; set { if (value) SearchMode = SearchMode.Exact; } }
     public bool SearchMode_Similar { get => SearchMode == SearchMode.Similar; set { if (value) SearchMode = SearchMode.Similar; } }
 
+    private bool _suppressSelectionRecompute;
     partial void OnAllPackagesCheckedChanged(bool? value)
     {
-        if (value == true) FilteredPackages.SelectAll();
-        else if (value == false) FilteredPackages.ClearSelection();
+        _suppressSelectionRecompute = true;
+        try
+        {
+            if (value == true) FilteredPackages.SelectAll();
+            else if (value == false) FilteredPackages.ClearSelection();
+        }
+        finally
+        {
+            _suppressSelectionRecompute = false;
+        }
     }
 
     // ─── Sources ──────────────────────────────────────────────────────────────
@@ -582,7 +669,7 @@ public partial class PackagesPageViewModel : ViewModelBase
             UsedSourcesForManager[source.Manager].Add(source);
             var item = new SourceTreeNode
             {
-                PackageName = source.Manager.DisplayName,
+                PackageName = source.Name,
                 PackageID = package.Id,
                 Version = package.VersionString,
                 Source = package.Source.Name
@@ -591,6 +678,8 @@ public partial class PackagesPageViewModel : ViewModelBase
 
             if (source.IsVirtualManager)
             {
+                item.IsSelected = _localPackagesNode.IsSelected;
+                item.PropertyChanged += OnRootSourceNodePropertyChanged;
                 _localPackagesNode.Children.Add(item);
                 if (!GetAllSourceNodes().Contains(_localPackagesNode))
                 {
@@ -600,7 +689,10 @@ public partial class PackagesPageViewModel : ViewModelBase
             }
             else
             {
-                RootNodeForManager[source.Manager].Children.Add(item);
+                var rootNode = RootNodeForManager[source.Manager];
+                item.IsSelected = rootNode.IsSelected;
+                item.PropertyChanged += OnRootSourceNodePropertyChanged;
+                rootNode.Children.Add(item);
             }
         }
     }
@@ -608,7 +700,11 @@ public partial class PackagesPageViewModel : ViewModelBase
     public void ClearSourcesList()
     {
         foreach (var node in SourceNodes)
+        {
             node.PropertyChanged -= OnRootSourceNodePropertyChanged;
+            foreach (var child in node.Children)
+                child.PropertyChanged -= OnRootSourceNodePropertyChanged;
+        }
         UsedManagers.Clear();
         SourceNodes.Clear();
         UsedSourcesForManager.Clear();
@@ -626,14 +722,96 @@ public partial class PackagesPageViewModel : ViewModelBase
     private void OnRootSourceNodePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(SourceTreeNode.IsSelected))
+        {
+            if (sender is SourceTreeNode node && SourceNodes.Contains(node))
+            {
+                _isSynchronizingSourceSelection = true;
+                try
+                {
+                    foreach (var child in node.Children)
+                    {
+                        child.IsSelected = node.IsSelected;
+                    }
+                }
+                finally
+                {
+                    _isSynchronizingSourceSelection = false;
+                }
+            }
+
+            if (_isSynchronizingSourceSelection)
+                return;
+
             FilterPackages();
+        }
     }
     private List<SourceTreeNode> GetAllSourceNodes() => SourceNodes.ToList();
-    private List<SourceTreeNode> GetSelectedSourceNodes() => SourceNodes.Where(n => n.IsSelected).ToList();
+
+    private (List<IManagerSource> Sources, List<IPackageManager> Managers) GetSelectedSourceFilters()
+    {
+        var visibleSources = new List<IManagerSource>();
+        var visibleManagers = new List<IPackageManager>();
+
+        foreach (var node in GetSelectedSourceNodes())
+        {
+            var source = NodesForSources.FirstOrDefault(x => ReferenceEquals(x.Value, node)).Key;
+            if (source is not null)
+            {
+                if (!visibleSources.Contains(source))
+                    visibleSources.Add(source);
+                continue;
+            }
+
+            var manager = RootNodeForManager.FirstOrDefault(x => ReferenceEquals(x.Value, node)).Key;
+            if (manager is null)
+                continue;
+
+            if (!visibleManagers.Contains(manager))
+                visibleManagers.Add(manager);
+
+            if (!manager.Capabilities.SupportsCustomSources || node.Children.Count > 0)
+                continue;
+
+            foreach (IManagerSource managerSource in manager.SourcesHelper.Factory.GetAvailableSources())
+            {
+                if (!visibleSources.Contains(managerSource))
+                    visibleSources.Add(managerSource);
+            }
+        }
+
+        return (visibleSources, visibleManagers);
+    }
+
+    private List<SourceTreeNode> GetSelectedSourceNodes()
+    {
+        var result = new List<SourceTreeNode>();
+        foreach (var root in SourceNodes)
+        {
+            if (root.IsSelected) result.Add(root);
+            result.AddRange(root.Children.Where(c => c.IsSelected));
+        }
+        return result;
+    }
 
     public void SetSourceNodeSelected(SourceTreeNode node, bool selected) => node.IsSelected = selected;
-    public void ClearSourceSelection() { foreach (var n in SourceNodes) n.IsSelected = false; }
-    public void SelectAllSources() { foreach (var n in SourceNodes) n.IsSelected = true; }
+
+    public void ClearSourceSelection()
+    {
+        foreach (var n in SourceNodes)
+        {
+            n.IsSelected = false;
+            foreach (var c in n.Children) c.IsSelected = false;
+        }
+    }
+
+    public void SelectAllSources()
+    {
+        foreach (var n in SourceNodes)
+        {
+            n.IsSelected = true;
+            foreach (var c in n.Children) c.IsSelected = true;
+        }
+    }
 
     // ─── Header texts ─────────────────────────────────────────────────────────
     public void UpdateHeaderTexts()
@@ -649,6 +827,14 @@ public partial class PackagesPageViewModel : ViewModelBase
     public bool IsListViewMode => ViewMode == PackageViewMode.List;
     public bool IsGridViewMode => ViewMode == PackageViewMode.Grid;
     public bool IsIconsViewMode => ViewMode == PackageViewMode.Icons;
+
+    // Width of each grid-view card slot. The code-behind recomputes this from the available
+    // viewport width so cards stretch to fill the row then reflow, matching WinUI's
+    // UniformGridLayout (ItemsStretch=Fill, MinItemWidth=275) instead of leaving dead space.
+    [ObservableProperty] private double _gridCardWidth = 275;
+
+    // Same idea for the icons view: stretch tiles to fill the row then reflow (min 128px).
+    [ObservableProperty] private double _iconCardWidth = 128;
 
     // Shim for SelectedIndex="{Binding ViewModeIndex}" in AXAML (ListBox requires int)
     public int ViewModeIndex
@@ -677,7 +863,7 @@ public partial class PackagesPageViewModel : ViewModelBase
     // ─── Subtitle ─────────────────────────────────────────────────────────────
     public void UpdateSubtitle()
     {
-        if (Loader.IsLoading)
+        if (Loader.IsLoading || (LoadsOnStart && !Loader.IsLoaded))
         {
             Subtitle = _stillLoadingSubtitle;
             return;
@@ -712,22 +898,6 @@ public partial class PackagesPageViewModel : ViewModelBase
     [RelayCommand] private void RequestHelp() => HelpRequested?.Invoke();
     [RelayCommand] private void RequestManageIgnored() => ManageIgnoredRequested?.Invoke();
 
-    [RelayCommand]
-    public void RequestShare(IPackage? package)
-    {
-        if (package is null || package.Source.IsVirtualManager)
-        {
-            SharePackageRequested?.Invoke(null, null);
-            return;
-        }
-        var url = "https://marticliment.com/unigetui/share?"
-            + "name=" + System.Web.HttpUtility.UrlEncode(package.Name)
-            + "&id=" + System.Web.HttpUtility.UrlEncode(package.Id)
-            + "&sourceName=" + System.Web.HttpUtility.UrlEncode(package.Source.Name)
-            + "&managerName=" + System.Web.HttpUtility.UrlEncode(package.Manager.Name);
-        SharePackageRequested?.Invoke(package.Name, url);
-    }
-
     // ─── Sort commands ────────────────────────────────────────────────────────
     [RelayCommand] private void SortByName() => SortFieldIndex = 0;
     [RelayCommand] private void SortById() => SortFieldIndex = 1;
@@ -758,11 +928,15 @@ public partial class PackagesPageViewModel : ViewModelBase
         {
             AllPackagesChecked = true;
             FilteredPackages.SelectAll();
+            AccessibilityAnnouncementService.Announce(
+                CoreTools.Translate("All packages selected"));
         }
         else
         {
             AllPackagesChecked = false;
             FilteredPackages.ClearSelection();
+            AccessibilityAnnouncementService.Announce(
+                CoreTools.Translate("Package selection cleared"));
         }
     }
 
@@ -784,6 +958,8 @@ public partial class PackagesPageViewModel : ViewModelBase
             var opts = await InstallOptionsFactory.LoadApplicableAsync(
                 pkg, elevated: elevated, interactive: interactive, no_integrity: no_integrity);
             var op = new InstallPackageOperation(pkg, opts);
+            op.OperationSucceeded += (_, _) => TelemetryHandler.InstallPackage(pkg, TEL_OP_RESULT.SUCCESS, TEL_InstallReferral.DIRECT_SEARCH);
+            op.OperationFailed += (_, _) => TelemetryHandler.InstallPackage(pkg, TEL_OP_RESULT.FAILED, TEL_InstallReferral.DIRECT_SEARCH);
             AvaloniaOperationRegistry.Add(op);
             _ = op.MainThread();
         }

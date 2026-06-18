@@ -1,11 +1,12 @@
-using System.Web;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Avalonia.ViewModels.Pages;
 using UniGetUI.Avalonia.Views;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.Tools;
+using UniGetUI.Interface.Enums;
 using UniGetUI.Interface.Telemetry;
 using UniGetUI.PackageEngine.Classes.Manager.Classes;
 using UniGetUI.PackageEngine.Enums;
@@ -64,7 +65,8 @@ public class DiscoverSoftwarePage : AbstractPackagesPage
         installAsAdmin.Click += (_, _) => _ = LaunchInstall(vm.FilteredPackages.GetCheckedPackages(), elevated: true);
         installSkipHash.Click += (_, _) => _ = LaunchInstall(vm.FilteredPackages.GetCheckedPackages(), no_integrity: true);
         installInteractive.Click += (_, _) => _ = LaunchInstall(vm.FilteredPackages.GetCheckedPackages(), interactive: true);
-        downloadInstallers.Click += (_, _) => { /* TODO: download-only operation not yet ported */ };
+        downloadInstallers.Click += (_, _) => _ = AvaloniaPackageOperationHelper.DownloadSelectedAsync(
+            vm.FilteredPackages.GetCheckedPackages(), TEL_InstallReferral.DIRECT_SEARCH);
 
         // ── Toolbar buttons ─────────────────────────────────────────────────
         ViewModel.AddToolbarSeparator();
@@ -73,14 +75,9 @@ public class DiscoverSoftwarePage : AbstractPackagesPage
         ViewModel.AddToolbarSeparator();
         ViewModel.AddToolbarButton("info_round", CoreTools.Translate("Package details"),
             () => _ = ShowDetailsForPackage(SelectedItem), showLabel: false);
-        ViewModel.AddToolbarButton("share", CoreTools.Translate("Share"),
-            () => vm.RequestShareCommand.Execute(SelectedItem), showLabel: false);
         ViewModel.AddToolbarSeparator();
         ViewModel.AddToolbarButton("add_to", CoreTools.Translate("Add selection to bundle"),
             () => _ = ExportSelectionToBundleAsync(vm));
-        ViewModel.AddToolbarSeparator();
-        ViewModel.AddToolbarButton("help", CoreTools.Translate("Help"),
-            () => vm.RequestHelpCommand.Execute(null));
     }
 
     // ─── Context menu ─────────────────────────────────────────────────────────
@@ -88,7 +85,7 @@ public class DiscoverSoftwarePage : AbstractPackagesPage
     {
         _menuAsAdmin = new MenuItem
         {
-            Header = CoreTools.AutoTranslated("Install as administrator"),
+            Header = CoreTools.Translate("Install as administrator"),
             Icon = LoadMenuIcon("uac"),
             IsVisible = OperatingSystem.IsWindows(),
         };
@@ -96,35 +93,33 @@ public class DiscoverSoftwarePage : AbstractPackagesPage
 
         _menuInteractive = new MenuItem
         {
-            Header = CoreTools.AutoTranslated("Interactive installation"),
+            Header = CoreTools.Translate("Interactive installation"),
             Icon = LoadMenuIcon("interactive"),
         };
         _menuInteractive.Click += (_, _) => _ = LaunchInstall([SelectedItem!], interactive: true);
 
         _menuSkipHash = new MenuItem
         {
-            Header = CoreTools.AutoTranslated("Skip hash check"),
+            Header = CoreTools.Translate("Skip hash check"),
             Icon = LoadMenuIcon("checksum"),
         };
         _menuSkipHash.Click += (_, _) => _ = LaunchInstall([SelectedItem!], no_integrity: true);
 
         _menuDownloadInstaller = new MenuItem
         {
-            Header = CoreTools.AutoTranslated("Download installer"),
+            Header = CoreTools.Translate("Download installer"),
             Icon = LoadMenuIcon("download"),
         };
-        _menuDownloadInstaller.Click += (_, _) => { /* TODO: download-only operation */ };
+        _menuDownloadInstaller.Click += (_, _) => _ = AvaloniaPackageOperationHelper.AskLocationAndDownloadAsync(
+            SelectedItem, TEL_InstallReferral.DIRECT_SEARCH);
 
-        var menuInstall = new MenuItem { Header = CoreTools.AutoTranslated("Install"), Icon = LoadMenuIcon("download") };
+        var menuInstall = new MenuItem { Header = ShortcutHeader(CoreTools.Translate("Install"), MainActionShortcut), Icon = LoadMenuIcon("download") };
         menuInstall.Click += (_, _) => _ = LaunchInstall([SelectedItem!]);
 
-        var menuInstallOptions = new MenuItem { Header = CoreTools.AutoTranslated("Install options"), Icon = LoadMenuIcon("options") };
+        var menuInstallOptions = new MenuItem { Header = ShortcutHeader(CoreTools.Translate("Install options"), OptionsShortcut), Icon = LoadMenuIcon("options") };
         menuInstallOptions.Click += (_, _) => _ = ShowInstallationOptionsForPackage(SelectedItem);
 
-        var menuShare = new MenuItem { Header = CoreTools.AutoTranslated("Share this package"), Icon = LoadMenuIcon("share") };
-        menuShare.Click += (_, _) => ViewModel.RequestShareCommand.Execute(SelectedItem);
-
-        var menuDetails = new MenuItem { Header = CoreTools.AutoTranslated("Package details"), Icon = LoadMenuIcon("info_round") };
+        var menuDetails = new MenuItem { Header = ShortcutHeader(CoreTools.Translate("Package details"), DetailsShortcut), Icon = LoadMenuIcon("info_round") };
         menuDetails.Click += (_, _) => _ = ShowDetailsForPackage(SelectedItem);
 
         var menu = new ContextMenu();
@@ -137,7 +132,6 @@ public class DiscoverSoftwarePage : AbstractPackagesPage
         menu.Items.Add(_menuSkipHash);
         menu.Items.Add(_menuDownloadInstaller);
         menu.Items.Add(new Separator());
-        menu.Items.Add(menuShare);
         menu.Items.Add(menuDetails);
 
         return menu;

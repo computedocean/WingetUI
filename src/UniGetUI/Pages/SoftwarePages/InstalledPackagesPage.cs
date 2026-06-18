@@ -30,7 +30,6 @@ namespace UniGetUI.Interface.SoftwarePages
         private BetterMenuItem? MenuReinstallPackage;
         private BetterMenuItem? MenuUninstallThenReinstall;
         private BetterMenuItem? MenuIgnoreUpdates;
-        private BetterMenuItem? MenuSharePackage;
         private BetterMenuItem? MenuPackageDetails;
         private BetterMenuItem? MenuOpenInstallLocation;
         private BetterMenuItem? MenuDownloadInstaller;
@@ -168,14 +167,6 @@ namespace UniGetUI.Interface.SoftwarePages
 
             menu.Items.Add(new MenuFlyoutSeparator());
 
-            MenuSharePackage = new()
-            {
-                Text = CoreTools.AutoTranslated("Share this package"),
-                IconName = IconType.Share,
-            };
-            MenuSharePackage.Click += MenuShare_Invoked;
-            menu.Items.Add(MenuSharePackage);
-
             MenuPackageDetails = new()
             {
                 Text = CoreTools.AutoTranslated("Package details"),
@@ -211,26 +202,20 @@ namespace UniGetUI.Interface.SoftwarePages
             AppBarButton InstallationSettings = new();
 
             AppBarButton PackageDetails = new();
-            AppBarButton SharePackage = new();
 
             AppBarButton IgnoreSelected = new();
             AppBarButton ManageIgnored = new();
             AppBarButton ExportSelection = new();
 
-            AppBarButton HelpButton = new();
-
             ToolBar.PrimaryCommands.Add(new AppBarSeparator());
             ToolBar.PrimaryCommands.Add(InstallationSettings);
             ToolBar.PrimaryCommands.Add(new AppBarSeparator());
             ToolBar.PrimaryCommands.Add(PackageDetails);
-            ToolBar.PrimaryCommands.Add(SharePackage);
             ToolBar.PrimaryCommands.Add(new AppBarSeparator());
             ToolBar.PrimaryCommands.Add(IgnoreSelected);
             ToolBar.PrimaryCommands.Add(ManageIgnored);
             ToolBar.PrimaryCommands.Add(new AppBarSeparator());
             ToolBar.PrimaryCommands.Add(ExportSelection);
-            ToolBar.PrimaryCommands.Add(new AppBarSeparator());
-            ToolBar.PrimaryCommands.Add(HelpButton);
 
             Dictionary<DependencyObject, string> Labels = new()
             { // Entries with a trailing space are collapsed
@@ -240,11 +225,9 @@ namespace UniGetUI.Interface.SoftwarePages
                 { DownloadInstallers, CoreTools.Translate("Download selected installers") },
                 { InstallationSettings, " " + CoreTools.Translate("Uninstall options") },
                 { PackageDetails, " " + CoreTools.Translate("Package details") },
-                { SharePackage, " " + CoreTools.Translate("Share") },
                 { IgnoreSelected, CoreTools.Translate("Ignore selected packages") },
                 { ManageIgnored, CoreTools.Translate("Manage ignored updates") },
                 { ExportSelection, CoreTools.Translate("Add selection to bundle") },
-                { HelpButton, CoreTools.Translate("Help") },
             };
 
             Dictionary<DependencyObject, IconType> Icons = new()
@@ -254,11 +237,9 @@ namespace UniGetUI.Interface.SoftwarePages
                 { DownloadInstallers, IconType.Download },
                 { InstallationSettings, IconType.Options },
                 { PackageDetails, IconType.Info_Round },
-                { SharePackage, IconType.Share },
                 { IgnoreSelected, IconType.Pin },
                 { ManageIgnored, IconType.ClipboardList },
                 { ExportSelection, IconType.AddTo },
-                { HelpButton, IconType.Help },
             };
 
             ApplyTextAndIconsToToolbar(Labels, Icons);
@@ -267,7 +248,6 @@ namespace UniGetUI.Interface.SoftwarePages
                 ShowDetailsForPackage(SelectedItem, TEL_InstallReferral.ALREADY_INSTALLED);
 
             ExportSelection.Click += ExportSelection_Click;
-            HelpButton.Click += (_, _) => MainApp.Instance.MainWindow.NavigationPage.ShowHelp();
             InstallationSettings.Click += (_, _) =>
                 _ = ShowInstallationOptionsForPackage(SelectedItem);
             ManageIgnored.Click += async (_, _) => await DialogHelper.ManageIgnoredUpdates();
@@ -300,7 +280,6 @@ namespace UniGetUI.Interface.SoftwarePages
                     FilteredPackages.GetCheckedPackages(),
                     TEL_InstallReferral.ALREADY_INSTALLED
                 );
-            SharePackage.Click += (_, _) => DialogHelper.SharePackage(SelectedItem);
         }
 
         protected override void WhenPackageCountUpdated()
@@ -323,12 +302,12 @@ namespace UniGetUI.Interface.SoftwarePages
                 }
             }
 
+            var infoBar = MainApp.Instance.MainWindow.WinGetWarningBanner;
             if (
                 WinGet.NO_PACKAGES_HAVE_BEEN_LOADED
                 && !Settings.Get(Settings.K.DisableWinGetMalfunctionDetector)
             )
             {
-                var infoBar = MainApp.Instance.MainWindow.WinGetWarningBanner;
                 infoBar.IsOpen = true;
                 infoBar.Title = CoreTools.Translate("WinGet malfunction detected");
                 infoBar.Message = CoreTools.Translate(
@@ -337,6 +316,11 @@ namespace UniGetUI.Interface.SoftwarePages
                 var button = new Button { Content = CoreTools.Translate("Repair WinGet") };
                 infoBar.ActionButton = button;
                 button.Click += (_, _) => _ = DialogHelper.HandleBrokenWinGet();
+            }
+            else
+            {
+                infoBar.IsOpen = false;
+                infoBar.ActionButton = null;
             }
         }
 
@@ -353,7 +337,6 @@ namespace UniGetUI.Interface.SoftwarePages
                 || MenuUninstallThenReinstall is null
                 || MenuReinstallPackage is null
                 || MenuIgnoreUpdates is null
-                || MenuSharePackage is null
                 || MenuPackageDetails is null
                 || MenuOpenInstallLocation is null
                 || MenuDownloadInstaller is null
@@ -373,7 +356,6 @@ namespace UniGetUI.Interface.SoftwarePages
             MenuReinstallPackage.IsEnabled = !IS_LOCAL;
             MenuUninstallThenReinstall.IsEnabled = !IS_LOCAL;
             MenuIgnoreUpdates.IsEnabled = false; // Will be set on the lines below;
-            MenuSharePackage.IsEnabled = !IS_LOCAL;
             MenuPackageDetails.IsEnabled = !IS_LOCAL;
             MenuDownloadInstaller.IsEnabled =
                 !IS_LOCAL && package.Manager.Capabilities.CanDownloadInstaller;
@@ -525,14 +507,6 @@ namespace UniGetUI.Interface.SoftwarePages
                 await package.AddToIgnoredUpdatesAsync();
                 UpgradablePackagesLoader.Instance.Remove(package);
             }
-        }
-
-        private void MenuShare_Invoked(object sender, RoutedEventArgs args)
-        {
-            if (SelectedItem is null)
-                return;
-
-            DialogHelper.SharePackage(SelectedItem);
         }
 
         private void MenuDetails_Invoked(object sender, RoutedEventArgs args)

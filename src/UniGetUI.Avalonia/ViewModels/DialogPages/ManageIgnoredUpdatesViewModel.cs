@@ -108,8 +108,9 @@ public partial class ManageIgnoredUpdatesViewModel : ObservableObject
             await entry.RemoveAsync();
     }
 
-    private static string ResolveManagerIcon(string managerKey) =>
-        (managerKey switch
+    private static string ResolveManagerIcon(string managerKey)
+    {
+        string name = managerKey switch
         {
             "winget" => "winget",
             "scoop" => "scoop",
@@ -123,10 +124,13 @@ public partial class ManageIgnoredUpdatesViewModel : ObservableObject
             "steam" => "steam",
             "gog" => "gog",
             "uplay" => "uplay",
+            "apt" => "apt",
+            "dnf" => "dnf",
+            "pacman" => "pacman",
             _ => "ms_store",
-        }) is var name
-            ? $"avares://UniGetUI.Avalonia/Assets/Symbols/{name}.svg"
-            : $"avares://UniGetUI.Avalonia/Assets/Symbols/ms_store.svg";
+        };
+        return $"avares://UniGetUI.Avalonia/Assets/Symbols/{name}.svg";
+    }
 }
 
 public partial class IgnoredPackageEntryViewModel : ObservableObject
@@ -139,6 +143,8 @@ public partial class IgnoredPackageEntryViewModel : ObservableObject
     public string ManagerIconPath { get; }
     public string VersionDisplay { get; }
     public string NewVersion { get; }
+    public string AutomationName { get; }
+    public string RemoveAutomationName { get; }
 
     private readonly string _ignoredId;
 
@@ -154,6 +160,10 @@ public partial class IgnoredPackageEntryViewModel : ObservableObject
         ManagerIconPath = managerIconPath;
         VersionDisplay = versionDisplay;
         NewVersion = newVersion;
+        AutomationName = CoreTools.Translate("Package {name} from {manager}")
+            .Replace("{name}", Name)
+            .Replace("{manager}", Manager);
+        RemoveAutomationName = CoreTools.Translate("Remove {0} from ignored updates", Name);
     }
 
     [RelayCommand]

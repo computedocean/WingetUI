@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Windows.Win32.System.Com;
@@ -17,6 +18,10 @@ public class WindowsPackageManagerStandardFactory : WindowsPackageManagerFactory
     )
         : base(clsidContext, allowLowerTrustRegistration) { }
 
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2072",
+        Justification = "WinGet COM projected activation types come from the Windows Package Manager WinMD and registered COM server; this path does not depend on app-owned trimmed constructors.")]
     protected override T CreateInstance<T>(Guid clsid, Guid iid)
     {
         if (!_allowLowerTrustRegistration)

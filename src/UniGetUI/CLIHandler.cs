@@ -1,7 +1,11 @@
+using System.Text.Json;
+using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.SettingsEngine.SecureSettings;
 using UniGetUI.Core.Tools;
+using UniGetUI.Interface;
+using UniGetUI.Shared;
 
 namespace UniGetUI;
 
@@ -25,6 +29,7 @@ public static class CLIHandler
     public const string DISABLE_SECURE_SETTING = "--disable-secure-setting";
     public const string ENABLE_SECURE_SETTING_FOR_USER = SecureSettings.Args.ENABLE_FOR_USER;
     public const string DISABLE_SECURE_SETTING_FOR_USER = SecureSettings.Args.DISABLE_FOR_USER;
+    public const string HEADLESS = "--headless";
 
     private enum HRESULT
     {
@@ -33,147 +38,78 @@ public static class CLIHandler
         STATUS_INVALID_PARAMETER = -1073741811,
         STATUS_NO_SUCH_FILE = -1073741809,
         STATUS_UNKNOWN__SETTINGS_KEY = -2,
+        STATUS_BACKGROUND_API_UNAVAILABLE = -3,
+        STATUS_UNKNOWN_AUTOMATION_COMMAND = -4,
     }
 
     public static int Help()
     {
-        var url =
-            "https://github.com/Devolutions/UniGetUI/blob/main/cli-arguments.md#unigetui-command-line-parameters";
-        CoreTools.Launch(url);
-        return 0;
+        return SharedPreUiCommandDispatcher.Help();
     }
 
     public static int ImportSettings()
     {
-        var args = Environment.GetCommandLineArgs().ToList();
+        return ImportSettings(Environment.GetCommandLineArgs());
+    }
 
-        var filePos = args.IndexOf(IMPORT_SETTINGS);
-        if (filePos < 0)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater --import-settings was not found
-
-        if (filePos + 1 >= args.Count)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The file parameter does not exist (import settings requires "--import-settings file")
-
-        var file = args[filePos + 1].Trim('"').Trim('\'');
-        if (!File.Exists(file))
-            return (int)HRESULT.STATUS_NO_SUCH_FILE; // The given file does not exist
-
-        try
-        {
-            Settings.ImportFromFile_JSON(file);
-        }
-        catch (Exception ex)
-        {
-            return ex.HResult;
-        }
-
-        return (int)HRESULT.SUCCESS;
+    internal static int ImportSettings(IReadOnlyList<string> args)
+    {
+        return SharedPreUiCommandDispatcher.ImportSettings(
+            args,
+            SharedPreUiCommandDispatcher.WinUiExitCodes
+        );
     }
 
     public static int ExportSettings()
     {
-        var args = Environment.GetCommandLineArgs().ToList();
+        return ExportSettings(Environment.GetCommandLineArgs());
+    }
 
-        var filePos = args.IndexOf(EXPORT_SETTINGS);
-        if (filePos < 0)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater --export-settings was not found
-
-        if (filePos + 1 >= args.Count)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The file parameter does not exist (export settings requires "--export-settings file")
-
-        var file = args[filePos + 1].Trim('"').Trim('\'');
-
-        try
-        {
-            Settings.ExportToFile_JSON(file);
-        }
-        catch (Exception ex)
-        {
-            return ex.HResult;
-        }
-
-        return (int)HRESULT.SUCCESS;
+    internal static int ExportSettings(IReadOnlyList<string> args)
+    {
+        return SharedPreUiCommandDispatcher.ExportSettings(
+            args,
+            SharedPreUiCommandDispatcher.WinUiExitCodes
+        );
     }
 
     public static int EnableSetting()
     {
-        var args = Environment.GetCommandLineArgs().ToList();
+        return EnableSetting(Environment.GetCommandLineArgs());
+    }
 
-        var basePos = args.IndexOf(ENABLE_SETTING);
-        if (basePos < 0)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater --export-settings was not found
-
-        if (basePos + 1 >= args.Count)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The file parameter does not exist (export settings requires "--export-settings file")
-
-        var setting = args[basePos + 1].Trim('"').Trim('\'');
-        if (!Enum.TryParse(setting, out Settings.K validKey))
-            return (int)HRESULT.STATUS_UNKNOWN__SETTINGS_KEY;
-
-        try
-        {
-            Settings.Set(validKey, true);
-        }
-        catch (Exception ex)
-        {
-            return ex.HResult;
-        }
-
-        return (int)HRESULT.SUCCESS;
+    internal static int EnableSetting(IReadOnlyList<string> args)
+    {
+        return SharedPreUiCommandDispatcher.EnableSetting(
+            args,
+            SharedPreUiCommandDispatcher.WinUiExitCodes
+        );
     }
 
     public static int DisableSetting()
     {
-        var args = Environment.GetCommandLineArgs().ToList();
+        return DisableSetting(Environment.GetCommandLineArgs());
+    }
 
-        var basePos = args.IndexOf(DISABLE_SETTING);
-        if (basePos < 0)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater --export-settings was not found
-
-        if (basePos + 1 >= args.Count)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The file parameter does not exist (export settings requires "--export-settings file")
-
-        var setting = args[basePos + 1].Trim('"').Trim('\'');
-        if (!Enum.TryParse(setting, out Settings.K validKey))
-            return (int)HRESULT.STATUS_UNKNOWN__SETTINGS_KEY;
-        try
-        {
-            Settings.Set(validKey, false);
-        }
-        catch (Exception ex)
-        {
-            return ex.HResult;
-        }
-
-        return (int)HRESULT.SUCCESS;
+    internal static int DisableSetting(IReadOnlyList<string> args)
+    {
+        return SharedPreUiCommandDispatcher.DisableSetting(
+            args,
+            SharedPreUiCommandDispatcher.WinUiExitCodes
+        );
     }
 
     public static int SetSettingsValue()
     {
-        var args = Environment.GetCommandLineArgs().ToList();
+        return SetSettingsValue(Environment.GetCommandLineArgs());
+    }
 
-        var basePos = args.IndexOf(SET_SETTING_VAL);
-        if (basePos < 0)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater --export-settings was not found
-
-        if (basePos + 2 >= args.Count)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The file parameter does not exist (export settings requires "--export-settings file")
-
-        var setting = args[basePos + 1].Trim('"').Trim('\'');
-        var value = args[basePos + 2];
-        if (!Enum.TryParse(setting, out Settings.K validKey))
-            return (int)HRESULT.STATUS_UNKNOWN__SETTINGS_KEY;
-
-        try
-        {
-            Settings.SetValue(validKey, value);
-        }
-        catch (Exception ex)
-        {
-            return ex.HResult;
-        }
-
-        return (int)HRESULT.SUCCESS;
+    internal static int SetSettingsValue(IReadOnlyList<string> args)
+    {
+        return SharedPreUiCommandDispatcher.SetSettingValue(
+            args,
+            SharedPreUiCommandDispatcher.WinUiExitCodes
+        );
     }
 
     public static int WingetUIToUniGetUIMigrator()
@@ -255,107 +191,65 @@ public static class CLIHandler
 
     public static int EnableSecureSetting()
     {
-        var args = Environment.GetCommandLineArgs().ToList();
+        return EnableSecureSetting(Environment.GetCommandLineArgs());
+    }
 
-        var basePos = args.IndexOf(ENABLE_SECURE_SETTING);
-        if (basePos < 0)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater was not found
-
-        if (basePos + 1 >= args.Count)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The file parameter does not exist (export settings requires "--export-settings file")
-
-        var setting = args[basePos + 1].Trim('"').Trim('\'');
-        if (!Enum.TryParse(setting, out SecureSettings.K validKey))
-            return (int)HRESULT.STATUS_UNKNOWN__SETTINGS_KEY;
-
-        try
-        {
-            bool success = SecureSettings.TrySet(validKey, true).GetAwaiter().GetResult();
-            if (!success)
-                return (int)HRESULT.STATUS_FAILED;
-            else
-                return (int)HRESULT.SUCCESS;
-        }
-        catch (Exception ex)
-        {
-            return ex.HResult;
-        }
+    internal static int EnableSecureSetting(IReadOnlyList<string> args)
+    {
+        return SharedPreUiCommandDispatcher.EnableSecureSetting(
+            args,
+            SharedPreUiCommandDispatcher.WinUiExitCodes
+        );
     }
 
     public static int DisableSecureSetting()
     {
-        var args = Environment.GetCommandLineArgs().ToList();
+        return DisableSecureSetting(Environment.GetCommandLineArgs());
+    }
 
-        var basePos = args.IndexOf(DISABLE_SECURE_SETTING);
-        if (basePos < 0)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater was not found
-
-        if (basePos + 1 >= args.Count)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The first positional argument does not exist
-
-        var setting = args[basePos + 1].Trim('"').Trim('\'');
-        if (!Enum.TryParse(setting, out SecureSettings.K validKey))
-            return (int)HRESULT.STATUS_UNKNOWN__SETTINGS_KEY;
-
-        try
-        {
-            bool success = SecureSettings.TrySet(validKey, false).GetAwaiter().GetResult();
-            if (!success)
-                return (int)HRESULT.STATUS_FAILED;
-            else
-                return (int)HRESULT.SUCCESS;
-        }
-        catch (Exception ex)
-        {
-            return ex.HResult;
-        }
+    internal static int DisableSecureSetting(IReadOnlyList<string> args)
+    {
+        return SharedPreUiCommandDispatcher.DisableSecureSetting(
+            args,
+            SharedPreUiCommandDispatcher.WinUiExitCodes
+        );
     }
 
     public static int EnableSecureSettingForUser()
     {
-        var args = Environment.GetCommandLineArgs().ToList();
+        return EnableSecureSettingForUser(Environment.GetCommandLineArgs());
+    }
 
-        var basePos = args.IndexOf(ENABLE_SECURE_SETTING_FOR_USER);
-        if (basePos < 0)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater was not found
-
-        if (basePos + 2 >= args.Count)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The required parameters do not exist
-
-        var user = args[basePos + 1].Trim('"').Trim('\'');
-        var setting = args[basePos + 2].Trim('"').Trim('\'');
-
-        try
-        {
-            return SecureSettings.ApplyForUser(user, setting, true);
-        }
-        catch (Exception ex)
-        {
-            return ex.HResult;
-        }
+    internal static int EnableSecureSettingForUser(IReadOnlyList<string> args)
+    {
+        return SharedPreUiCommandDispatcher.EnableSecureSettingForUser(
+            args,
+            SharedPreUiCommandDispatcher.WinUiExitCodes
+        );
     }
 
     public static int DisableSecureSettingForUser()
     {
-        var args = Environment.GetCommandLineArgs().ToList();
+        return DisableSecureSettingForUser(Environment.GetCommandLineArgs());
+    }
 
-        var basePos = args.IndexOf(DISABLE_SECURE_SETTING_FOR_USER);
-        if (basePos < 0)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The base paramater was not found
+    internal static int DisableSecureSettingForUser(IReadOnlyList<string> args)
+    {
+        return SharedPreUiCommandDispatcher.DisableSecureSettingForUser(
+            args,
+            SharedPreUiCommandDispatcher.WinUiExitCodes
+        );
+    }
 
-        if (basePos + 2 >= args.Count)
-            return (int)HRESULT.STATUS_INVALID_PARAMETER; // The required parameters do not exist
+    public static int Automation()
+    {
+        return Automation(Environment.GetCommandLineArgs());
+    }
 
-        var user = args[basePos + 1].Trim('"').Trim('\'');
-        var setting = args[basePos + 2].Trim('"').Trim('\'');
-
-        try
-        {
-            return SecureSettings.ApplyForUser(user, setting, false);
-        }
-        catch (Exception ex)
-        {
-            return ex.HResult;
-        }
+    internal static int Automation(IReadOnlyList<string> args)
+    {
+        return IpcCliCommandRunner.RunAsync(args, Console.Out, Console.Error)
+            .GetAwaiter()
+            .GetResult();
     }
 }

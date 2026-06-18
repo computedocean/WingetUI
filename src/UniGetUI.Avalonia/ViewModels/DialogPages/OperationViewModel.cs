@@ -289,7 +289,6 @@ public sealed partial class OperationViewModel : ViewModelBase
                 Path = $"avares://UniGetUI.Avalonia/Assets/Symbols/{svgName}",
                 Width = 16,
                 Height = 16,
-                Foreground = Brushes.White,
             },
         };
 
@@ -326,8 +325,16 @@ public sealed partial class OperationViewModel : ViewModelBase
     private void ShowDetails()
     {
         if (GetMainWindow() is not { } mainWindow) return;
-        var win = new OperationOutputWindow(Operation);
-        _ = win.ShowDialog(mainWindow);
+        if (Operation.Status is OperationStatus.Failed)
+        {
+            var win = new OperationFailedDialog(Operation);
+            win.Show(mainWindow);
+        }
+        else
+        {
+            var win = new OperationOutputWindow(Operation);
+            win.Show(mainWindow);
+        }
     }
 
     // ── Minimal ICommand implementation ───────────────────────────────────────

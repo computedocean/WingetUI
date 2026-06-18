@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Threading;
 using UniGetUI.Core.Tools;
 
 namespace UniGetUI.Avalonia.Views.DialogPages;
@@ -10,6 +11,7 @@ public partial class TelemetryDialog : Window
     public TelemetryDialog()
     {
         InitializeComponent();
+        UniGetUI.Avalonia.Infrastructure.MicaWindowHelper.Apply(this);
 
         Body2.Text = CoreTools.Translate("No personal information is collected nor sent, and the collected data is anonimized, so it can't be back-tracked to you.");
 
@@ -24,5 +26,11 @@ public partial class TelemetryDialog : Window
         Closing += (_, e) => { if (Result is null) e.Cancel = true; };
         DeclineButton.Click += (_, _) => { Result = false; Close(); };
         AcceptButton.Click += (_, _) => { Result = true; Close(); };
+    }
+
+    protected override void OnOpened(EventArgs e)
+    {
+        base.OnOpened(e);
+        Dispatcher.UIThread.Post(() => AcceptButton.Focus(), DispatcherPriority.Background);
     }
 }

@@ -1,14 +1,17 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices.JavaScript;
+using System.Runtime.InteropServices;
 using System.Text;
-using Microsoft.UI.Xaml.Markup;
 using UniGetUI.Core.Data;
+using UniGetUI.Core.Logging;
 using UniGetUI.Core.Tools;
 
 namespace UniGetUI;
 
 public static class CrashHandler
 {
+    public static readonly string PendingCrashFile =
+        Path.Combine(Path.GetTempPath(), "UniGetUI_pending_crash.txt");
+
     private const uint MB_ICONSTOP = 0x00000010;
     private const uint MB_OKCANCEL = 0x00000001;
     private const uint MB_YESNOCANCEL = 0x00000003;
@@ -16,12 +19,10 @@ public static class CrashHandler
     private const int IDYES = 6;
     private const int IDNO = 7;
 
-    [System.Runtime.InteropServices.DllImport(
-        "user32.dll",
-        CharSet = System.Runtime.InteropServices.CharSet.Unicode
-    )]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int MessageBox(IntPtr hWnd, string lpText, string lpCaption, uint uType);
 
+    // ── Missing-files handler ─────────────────────────────────────────────────
     private static void _reportMissingFiles(out bool showDetailedReport)
     {
         try
@@ -135,11 +136,22 @@ public static class CrashHandler
             }
         }
 
+        // Run the integrity check on a background thread with a tight timeout.
+        // Running it synchronously on the UI thread can block for 20-30 s on slow
+        // disks, and calling Environment.Exit while the UI thread holds WinRT locks
+        // causes a native crash in coreclr!ProcessCLRException (null read @ 0x0).
         string iReport;
         try
         {
-            var integrityReport = IntegrityTester.CheckIntegrity(false);
-            iReport = IntegrityTester.GetReadableReport(integrityReport);
+            var integrityTask = Task.Run(() => IntegrityTester.CheckIntegrity(false));
+            if (integrityTask.Wait(TimeSpan.FromSeconds(5)))
+            {
+                iReport = IntegrityTester.GetReadableReport(integrityTask.Result);
+            }
+            else
+            {
+                iReport = "Integrity check timed out (> 5 s) — skipped in crash report";
+            }
         }
         catch (Exception ex)
         {
@@ -169,6 +181,8 @@ public static class CrashHandler
                 Crash Trace:
                     {{e.StackTrace?.Replace("\n", "\n        ")}}
             """;
+
+        Exception originalException = e;
 
         try
         {
@@ -204,21 +218,33 @@ public static class CrashHandler
             // ignore
         }
 
+        // Authoritative fallback: ToString() recurses through every inner exception (and all of an
+        // AggregateException's inners) with their stack traces. The walk above only follows the single
+        // .InnerException chain, so it can drop the real cause of e.g. a TypeInitializationException.
+        try
+        {
+            Error_String += "\n\n\n———————————————————————————————————————————————————————————\n"
+                + "Full exception detail (ToString):\n" + originalException;
+        }
+        catch
+        {
+            // ignore
+        }
+
+        Error_String = Logger.Redact(Error_String);
+
         Console.WriteLine(Error_String);
 
-        string ErrorUrl =
-            $"https://www.marticliment.com/error-report/"
-            + $"?appName=UniGetUI"
-            + $"&appVersion={Uri.EscapeDataString(CoreData.VersionName)}"
-            + $"&buildNumber={Uri.EscapeDataString(CoreData.BuildNumber.ToString())}"
-            + $"&errorBody={Uri.EscapeDataString(Error_String)}";
-        Console.WriteLine(ErrorUrl);
+        // Persist crash data so the next normal app launch can show the report.
+        try
+        {
+            File.WriteAllText(PendingCrashFile, Error_String, Encoding.UTF8);
+        }
+        catch
+        {
+            // If we can't write the file, nothing more we can do — just exit.
+        }
 
-        using Process p = new();
-        p.StartInfo.FileName = ErrorUrl;
-        p.StartInfo.CreateNoWindow = true;
-        p.StartInfo.UseShellExecute = true;
-        p.Start();
         Environment.Exit(1);
     }
 }

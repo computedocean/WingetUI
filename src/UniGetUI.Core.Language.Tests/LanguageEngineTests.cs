@@ -1,3 +1,4 @@
+using UniGetUI.Core.Data;
 using UniGetUI.PackageEngine.Enums;
 
 namespace UniGetUI.Core.Language.Tests
@@ -5,14 +6,15 @@ namespace UniGetUI.Core.Language.Tests
     public class LanguageEngineTests
     {
         [Theory]
-        [InlineData("ca", "Fes una còpia de seguretat dels paquets instal·lats")]
-        [InlineData("es", "Respaldar paquetes instalados")]
+        [InlineData("ca", "Subsistema Android")]
+        [InlineData("es", "Subsistema de Android")]
+        [InlineData("uk", "Підсистема Android")]
         public void TestLoadingLanguage(string language, string translation)
         {
             LanguageEngine engine = new();
 
             engine.LoadLanguage(language);
-            Assert.Equal(translation, engine.Translate("Backup installed packages"));
+            Assert.Equal(translation, engine.Translate("Android Subsystem"));
         }
 
         [Fact]
@@ -28,8 +30,8 @@ namespace UniGetUI.Core.Language.Tests
         }
 
         [Theory]
-        [InlineData("en", "UniGetUI Log", "UniGetUI (formerly WingetUI)")]
-        [InlineData("ca", "Registre de l'UniGetUI", "UniGetUI (abans WingetUI)")]
+        [InlineData("en", "UniGetUI Log", "UniGetUI")]
+        [InlineData("ca", "Registre de l'UniGetUI", "UniGetUI")]
         public void TestUniGetUIRefactoring(
             string language,
             string uniGetUILogTranslation,
@@ -39,8 +41,8 @@ namespace UniGetUI.Core.Language.Tests
             LanguageEngine engine = new();
 
             engine.LoadLanguage(language);
-            Assert.Equal(uniGetUILogTranslation, engine.Translate("WingetUI Log"));
-            Assert.Equal(uniGetUITranslation, engine.Translate("WingetUI"));
+            Assert.Equal(uniGetUILogTranslation, engine.Translate("UniGetUI Log"));
+            Assert.Equal(uniGetUITranslation, engine.Translate("UniGetUI"));
         }
 
         [Fact]
@@ -52,22 +54,59 @@ namespace UniGetUI.Core.Language.Tests
         }
 
         [Fact]
-        public void TestStaticallyLoadedLanguages()
+        public void TestLoadingUkrainianSpecificTranslation()
         {
             LanguageEngine engine = new();
-            engine.LoadLanguage("ca");
-            engine.LoadStaticTranslation();
-            Assert.Equal("Usuari | Local", CommonTranslations.ScopeNames[PackageScope.Local]);
-            Assert.Equal("Màquina | Global", CommonTranslations.ScopeNames[PackageScope.Global]);
 
-            Assert.Equal(
-                PackageScope.Global,
-                CommonTranslations.InvertedScopeNames["Màquina | Global"]
+            engine.LoadLanguage("uk");
+            Assert.Equal("Підсистема Android", engine.Translate("Android Subsystem"));
+        }
+
+        [Fact]
+        public void TestLoadingLegacyUkrainianAlias()
+        {
+            LanguageEngine engine = new();
+
+            engine.LoadLanguage("ua");
+            Assert.Equal("uk", engine.Locale);
+        }
+
+        [Fact]
+        public void TestLoadingLanguageIgnoresCachedOverrides()
+        {
+            string cachedLangFile = Path.Join(CoreData.UniGetUICacheDirectory_Lang, "lang_en.json");
+            string? previousContents = File.Exists(cachedLangFile)
+                ? File.ReadAllText(cachedLangFile)
+                : null;
+
+            Directory.CreateDirectory(CoreData.UniGetUICacheDirectory_Lang);
+            File.WriteAllText(
+                cachedLangFile,
+                """
+                {
+                                    "Starting operation...": "Cached override should be ignored"
+                }
+                """
             );
-            Assert.Equal(
-                PackageScope.Local,
-                CommonTranslations.InvertedScopeNames["Usuari | Local"]
-            );
+
+            try
+            {
+                LanguageEngine engine = new();
+
+                Dictionary<string, string> langFile = engine.LoadLanguageFile("en");
+                Assert.Equal("Starting operation...", langFile["Starting operation..."]);
+            }
+            finally
+            {
+                if (previousContents is not null)
+                {
+                    File.WriteAllText(cachedLangFile, previousContents);
+                }
+                else if (File.Exists(cachedLangFile))
+                {
+                    File.Delete(cachedLangFile);
+                }
+            }
         }
 
         /*

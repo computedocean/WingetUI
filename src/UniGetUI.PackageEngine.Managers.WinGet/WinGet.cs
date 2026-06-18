@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
@@ -21,6 +20,11 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
 {
     public class WinGet : PackageManager
     {
+        internal const string CliToolPreferenceEnvironmentVariable = "UNIGETUI_WINGET_CLI";
+        internal const string ComApiPolicyEnvironmentVariable = "UNIGETUI_WINGET_COM";
+        private const string SystemWinGetExecutableName = "winget.exe";
+        private const string PingetExecutableName = "pinget.exe";
+
         public static string[] FALSE_PACKAGE_NAMES = ["", "e(s)", "have", "the", "Id"];
         public static string[] FALSE_PACKAGE_IDS =
         [
@@ -52,36 +56,40 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
         public LocalWinGetSource GOGSource { get; }
         public LocalWinGetSource MicrosoftStoreSource { get; }
         public static bool NO_PACKAGES_HAVE_BEEN_LOADED { get; private set; }
+        internal WinGetCliToolKind SelectedCliToolKind { get; private set; } =
+            WinGetCliToolKind.SystemWinGet;
 
-        public static string BundledWinGetPath = "";
+        // winget's local index isn't safe under concurrent process access: a `source update` (writer)
+        // running alongside list/upgrade/search (readers) yields partial or empty results. The COM
+        // backend serialized this implicitly; the CLI backends (winget.exe / pinget.exe) must do it
+        // explicitly. Reentrant (Monitor) so same-thread nested invocations don't self-deadlock.
+        private static readonly object _cliInvocationLock = new();
 
-        private static string GetBundledWinGetPath()
+        // Safety valve: never wait on the CLI lock longer than this, so a hung process can't freeze all WinGet queries.
+        private static readonly TimeSpan CliLockTimeout = TimeSpan.FromSeconds(120);
+
+        internal static IDisposable AcquireCliLock()
         {
-            string folder = RuntimeInformation.ProcessArchitecture switch
-            {
-                System.Runtime.InteropServices.Architecture.Arm64 => "winget-cli_arm64",
-                System.Runtime.InteropServices.Architecture.X64 => "winget-cli_x64",
-                System.Runtime.InteropServices.Architecture.X86 => "winget-cli_x86",
-                _ => "winget-cli_x64",
-            };
+            bool taken = false;
+            Monitor.TryEnter(_cliInvocationLock, CliLockTimeout, ref taken);
+            if (!taken)
+                Logger.Warn("WinGet CLI lock not acquired within timeout; proceeding unserialized to avoid a hang.");
+            return new CliLockReleaser(taken);
+        }
 
-            var path = Path.Join(CoreData.UniGetUIExecutableDirectory, folder, "winget.exe");
-            if (!File.Exists(path) && folder != "winget-cli_x64")
+        private sealed class CliLockReleaser(bool taken) : IDisposable
+        {
+            private bool _released;
+            public void Dispose()
             {
-                path = Path.Join(
-                    CoreData.UniGetUIExecutableDirectory,
-                    "winget-cli_x64",
-                    "winget.exe"
-                );
+                if (_released || !taken) return;
+                _released = true;
+                Monitor.Exit(_cliInvocationLock);
             }
-
-            return path;
         }
 
         public WinGet()
         {
-            BundledWinGetPath = GetBundledWinGetPath();
-
             Capabilities = new ManagerCapabilities
             {
                 CanRunAsAdmin = true,
@@ -110,10 +118,12 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                 },
                 SupportsProxy = ProxySupport.Partially,
                 SupportsProxyAuth = false,
+                KnowsPackageReleaseDate = PackageReleaseDateSupport.Partial,
             };
 
             Properties = new ManagerProperties
             {
+                Id = "winget",
                 Name = "Winget",
                 DisplayName = "WinGet",
                 Description = CoreTools.Translate(
@@ -200,6 +210,21 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
             return $"--proxy {proxyUri.ToString().TrimEnd('/')}";
         }
 
+        /// <summary>
+        /// Returns the set of installer URL hosts from the WinGet manifest for a specific
+        /// version of the given package, or null if it can't be resolved. Used for the
+        /// installer-host-change warning on the Updates page (issue #4617).
+        /// Returns a set (not a single host) so callers can do set-overlap comparison —
+        /// see PingetPackageDetailsProvider.TryGetInstallerHostsForVersion for rationale.
+        /// </summary>
+        public static IReadOnlySet<string>? TryGetInstallerHostsForVersion(
+            UniGetUI.PackageEngine.Interfaces.IPackage package,
+            string version
+        )
+        {
+            return PingetPackageDetailsProvider.TryGetInstallerHostsForVersion(package, version);
+        }
+
         protected override IReadOnlyList<Package> FindPackages_UnSafe(string query)
         {
             return WinGetHelper.Instance.FindPackages_UnSafe(query);
@@ -282,14 +307,89 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
 
         public override IReadOnlyList<string> FindCandidateExecutableFiles()
         {
-            List<string> candidates = new();
-            if (!Settings.Get(Settings.K.ForceLegacyBundledWinGet))
+            return FindCandidateExecutableFiles(
+                executableName => CoreTools.WhichMultiple(executableName),
+                File.Exists,
+                GetBundledPingetExecutablePath(),
+                GetCliToolPreference()
+            );
+        }
+
+        internal static IReadOnlyList<string> FindCandidateExecutableFiles(
+            Func<string, IReadOnlyList<string>> findExecutables,
+            Func<string, bool> fileExists,
+            string bundledPingetPath,
+            WinGetCliToolPreference cliToolPreference = WinGetCliToolPreference.Default
+        )
+        {
+            List<string> candidates = [];
+
+            if (cliToolPreference is not WinGetCliToolPreference.BundledPinget)
             {
-                candidates.AddRange(CoreTools.WhichMultiple("winget.exe"));
+                candidates.AddRange(findExecutables(SystemWinGetExecutableName));
             }
 
-            candidates.Add(BundledWinGetPath);
-            return candidates;
+            if (cliToolPreference is not WinGetCliToolPreference.SystemWinGet)
+            {
+                candidates.AddRange(
+                    FindPingetExecutableFiles(findExecutables, fileExists, bundledPingetPath)
+                );
+            }
+
+            return candidates.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        }
+
+        private static IEnumerable<string> FindPingetExecutableFiles(
+            Func<string, IReadOnlyList<string>> findExecutables,
+            Func<string, bool> fileExists,
+            string bundledPingetPath
+        )
+        {
+            if (fileExists(bundledPingetPath))
+            {
+                yield return bundledPingetPath;
+            }
+
+            foreach (string pingetExecutablePath in findExecutables(PingetExecutableName))
+            {
+                yield return pingetExecutablePath;
+            }
+        }
+
+        internal static string GetBundledPingetExecutablePath()
+        {
+            return GetBundledPingetExecutablePath(CoreData.UniGetUIExecutableDirectory, File.Exists);
+        }
+
+        internal static string GetBundledPingetExecutablePath(
+            string executableDirectory,
+            Func<string, bool> fileExists
+        )
+        {
+            string installDirectory = CoreData.ResolveInstallationDirectory(
+                executableDirectory,
+                fileExists,
+                static _ => false
+            );
+            string rootPingetPath = Path.Join(installDirectory, PingetExecutableName);
+            if (fileExists(rootPingetPath))
+            {
+                return rootPingetPath;
+            }
+
+            string avaloniaPingetPath = Path.Join(
+                installDirectory,
+                "Avalonia",
+                PingetExecutableName
+            );
+            return fileExists(avaloniaPingetPath) ? avaloniaPingetPath : rootPingetPath;
+        }
+
+        internal IWinGetManagerHelper CreateCliHelperForSelectedCliTool()
+        {
+            return SelectedCliToolKind == WinGetCliToolKind.BundledPinget
+                ? new PingetCliHelper(this, Status.ExecutablePath)
+                : new WinGetCliHelper(this, Status.ExecutablePath);
         }
 
         protected override void _loadManagerExecutableFile(
@@ -298,31 +398,41 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
             out string callArguments
         )
         {
-            bool FORCE_BUNDLED = Settings.Get(Settings.K.ForceLegacyBundledWinGet);
             var (_found, _path) = GetExecutableFile();
-
-            if (_found && _path == BundledWinGetPath && !FORCE_BUNDLED)
-            {
-                Logger.Error("User does not have WinGet installed, forcing bundled WinGet...");
-                FORCE_BUNDLED = true;
-            }
-
             found = _found;
             path = _path;
             callArguments = "";
 
+            if (!found)
+            {
+                return;
+            }
+
+            SelectedCliToolKind = GetCliToolKind(path);
+
+            if (SelectedCliToolKind == WinGetCliToolKind.BundledPinget)
+            {
+                Logger.Warn("Using Pinget CLI tool.");
+                WinGetHelper.Instance = new PingetCliHelper(this, path);
+                return;
+            }
+
+            WinGetComApiPolicy comApiPolicy = GetComApiPolicy();
+            if (!ShouldUseWinGetComApi(SelectedCliToolKind, comApiPolicy))
+            {
+                Logger.Warn("WinGet COM API usage is disabled; using WinGetCliHelper().");
+                WinGetHelper.Instance = new WinGetCliHelper(this, path);
+                return;
+            }
+
             try
             {
-                if (FORCE_BUNDLED)
-                    WinGetHelper.Instance = new BundledWinGetHelper(this);
-                else
-                    WinGetHelper.Instance = new NativeWinGetHelper(this);
+                WinGetHelper.Instance = new NativeWinGetHelper(this);
             }
             catch (Exception ex)
             {
                 if (
-                    !FORCE_BUNDLED
-                    && ex is WinGetComActivationException activationEx
+                    ex is WinGetComActivationException activationEx
                     && activationEx.IsExpectedFallbackCondition
                 )
                 {
@@ -333,19 +443,151 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                 else
                 {
                     Logger.Warn(
-                        $"Cannot instantiate {(FORCE_BUNDLED ? "Bundled" : "Native")} WinGet Helper due to error: {ex.Message}"
+                        $"Cannot instantiate Native WinGet Helper due to error: {ex.Message}"
                     );
                     Logger.Warn(ex);
                 }
 
-                Logger.Warn("WinGet will resort to using BundledWinGetHelper()");
-                WinGetHelper.Instance = new BundledWinGetHelper(this);
+                Logger.Warn("WinGet will resort to using WinGetCliHelper()");
+                WinGetHelper.Instance = CreateCliHelperForSelectedCliTool();
             }
+        }
+
+        internal static WinGetCliToolPreference GetCliToolPreference()
+        {
+            return GetCliToolPreference(
+                static name => Environment.GetEnvironmentVariable(name),
+                static key => Settings.GetValue(key)
+            );
+        }
+
+        internal static WinGetCliToolPreference GetCliToolPreference(
+            Func<string, string?> getEnvironmentVariable,
+            Func<Settings.K, string> getSettingValue
+        )
+        {
+            string? value = GetPolicyValue(
+                CliToolPreferenceEnvironmentVariable,
+                Settings.K.WinGetCliToolPreference,
+                getEnvironmentVariable,
+                getSettingValue
+            );
+
+            return ParseCliToolPreference(value) ?? WinGetCliToolPreference.Default;
+        }
+
+        internal static WinGetComApiPolicy GetComApiPolicy()
+        {
+            return GetComApiPolicy(
+                static name => Environment.GetEnvironmentVariable(name),
+                static key => Settings.GetValue(key)
+            );
+        }
+
+        internal static WinGetComApiPolicy GetComApiPolicy(
+            Func<string, string?> getEnvironmentVariable,
+            Func<Settings.K, string> getSettingValue
+        )
+        {
+            string? value = GetPolicyValue(
+                ComApiPolicyEnvironmentVariable,
+                Settings.K.WinGetComApiPolicy,
+                getEnvironmentVariable,
+                getSettingValue
+            );
+
+            return ParseComApiPolicy(value) ?? WinGetComApiPolicy.Default;
+        }
+
+        private static string? GetPolicyValue(
+            string environmentVariableName,
+            Settings.K settingKey,
+            Func<string, string?> getEnvironmentVariable,
+            Func<Settings.K, string> getSettingValue
+        )
+        {
+            string? environmentValue = getEnvironmentVariable(environmentVariableName);
+            if (!string.IsNullOrWhiteSpace(environmentValue))
+            {
+                return environmentValue;
+            }
+
+            string settingValue = getSettingValue(settingKey);
+            return string.IsNullOrWhiteSpace(settingValue) ? null : settingValue;
+        }
+
+        private static WinGetCliToolPreference? ParseCliToolPreference(string? value)
+        {
+            return NormalizeCliToolPreferenceValue(value) switch
+            {
+                "default" => WinGetCliToolPreference.Default,
+                "winget" => WinGetCliToolPreference.SystemWinGet,
+                "pinget" => WinGetCliToolPreference.BundledPinget,
+                _ => null,
+            };
+        }
+
+        private static string NormalizeCliToolPreferenceValue(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? "" : value.Trim().ToLowerInvariant();
+        }
+
+        private static WinGetComApiPolicy? ParseComApiPolicy(string? value)
+        {
+            return NormalizePolicyValue(value) switch
+            {
+                "default" => WinGetComApiPolicy.Default,
+                "enabled" or "enable" or "on" or "true" or "1" => WinGetComApiPolicy.Enabled,
+                "disabled" or "disable" or "off" or "false" or "0" => WinGetComApiPolicy.Disabled,
+                _ => null,
+            };
+        }
+
+        internal static bool ShouldUseWinGetComApi(
+            WinGetCliToolKind cliToolKind,
+            WinGetComApiPolicy comApiPolicy
+        )
+        {
+            return cliToolKind == WinGetCliToolKind.SystemWinGet
+                && comApiPolicy != WinGetComApiPolicy.Disabled;
+        }
+
+        private static string NormalizePolicyValue(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value)
+                ? ""
+                : value.Trim().Replace("-", "").Replace("_", "").ToLowerInvariant();
+        }
+
+        internal static WinGetCliToolKind GetCliToolKind(string executablePath)
+        {
+            return IsPingetExecutablePath(executablePath)
+                ? WinGetCliToolKind.BundledPinget
+                : WinGetCliToolKind.SystemWinGet;
+        }
+
+        private static bool IsPingetExecutablePath(string executablePath)
+        {
+            if (string.IsNullOrWhiteSpace(executablePath))
+            {
+                return false;
+            }
+
+            return Path.GetFileName(executablePath).Equals(
+                    PingetExecutableName,
+                    StringComparison.OrdinalIgnoreCase
+                )
+                || Path.GetFullPath(executablePath)
+                    .Equals(
+                        Path.GetFullPath(GetBundledPingetExecutablePath()),
+                        StringComparison.OrdinalIgnoreCase
+                    );
         }
 
         protected override void _loadManagerVersion(out string version)
         {
-            bool IS_BUNDLED = WinGetHelper.Instance is BundledWinGetHelper;
+            bool usesCliHelper = WinGetHelper.Instance is WinGetCliHelper;
+            bool usesPingetHelper = WinGetHelper.Instance is PingetCliHelper;
 
             Process process = new()
             {
@@ -370,11 +612,15 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
             }
             process.Start();
 
-            version =
-                $"{(IS_BUNDLED ? "Bundled" : "System")} WinGet (CLI) Version: {process.StandardOutput.ReadToEnd().Trim()}";
+            string rawVersion = process.StandardOutput.ReadToEnd().Trim();
+            version = usesPingetHelper
+                ? $"Pinget CLI Version: {rawVersion}"
+                : $"System WinGet (CLI) Version: {rawVersion}";
 
-            if (IS_BUNDLED)
-                version += "\nUsing bundled WinGet helper (CLI parsing)";
+            if (usesPingetHelper)
+                version += "\nUsing Pinget CLI helper (JSON parsing)";
+            else if (usesCliHelper)
+                version += "\nUsing WinGet CLI helper (CLI parsing)";
             else
             {
                 version += "\nUsing Native WinGet helper (COM Api)";
@@ -409,6 +655,17 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                 TryRepairTempFolderPermissions();
                 if (WinGetHelper.Instance is NativeWinGetHelper)
                 {
+                    if (
+                        WinGetHelper.Instance is NativeWinGetHelper nativeHelper
+                        && nativeHelper.HasActiveLocalPackageQuery
+                    )
+                    {
+                        Logger.Warn(
+                            "WinGet local package enumeration is still running; skipping COM reconnection so the retry can attach to the in-flight task."
+                        );
+                        return;
+                    }
+
                     Logger.ImportantInfo("Attempting to reconnect to WinGet COM Server...");
                     ReRegisterCOMServer();
                     NO_PACKAGES_HAVE_BEEN_LOADED = false;
@@ -416,7 +673,7 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                 else
                 {
                     Logger.Warn(
-                        "Attempted to reconnect to COM Server but Bundled WinGet is being used."
+                        "Attempted to reconnect to COM Server but the active backend is not native WinGet."
                     );
                 }
             }
@@ -491,6 +748,7 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
 
         public override void RefreshPackageIndexes()
         {
+            using var _cliLock = AcquireCliLock();
             using Process p = new()
             {
                 StartInfo = new ProcessStartInfo
@@ -498,8 +756,11 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                     FileName = Status.ExecutablePath,
                     Arguments =
                         Status.ExecutableCallArgs
-                        + " source update --disable-interactivity "
-                        + GetProxyArgument(),
+                        + " source update"
+                        + (SelectedCliToolKind == WinGetCliToolKind.SystemWinGet
+                            ? " --disable-interactivity "
+                            : " ")
+                        + GetCliToolProxyArgument(),
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -527,6 +788,13 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
             logger.Close(p.ExitCode);
             p.WaitForExit();
             p.Close();
+        }
+
+        private string GetCliToolProxyArgument()
+        {
+            return SelectedCliToolKind == WinGetCliToolKind.SystemWinGet
+                ? GetProxyArgument()
+                : "";
         }
     }
 

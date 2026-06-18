@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Avalonia.ViewModels;
 using UniGetUI.Avalonia.ViewModels.Pages.SettingsPages;
 using UniGetUI.PackageEngine.Interfaces;
@@ -18,6 +19,7 @@ public partial class SettingsBasePage : UserControl, IInnerNavigationPage, IEnte
     // ── Navigation stack ──────────────────────────────────────────────────
     private readonly Stack<UserControl> _history = new();
     private UserControl? _currentContent;
+    private readonly DirectionalSlideTransition _slide = new();
 
     // ── Lazy-created homepages ────────────────────────────────────────────
     private SettingsHomepage? _settingsHomepage;
@@ -29,6 +31,7 @@ public partial class SettingsBasePage : UserControl, IInnerNavigationPage, IEnte
 
         DataContext = new SettingsBasePageViewModel();
         InitializeComponent();
+        Frame.PageTransition = _slide;
 
         VM.BackRequested += (_, _) => OnBackClicked();
 
@@ -50,7 +53,7 @@ public partial class SettingsBasePage : UserControl, IInnerNavigationPage, IEnte
 
     // ── Navigation ────────────────────────────────────────────────────────
 
-    private void NavigateToPage(UserControl page)
+    private void NavigateToPage(UserControl page, bool forward = true)
     {
         // Detach events from the outgoing page
         if (_currentContent is ISettingsPage oldSp)
@@ -59,6 +62,8 @@ public partial class SettingsBasePage : UserControl, IInnerNavigationPage, IEnte
             oldSp.RestartRequired -= Page_RestartRequired;
         }
 
+        // Forward (drill-in) slides in from the right; back slides in from the left.
+        _slide.Reverse = !forward;
         Frame.Content = page;
         _currentContent = page;
 
@@ -79,7 +84,7 @@ public partial class SettingsBasePage : UserControl, IInnerNavigationPage, IEnte
     {
         if (_history.Count == 0) return;
         var prev = _history.Pop();
-        NavigateToPage(prev);
+        NavigateToPage(prev, forward: false);
     }
 
     private void Page_NavigationRequested(object? sender, Type e)
@@ -99,8 +104,12 @@ public partial class SettingsBasePage : UserControl, IInnerNavigationPage, IEnte
             NavigateToPage(target);
     }
 
-    private void Page_RestartRequired(object? sender, EventArgs e) =>
+    private void Page_RestartRequired(object? sender, EventArgs e)
+    {
         VM.IsRestartBannerVisible = true;
+        AvaloniaOperationRegistry.RestartRequired = true;
+        MainWindow.Instance?.UpdateSystemTrayStatus();
+    }
 
     private static UserControl? CreatePageForType(Type t)
     {

@@ -114,7 +114,8 @@ namespace UniGetUI.PackageEngine.Operations
             {
                 IsAdmin = true;
                 if (
-                    Settings.Get(Settings.K.DoCacheAdminRights)
+                    OperatingSystem.IsLinux()
+                    || Settings.Get(Settings.K.DoCacheAdminRights)
                     || Settings.Get(Settings.K.DoCacheAdminRightsForBatches)
                 )
                 {
@@ -123,7 +124,7 @@ namespace UniGetUI.PackageEngine.Operations
 
                 FileName = CoreData.ElevatorPath;
                 Arguments =
-                    $"\"{Package.Manager.Status.ExecutablePath}\" {Package.Manager.Status.ExecutableCallArgs} {operation_args}";
+                    $"{CoreData.ElevatorArgs} \"{Package.Manager.Status.ExecutablePath}\" {Package.Manager.Status.ExecutableCallArgs} {operation_args}".TrimStart();
             }
             else
             {
@@ -164,6 +165,69 @@ namespace UniGetUI.PackageEngine.Operations
 #else
             return false;
 #endif
+        }
+
+        protected async Task<IPackage> ResolveInstalledPackageSnapshotAsync(
+            string fallbackVersion,
+            bool preferFallbackVersionWhenMissing = false
+        )
+        {
+            try
+            {
+                var installedMatches = await Task.Run(() =>
+                    Package
+                        .Manager.GetInstalledPackages()
+                        .Where(candidate => candidate.IsEquivalentTo(Package))
+                        .ToArray()
+                );
+
+                if (installedMatches.Length > 0)
+                {
+                    if (!string.IsNullOrWhiteSpace(fallbackVersion))
+                    {
+                        var exactMatch = installedMatches.FirstOrDefault(candidate =>
+                            candidate.VersionString.Equals(
+                                fallbackVersion,
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                        );
+                        if (exactMatch is not null)
+                        {
+                            return exactMatch;
+                        }
+
+                        if (preferFallbackVersionWhenMissing)
+                        {
+                            return CreateSyntheticInstalledPackage(fallbackVersion);
+                        }
+                    }
+
+                    return installedMatches
+                        .OrderByDescending(candidate => candidate.NormalizedVersion)
+                        .First();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn(
+                    $"Could not resolve the installed snapshot for package {Package.Id}; falling back to synthetic state"
+                );
+                Logger.Warn(ex);
+            }
+
+            return CreateSyntheticInstalledPackage(fallbackVersion);
+        }
+
+        private IPackage CreateSyntheticInstalledPackage(string version)
+        {
+            return new Package(
+                Package.Name,
+                Package.Id,
+                version,
+                Package.Source,
+                Package.Manager,
+                Package.OverridenOptions
+            );
         }
 
         public override Task<Uri> GetOperationIcon()
@@ -262,15 +326,12 @@ namespace UniGetUI.PackageEngine.Operations
         protected override async Task HandleSuccess()
         {
             Package.SetTag(PackageTag.AlreadyInstalled);
-            var copy = new Package(
-                Package.Name,
-                Package.Id,
-                Package.VersionString,
-                Package.Source,
-                Package.Manager,
-                Package.OverridenOptions
+            bool explicitVersionRequested = !string.IsNullOrWhiteSpace(Options.Version);
+            var installedPackage = await ResolveInstalledPackageSnapshotAsync(
+                explicitVersionRequested ? Options.Version : Package.VersionString,
+                preferFallbackVersionWhenMissing: explicitVersionRequested
             );
-            await InstalledPackagesLoader.Instance.AddForeign(copy);
+            await InstalledPackagesLoader.Instance.AddForeign(installedPackage);
 
             if (Settings.Get(Settings.K.AskToDeleteNewDesktopShortcuts))
             {
@@ -341,6 +402,18 @@ namespace UniGetUI.PackageEngine.Operations
                 p.SetTag(PackageTag.Default);
 
             UpgradablePackagesLoader.Instance.Remove(Package);
+            InstalledPackagesLoader.Instance.Remove(Package);
+
+            bool explicitVersionRequested = !string.IsNullOrWhiteSpace(Options.Version);
+            var installedPackage = await ResolveInstalledPackageSnapshotAsync(
+                explicitVersionRequested
+                    ? Options.Version
+                    : string.IsNullOrWhiteSpace(Package.NewVersionString)
+                        ? Package.VersionString
+                        : Package.NewVersionString,
+                preferFallbackVersionWhenMissing: explicitVersionRequested
+            );
+            await InstalledPackagesLoader.Instance.AddForeign(installedPackage);
 
             if (Settings.Get(Settings.K.AskToDeleteNewDesktopShortcuts))
             {

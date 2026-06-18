@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using UniGetUI.Controls;
+using UniGetUI.Controls.OperationWidgets;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
@@ -13,6 +14,7 @@ using UniGetUI.Interface.SoftwarePages;
 using UniGetUI.PackageEngine;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.Managers.ChocolateyManager;
 using UniGetUI.PackageEngine.PackageLoader;
 using UniGetUI.PackageOperations;
 using UniGetUI.Pages.DialogPages;
@@ -57,6 +59,7 @@ namespace UniGetUI.Interface
         private PageType OldPage_t = PageType.Null;
         private PageType CurrentPage_t = PageType.Null;
         private readonly List<PageType> NavigationHistory = new();
+        public PageType CurrentPage => CurrentPage_t;
 
         private readonly AutoSuggestBox MainTextBlock;
         public event EventHandler<bool>? CanGoBackChanged;
@@ -172,14 +175,31 @@ namespace UniGetUI.Interface
                 _ = DialogHelper.WarnAboutAdminRights();
             }
 
+            if (
+                PEInterface.Chocolatey is { Status.Found: false }
+                && Chocolatey.HasLegacyBundledInstallation()
+                && !Settings.Get(Settings.K.AlreadyWarnedAboutChocolateyMigration)
+            )
+            {
+                Settings.Set(Settings.K.AlreadyWarnedAboutChocolateyMigration, true);
+                _ = DialogHelper.WarnAboutChocolateyMigration();
+            }
+
             UpdateOperationsLayout();
-            MainApp.Operations._operationList.CollectionChanged += (_, _) =>
+            MainApp.Operations._operationList.CollectionChanged += (_, e) =>
+            {
+                if (e.NewItems is not null)
+                    foreach (OperationControl c in e.NewItems)
+                        AddToBatch(c.Operation);
                 UpdateOperationsLayout();
+            };
 
             if (!Settings.Get(Settings.K.ShownTelemetryBanner))
             {
                 DialogHelper.ShowTelemetryBanner();
             }
+
+            ShowReleaseNotesIfUpdated();
 
             if (!Settings.Get(Settings.K.CollapseNavMenuOnWideScreen))
             {
@@ -360,6 +380,29 @@ namespace UniGetUI.Interface
         private void ReleaseNotesMenu_Click(object sender, RoutedEventArgs e) =>
             _ = DialogHelper.ShowReleaseNotes();
 
+        // Show the changelog the first time the app runs after being updated to a newer build
+        private static void ShowReleaseNotesIfUpdated()
+        {
+            _ = int.TryParse(Settings.GetValue(Settings.K.LastKnownBuildNumber), out int lastBuild);
+
+            if (lastBuild != 0 && lastBuild < CoreData.BuildNumber
+                && !Settings.Get(Settings.K.DisableReleaseNotesOnUpdate))
+            {
+                _ = DialogHelper.ShowReleaseNotes();
+            }
+
+            if (lastBuild != CoreData.BuildNumber)
+            {
+                Settings.SetValue(Settings.K.LastKnownBuildNumber, CoreData.BuildNumber.ToString());
+            }
+        }
+
+        private void CheckForUpdates_Click(object sender, RoutedEventArgs e)
+        {
+            var mainWindow = MainApp.Instance.MainWindow;
+            _ = AutoUpdater.CheckAndInstallUpdates(mainWindow, mainWindow.UpdatesBanner, true, false, true);
+        }
+
         private void OperationHistoryMenu_Click(object sender, RoutedEventArgs e) =>
             NavigateTo(PageType.OperationHistory);
 
@@ -441,6 +484,38 @@ namespace UniGetUI.Interface
                 OperationSplitterMenuButton.Visibility = Visibility.Collapsed;
             }
             ResizingOPLayout = false;
+            UpdateOperationCount();
+        }
+
+        private readonly List<AbstractOperation> _operationBatch = new();
+
+        private void AddToBatch(AbstractOperation op)
+        {
+            if (_operationBatch.Count > 0
+                && _operationBatch.All(o => o.Status is not (OperationStatus.InQueue or OperationStatus.Running)))
+            {
+                foreach (var old in _operationBatch)
+                    old.StatusChanged -= OnAnyOperationStatusChanged;
+                _operationBatch.Clear();
+            }
+
+            if (!_operationBatch.Contains(op))
+            {
+                _operationBatch.Add(op);
+                op.StatusChanged += OnAnyOperationStatusChanged;
+            }
+        }
+
+        private void OnAnyOperationStatusChanged(object? sender, OperationStatus e)
+            => DispatcherQueue.TryEnqueue(UpdateOperationCount);
+
+        private void UpdateOperationCount()
+        {
+            int total = _operationBatch.Count;
+            int completed = _operationBatch.Count(o =>
+                o.Status is OperationStatus.Succeeded or OperationStatus.Failed or OperationStatus.Canceled);
+            OperationCountLabel.Text =
+                total > 0 ? CoreTools.Translate("{0} of {1} operations completed", completed, total) : "";
         }
 
         private void OperationScrollView_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -528,7 +603,7 @@ namespace UniGetUI.Interface
         )
         {
             (VersionMenuItem as MenuFlyoutItem).Text = CoreTools.Translate(
-                "WingetUI Version {0}",
+                "UniGetUI Version {0}",
                 CoreData.VersionName
             );
             MoreNavButtonMenu.ShowAt(sender as FrameworkElement);

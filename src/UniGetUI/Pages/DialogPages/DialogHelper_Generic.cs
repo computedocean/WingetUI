@@ -337,10 +337,33 @@ public static partial class DialogHelper
         AdminDialog.DefaultButton = ContentDialogButton.Primary;
         AdminDialog.Title = CoreTools.Translate("Administrator privileges");
         AdminDialog.Content = CoreTools.Translate(
-            "WingetUI has been ran as administrator, which is not recommended. When running WingetUI as administrator, EVERY operation launched from WingetUI will have administrator privileges. You can still use the program, but we highly recommend not running WingetUI with administrator privileges."
+            "UniGetUI has been ran as administrator, which is not recommended. When running UniGetUI as administrator, EVERY operation launched from UniGetUI will have administrator privileges. You can still use the program, but we highly recommend not running UniGetUI with administrator privileges."
         );
 
         await ShowDialogAsync(AdminDialog);
+    }
+
+    public static async Task WarnAboutChocolateyMigration()
+    {
+        ContentDialog dialog = new()
+        {
+            Style = Application.Current.Resources["DefaultContentDialogStyle"] as Style,
+        };
+
+        while (Window.XamlRoot is null)
+        {
+            await Task.Delay(100);
+        }
+
+        dialog.XamlRoot = Window.XamlRoot;
+        dialog.PrimaryButtonText = CoreTools.Translate("I understand");
+        dialog.DefaultButton = ContentDialogButton.Primary;
+        dialog.Title = CoreTools.Translate("Chocolatey setup changed");
+        dialog.Content = CoreTools.Translate(
+            "UniGetUI no longer includes its own private Chocolatey installation. A legacy UniGetUI-managed Chocolatey installation was detected for this user profile, but system Chocolatey was not found. Chocolatey will stay unavailable in UniGetUI until Chocolatey is installed on the system and UniGetUI is restarted. Applications previously installed through UniGetUI's bundled Chocolatey may still appear under other sources such as Local PC or WinGet."
+        );
+
+        await ShowDialogAsync(dialog);
     }
 
     public static async Task ShowAboutUniGetUI()
@@ -400,10 +423,6 @@ public static partial class DialogHelper
             p.Start();
             await p.WaitForExitAsync();
             HideLoadingDialog(loadingId);
-
-            // Toggle bundled WinGet
-            if (Settings.Get(Settings.K.ForceLegacyBundledWinGet))
-                Settings.Set(Settings.K.ForceLegacyBundledWinGet, false);
 
             var c = DialogFactory.Create();
             c.Title = CoreTools.Translate("WinGet was repaired successfully");
@@ -721,7 +740,7 @@ public static partial class DialogHelper
         var d = DialogFactory.Create();
         d.Title = CoreTools.Translate("Operation in progress");
         d.Content = CoreTools.Translate(
-            "There are ongoing operations. Quitting WingetUI may cause them to fail. Do you want to continue?"
+            "There are ongoing operations. Quitting UniGetUI may cause them to fail. Do you want to continue?"
         );
         d.PrimaryButtonText = CoreTools.Translate("Quit");
         d.SecondaryButtonText = CoreTools.Translate("Cancel");

@@ -162,6 +162,7 @@ namespace UniGetUI.Interface
         protected readonly bool DISABLE_RELOAD;
         protected readonly string PAGE_NAME;
         public readonly bool RoleIsUpdateLike;
+        protected AppBarButton ReloadButton = new();
         protected DateTime LastPackageLoadTime { get; private set; }
         protected readonly OperationType PAGE_ROLE;
 
@@ -427,6 +428,11 @@ namespace UniGetUI.Interface
             OrderAsc_Menu.Click += (_, _) => SortPackagesBy(ascendent: true);
             OrderDesc_Menu.Click += (_, _) => SortPackagesBy(ascendent: false);
 
+            ReloadButton.Icon = new LocalIcon(IconType.Reload);
+            ReloadButton.Label = CoreTools.Translate("Reload");
+            ToolBar.PrimaryCommands.Add(ReloadButton);
+            ToolBar.PrimaryCommands.Add(new AppBarSeparator());
+
             GenerateToolBar();
             var menu = GenerateContextMenu();
 
@@ -527,6 +533,10 @@ namespace UniGetUI.Interface
             LoadingProgressBar.Visibility = Visibility.Collapsed;
             // Required to update UI labels
             LastPackageLoadTime = DateTime.Now;
+            ToolTipService.SetToolTip(
+                ReloadButton,
+                CoreTools.Translate("Last checked: {0}", LastPackageLoadTime.ToString(CultureInfo.CurrentCulture))
+            );
             UpdatePackageCount();
             WhenPackagesLoaded(ReloadReason.External);
         }
@@ -687,7 +697,6 @@ namespace UniGetUI.Interface
                 )
             )
             {
-                Loader.ClearPackages(emitFinishSignal: false);
                 await Loader.ReloadPackages();
             }
         }
@@ -1219,14 +1228,6 @@ namespace UniGetUI.Interface
             CoreTools.Launch(path);
         }
 
-        protected void SharePackage(IPackage? package)
-        {
-            if (package is null)
-                return;
-
-            DialogHelper.SharePackage(package);
-        }
-
         protected async Task ShowInstallationOptionsForPackage(IPackage? package)
         {
             if (package is null)
@@ -1662,6 +1663,7 @@ namespace UniGetUI.Interface
 
         private bool? _pageIsWide;
         private bool? _titleHidden;
+        private bool? _toolbarLabelsHidden;
 
         private void ABSTRACT_PAGE_SizeChanged(object sender, SizeChangedEventArgs e)
         {
@@ -1696,6 +1698,25 @@ namespace UniGetUI.Interface
                 {
                     MainTitle.FontSize = 24;
                     _pageIsWide = true;
+                }
+            }
+
+            // Collapse the menu bar labels to icon-only on narrow windows so the buttons
+            // stay reachable instead of being clipped off the right edge.
+            if (ActualWidth < 900)
+            {
+                if (_toolbarLabelsHidden != true)
+                {
+                    _toolbarLabelsHidden = true;
+                    ToolBar.DefaultLabelPosition = CommandBarDefaultLabelPosition.Collapsed;
+                }
+            }
+            else
+            {
+                if (_toolbarLabelsHidden != false)
+                {
+                    _toolbarLabelsHidden = false;
+                    ToolBar.DefaultLabelPosition = CommandBarDefaultLabelPosition.Right;
                 }
             }
         }

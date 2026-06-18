@@ -3,8 +3,10 @@ using System.Diagnostics;
 using System.Net.Http;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using UniGetUI.Core.Logging;
 using UniGetUI.Core.Tools;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
@@ -14,6 +16,9 @@ namespace UniGetUI.Avalonia.ViewModels;
 public partial class PackageDetailsViewModel : ObservableObject
 {
     public event EventHandler? CloseRequested;
+    /// <summary>Raised on the UI thread after details have been loaded so the view
+    /// can (re)populate the inline rich-text blocks.</summary>
+    public event EventHandler? DetailsLoaded;
 
     public readonly IPackage Package;
     public readonly OperationType OperationRole;
@@ -44,14 +49,12 @@ public partial class PackageDetailsViewModel : ObservableObject
     [ObservableProperty]
     private string _description = CoreTools.Translate("Loading...");
 
-    // ── Basic info ─────────────────────────────────────────────────────────────
+    // ── Basic info (raw values exposed; the view builds the inline rich text) ──
     [ObservableProperty]
     private string _versionDisplay = "";
 
     [ObservableProperty]
-    private string _homepageText = CoreTools.Translate("Loading...");
-    [ObservableProperty]
-    private bool _hasHomepageUrl;
+    private Uri? _homepageUrl;
 
     [ObservableProperty]
     private string _author = CoreTools.Translate("Loading...");
@@ -59,9 +62,9 @@ public partial class PackageDetailsViewModel : ObservableObject
     private string _publisher = CoreTools.Translate("Loading...");
 
     [ObservableProperty]
-    private string _licenseText = CoreTools.Translate("Loading...");
+    private string? _licenseName;
     [ObservableProperty]
-    private bool _hasLicenseUrl;
+    private Uri? _licenseUrl;
 
     // ── Actions ────────────────────────────────────────────────────────────────
     public string MainActionLabel { get; }
@@ -76,9 +79,7 @@ public partial class PackageDetailsViewModel : ObservableObject
     public string PackageId { get; }
 
     [ObservableProperty]
-    private string _manifestText = CoreTools.Translate("Loading...");
-    [ObservableProperty]
-    private bool _hasManifestUrl;
+    private Uri? _manifestUrl;
 
     [ObservableProperty]
     private string _installerHashLabel = CoreTools.Translate("Installer SHA256") + ":";
@@ -87,9 +88,7 @@ public partial class PackageDetailsViewModel : ObservableObject
     [ObservableProperty]
     private string _installerType = CoreTools.Translate("Loading...");
     [ObservableProperty]
-    private string _installerUrlText = CoreTools.Translate("Loading...");
-    [ObservableProperty]
-    private bool _hasInstallerUrl;
+    private Uri? _installerUrl;
     [ObservableProperty]
     private string _installerSize = "";
 
@@ -111,32 +110,48 @@ public partial class PackageDetailsViewModel : ObservableObject
     [ObservableProperty]
     private string _dependencyNote = "";
 
+    // ── Screenshots ────────────────────────────────────────────────────────────
+    public ObservableCollection<Bitmap> Screenshots { get; } = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasScreenshots))]
+    private int _screenshotCount;
+
+    public bool HasScreenshots => ScreenshotCount > 0;
+
+    [ObservableProperty]
+    private int _selectedScreenshotIndex;
+
     // ── Release notes ──────────────────────────────────────────────────────────
     [ObservableProperty]
     private string _releaseNotes = CoreTools.Translate("Loading...");
     [ObservableProperty]
-    private string _releaseNotesUrlText = CoreTools.Translate("Loading...");
-    [ObservableProperty]
-    private bool _hasReleaseNotesUrl;
+    private Uri? _releaseNotesUrl;
 
     // ── Translated labels ──────────────────────────────────────────────────────
     public string LabelVersion { get; }
-    public string LabelHomepage { get; } = CoreTools.Translate("Homepage") + ":";
-    public string LabelAuthor { get; } = CoreTools.Translate("Author") + ":";
-    public string LabelPublisher { get; } = CoreTools.Translate("Publisher") + ":";
-    public string LabelLicense { get; } = CoreTools.Translate("License") + ":";
-    public string LabelPackageId { get; } = CoreTools.Translate("Package ID") + ":";
-    public string LabelManifest { get; } = CoreTools.Translate("Manifest") + ":";
-    public string LabelInstallerType { get; } = CoreTools.Translate("Installer Type") + ":";
-    public string LabelInstallerSize { get; } = CoreTools.Translate("Size") + ":";
-    public string LabelInstallerUrl { get; } = CoreTools.Translate("Installer URL") + ":";
-    public string LabelUpdateDate { get; } = CoreTools.Translate("Last updated:");
-    public string LabelReleaseNotesUrl { get; } = CoreTools.Translate("Release notes URL") + ":";
-    public string LabelOpen { get; } = CoreTools.Translate("Open");
-    public string LabelClose { get; } = CoreTools.Translate("Close");
-    public string HeaderDetails { get; } = CoreTools.Translate("Package details");
-    public string HeaderDeps { get; } = CoreTools.Translate("Dependencies:");
-    public string HeaderReleaseNotes { get; } = CoreTools.Translate("Release notes");
+    public string LabelHomepage { get; } = CoreTools.Translate("Homepage");
+    public string LabelAuthor { get; } = CoreTools.Translate("Author");
+    public string LabelPublisher { get; } = CoreTools.Translate("Publisher");
+    public string LabelLicense { get; } = CoreTools.Translate("License");
+    public string LabelSource { get; } = CoreTools.Translate("Package Manager");
+    public string LabelPackageId { get; } = CoreTools.Translate("Package ID");
+    public string LabelManifest { get; } = CoreTools.Translate("Manifest");
+    public string LabelInstallerType { get; } = CoreTools.Translate("Installer Type");
+    public string LabelInstallerUrl { get; } = CoreTools.Translate("Installer URL");
+    public string LabelUpdateDate { get; } = CoreTools.Translate("Last updated");
+    public string LabelDependencies { get; } = CoreTools.Translate("Dependencies");
+    public string LabelReleaseNotes { get; } = CoreTools.Translate("Release notes");
+    public string LabelReleaseNotesUrl { get; } = CoreTools.Translate("Release notes URL");
+    public string LabelDownloadInstaller { get; } = CoreTools.Translate("Download installer");
+    public string LabelInstallerNotAvailable { get; } = CoreTools.Translate("Installer not available");
+    public string LabelNotAvailable { get; } = CoreTools.Translate("Not available");
+    public string LabelNoDependencies { get; } = CoreTools.Translate("No dependencies specified");
+    public string LabelInstallationOptions { get; } = CoreTools.Translate("Installation options");
+    public string LabelSave { get; } = CoreTools.Translate("Save");
+    public string LabelContributorBanner { get; } = CoreTools.Translate(
+        "This package has no screenshots or is missing the icon? Contribute to UniGetUI by adding the missing icons and screenshots to our open, public database.");
+    public string LabelContribute { get; } = CoreTools.Translate("Become a contributor");
 
     public PackageDetailsViewModel(IPackage package, OperationType role)
     {
@@ -162,7 +177,7 @@ public partial class PackageDetailsViewModel : ObservableObject
         if (role == OperationType.Install)
         {
             MainActionLabel = CoreTools.Translate("Install");
-            LabelVersion = CoreTools.Translate("Version") + ":";
+            LabelVersion = CoreTools.Translate("Version");
             VersionDisplay = available?.VersionString ?? package.VersionString;
             AsAdminLabel = CoreTools.Translate("Install as administrator");
             InteractiveLabel = CoreTools.Translate("Interactive installation");
@@ -173,10 +188,10 @@ public partial class PackageDetailsViewModel : ObservableObject
         {
             MainActionLabel = CoreTools.Translate(
                 "Update to version {0}", upgradable?.NewVersionString ?? package.NewVersionString);
-            LabelVersion = CoreTools.Translate("Installed Version") + ":";
+            LabelVersion = CoreTools.Translate("Installed Version");
             VersionDisplay = (upgradable?.VersionString ?? package.VersionString)
-                                         + " \u27a4 "
-                                         + (upgradable?.NewVersionString ?? package.NewVersionString);
+                             + " ➤ "
+                             + (upgradable?.NewVersionString ?? package.NewVersionString);
             AsAdminLabel = CoreTools.Translate("Update as administrator");
             InteractiveLabel = CoreTools.Translate("Interactive update");
             SkipHashOrRemoveDataLabel = CoreTools.Translate("Skip hash check");
@@ -185,7 +200,7 @@ public partial class PackageDetailsViewModel : ObservableObject
         else
         {
             MainActionLabel = CoreTools.Translate("Uninstall");
-            LabelVersion = CoreTools.Translate("Installed Version") + ":";
+            LabelVersion = CoreTools.Translate("Installed Version");
             VersionDisplay = installed?.VersionString ?? package.VersionString;
             AsAdminLabel = CoreTools.Translate("Uninstall as administrator");
             InteractiveLabel = CoreTools.Translate("Interactive uninstall");
@@ -194,9 +209,24 @@ public partial class PackageDetailsViewModel : ObservableObject
         }
     }
 
+    [RelayCommand]
+    private void PreviousScreenshot()
+    {
+        if (SelectedScreenshotIndex > 0)
+            SelectedScreenshotIndex--;
+    }
+
+    [RelayCommand]
+    private void NextScreenshot()
+    {
+        if (SelectedScreenshotIndex < ScreenshotCount - 1)
+            SelectedScreenshotIndex++;
+    }
+
     public async Task LoadDetailsAsync()
     {
         _ = LoadIconAsync();
+        _ = LoadScreenshotsAsync();
 
         var details = Package.Details;
         if (!details.IsPopulated)
@@ -205,39 +235,28 @@ public partial class PackageDetailsViewModel : ObservableObject
         IsLoading = false;
 
         Description = details.Description ?? CoreTools.Translate("Not available");
-        HomepageText = details.HomepageUrl?.ToString() ?? CoreTools.Translate("Not available");
-        HasHomepageUrl = details.HomepageUrl is not null;
+        HomepageUrl = details.HomepageUrl;
         Author = details.Author ?? CoreTools.Translate("Not available");
         Publisher = details.Publisher ?? CoreTools.Translate("Not available");
 
-        if (details.License is not null && details.LicenseUrl is not null)
-            LicenseText = $"{details.License} ({details.LicenseUrl})";
-        else if (details.License is not null)
-            LicenseText = details.License;
-        else if (details.LicenseUrl is not null)
-            LicenseText = details.LicenseUrl.ToString();
-        else
-            LicenseText = CoreTools.Translate("Not available");
-        HasLicenseUrl = details.LicenseUrl is not null;
+        LicenseName = details.License;
+        LicenseUrl = details.LicenseUrl;
 
-        ManifestText = details.ManifestUrl?.ToString() ?? CoreTools.Translate("Not available");
-        HasManifestUrl = details.ManifestUrl is not null;
+        ManifestUrl = details.ManifestUrl;
 
         if (Package.Manager.Properties.Name.Equals("chocolatey", StringComparison.OrdinalIgnoreCase))
             InstallerHashLabel = CoreTools.Translate("Installer SHA512") + ":";
 
         InstallerHash = details.InstallerHash ?? CoreTools.Translate("Not available");
         InstallerType = details.InstallerType ?? CoreTools.Translate("Not available");
-        InstallerUrlText = details.InstallerUrl?.ToString() ?? CoreTools.Translate("Not available");
-        HasInstallerUrl = details.InstallerUrl is not null;
+        InstallerUrl = details.InstallerUrl;
         InstallerSize = details.InstallerSize > 0
             ? CoreTools.FormatAsSize(details.InstallerSize, 2)
             : CoreTools.Translate("Unknown size");
         UpdateDate = details.UpdateDate ?? CoreTools.Translate("Not available");
 
         ReleaseNotes = details.ReleaseNotes ?? CoreTools.Translate("Not available");
-        ReleaseNotesUrlText = details.ReleaseNotesUrl?.ToString() ?? CoreTools.Translate("Not available");
-        HasReleaseNotesUrl = details.ReleaseNotesUrl is not null;
+        ReleaseNotesUrl = details.ReleaseNotesUrl;
 
         if (!CanListDependencies)
         {
@@ -261,23 +280,41 @@ public partial class PackageDetailsViewModel : ObservableObject
         foreach (var tag in details.Tags)
             Tags.Add(tag);
         TagCount = Tags.Count;
+
+        DetailsLoaded?.Invoke(this, EventArgs.Empty);
     }
 
     private async Task LoadIconAsync()
     {
         try
         {
-            var iconUrl = await Task.Run(Package.GetIconUrl);
-            if (iconUrl is not null)
+            var uri = await Task.Run(Package.GetIconUrlIfAny);
+            if (uri is not null)
             {
-                using var http = new HttpClient(CoreTools.GenericHttpClientParameters);
-                var bytes = await http.GetByteArrayAsync(iconUrl);
-                using var ms = new MemoryStream(bytes);
-                PackageIcon = new Bitmap(ms);
-                return;
+                Bitmap? bitmap = null;
+                if (uri.IsFile)
+                {
+                    bitmap = await Task.Run(() => new Bitmap(uri.LocalPath));
+                }
+                else if (uri.Scheme is "http" or "https")
+                {
+                    using var http = new HttpClient(CoreTools.GenericHttpClientParameters);
+                    var bytes = await http.GetByteArrayAsync(uri);
+                    using var ms = new MemoryStream(bytes);
+                    bitmap = new Bitmap(ms);
+                }
+
+                if (bitmap is not null)
+                {
+                    PackageIcon = bitmap;
+                    return;
+                }
             }
         }
-        catch { /* icon is optional */ }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[PackageDetailsViewModel] Failed to load icon: {ex.Message}");
+        }
 
         try
         {
@@ -288,8 +325,38 @@ public partial class PackageDetailsViewModel : ObservableObject
         catch { }
     }
 
+    private async Task LoadScreenshotsAsync()
+    {
+        try
+        {
+            var uris = await Task.Run(Package.GetScreenshots);
+            if (!uris.Any()) return;
+
+            using var http = new HttpClient(CoreTools.GenericHttpClientParameters);
+            foreach (var uri in uris)
+            {
+                try
+                {
+                    var bytes = await http.GetByteArrayAsync(uri);
+                    using var ms = new MemoryStream(bytes);
+                    var bmp = new Bitmap(ms);
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        Screenshots.Add(bmp);
+                        ScreenshotCount = Screenshots.Count;
+                    });
+                }
+                catch { /* skip failed screenshots */ }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[PackageDetailsViewModel] Failed to load screenshots: {ex.Message}");
+        }
+    }
+
     [RelayCommand]
-    private static void OpenUrl(string? url)
+    public static void OpenUrl(string? url)
     {
         if (string.IsNullOrEmpty(url) || !url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             return;
@@ -307,7 +374,7 @@ public class DependencyViewModel
 
     public DependencyViewModel(IPackageDetails.Dependency dep)
     {
-        var text = $"  \u2022 {dep.Name}";
+        var text = $"  • {dep.Name}";
         if (!string.IsNullOrEmpty(dep.Version))
             text += $" v{dep.Version}";
         text += dep.Mandatory

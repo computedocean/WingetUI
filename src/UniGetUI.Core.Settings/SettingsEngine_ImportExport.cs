@@ -43,17 +43,14 @@ public partial class Settings
 
             settings.Add(Path.GetFileName(entry), File.ReadAllText(entry));
         }
-        return JsonSerializer.Serialize(settings, SerializationOptions);
+        return SettingsJson.SerializeStringDictionary(settings);
     }
 
     public static void ImportFromString_JSON(string jsonContent)
     {
         ResetSettings();
         Dictionary<string, string> settings =
-            JsonSerializer.Deserialize<Dictionary<string, string>>(
-                jsonContent,
-                SerializationOptions
-            ) ?? [];
+            SettingsJson.DeserializeStringDictionary(jsonContent) ?? [];
         foreach (KeyValuePair<string, string> entry in settings)
         {
             if (
@@ -77,6 +74,11 @@ public partial class Settings
 
     public static void ResetSettings()
     {
+        booleanSettings.Clear();
+        valueSettings.Clear();
+        listSettings.Clear();
+        _dictionarySettings.Clear();
+
         foreach (
             string entry in Directory.EnumerateFiles(CoreData.UniGetUIUserConfigurationDirectory)
         )

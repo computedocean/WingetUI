@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using UniGetUI.Avalonia.ViewModels;
 
 namespace UniGetUI.Avalonia.Views;
@@ -11,7 +12,14 @@ public partial class ManageDesktopShortcutsWindow : Window
         var vm = new ManageDesktopShortcutsViewModel(shortcuts);
         DataContext = vm;
         InitializeComponent();
+        UniGetUI.Avalonia.Infrastructure.MicaWindowHelper.Apply(this);
         vm.CloseRequested += (_, _) => Close();
+    }
+
+    protected override void OnOpened(EventArgs e)
+    {
+        base.OnOpened(e);
+        Dispatcher.UIThread.Post(() => ShortcutsGrid.Focus(), DispatcherPriority.Background);
     }
 
     private void ResetYes_Click(object? sender, RoutedEventArgs e)

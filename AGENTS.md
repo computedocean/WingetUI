@@ -5,7 +5,7 @@
 UniGetUI is a WinUI 3 desktop app (C#/.NET 10, Windows App SDK) providing a GUI for CLI package managers (WinGet, Scoop, Chocolatey, Pip, Npm, .NET Tool, PowerShell Gallery, Cargo, Vcpkg).
 
 Solution entry points:
-- `src/UniGetUI.sln` - official Windows application based on WinUI 3
+- `src/UniGetUI.Windows.slnx` - official Windows solution; builds the WinUI 3 launcher/classic app and the Avalonia app
 - `src/UniGetUI.Avalonia.slnx` - experimental cross-platform Avalonia port
 
 ## Architecture
@@ -61,7 +61,7 @@ Use these rules when changing Avalonia diagnostics/devtools behavior:
 - Default policy: enabled in `Debug`, disabled in `Release`.
 - `src/UniGetUI.Avalonia/UniGetUI.Avalonia.csproj` must condition `AvaloniaUI.DiagnosticsSupport` on `$(EnableAvaloniaDiagnostics)`.
 - Compile-time diagnostics code in `src/UniGetUI.Avalonia/Program.cs` must be gated by `#if AVALONIA_DIAGNOSTICS_ENABLED` (not `#if DEBUG`).
-- Runtime controls are developer-only and intentionally not listed in `cli-arguments.md`.
+- Runtime controls are developer-only and intentionally not listed in `docs/CLI.md`.
 - Runtime precedence in `Program.cs`: CLI flags > `UNIGETUI_AVALONIA_DEVTOOLS` environment variable > `Auto` default.
 - Accepted runtime env/CLI values for mode parsing: `auto`, `enabled`, `disabled`, `on`, `off`, `true`, `false`, `1`, `0`.
 - `Auto` mode must remain WSL-safe (DevTools disabled by default on WSL).
@@ -76,7 +76,7 @@ File-based settings via `Settings.Get(Settings.K.*)` / `Settings.Set(Settings.K.
 Use `Logger.Info()`, `Logger.Warn()`, `Logger.Error()`, `Logger.Debug()`, `Logger.ImportantInfo()` from `UniGetUI.Core.Logging`. Accepts both `string` and `Exception` parameters.
 
 ### Localization
-Use `CoreTools.Translate("text")` for all user-facing strings. Parameterized: `CoreTools.Translate("{0} packages found", count)`. In XAML, use the `TranslatedTextBlock` control. Translation assets live under `src/UniGetUI.Core.LanguageEngine/Assets/`; do not assume Tolgee-based automation exists in this repository.
+Use `CoreTools.Translate("text")` for all user-facing strings. Parameterized: `CoreTools.Translate("{0} packages found", count)`. In XAML, use the `TranslatedTextBlock` control. Translation assets live under `src/Languages/`; do not assume Tolgee-based automation exists in this repository.
 
 ### Naming
 - Types, methods, properties: **PascalCase**
@@ -94,11 +94,11 @@ Use `CoreTools.Translate("text")` for all user-facing strings. Parameterized: `C
 
 | Purpose | Path |
 |---|---|
-| Solution | `src/UniGetUI.sln` |
+| Windows solution | `src/UniGetUI.Windows.slnx` |
 | Experimental cross-platform solution | `src/UniGetUI.Avalonia.slnx` |
 | Shared build props | `src/Directory.Build.props` |
 | Version info | `src/SharedAssemblyInfo.cs` |
-| Manager interface | `src/UniGetUI.PAckageEngine.Interfaces/IPackageManager.cs` |
+| Manager interface | `src/UniGetUI.PackageEngine.Interfaces/IPackageManager.cs` |
 | Base manager class | `src/UniGetUI.PackageEngine.PackageManagerClasses/Manager/PackageManager.cs` |
 | Package class | `src/UniGetUI.PackageEngine.PackageManagerClasses/Packages/Package.cs` |
 | Settings engine | `src/UniGetUI.Core.Settings/SettingsEngine.cs` |

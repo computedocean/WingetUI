@@ -67,12 +67,14 @@ public partial class Cargo : PackageManager
             CanDownloadInstaller = true,
             SupportsProxy = ProxySupport.Partially,
             SupportsProxyAuth = true,
+            KnowsPackageReleaseDate = PackageReleaseDateSupport.Yes,
         };
 
         var cratesIo = new ManagerSource(this, "crates.io", new Uri("https://index.crates.io/"));
 
         Properties = new ManagerProperties
         {
+            Id = "cargo",
             Name = "Cargo",
             Description = CoreTools.Translate(
                 "The Rust package manager.<br>Contains: <b>Rust libraries and programs written in Rust</b>"

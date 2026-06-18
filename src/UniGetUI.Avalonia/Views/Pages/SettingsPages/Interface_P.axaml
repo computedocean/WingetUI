@@ -1,6 +1,7 @@
 <UserControl x:Class="UniGetUI.Avalonia.Views.Pages.SettingsPages.Interface_P"
              xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
              xmlns:vm="using:UniGetUI.Avalonia.ViewModels.Pages.SettingsPages"
              xmlns:settings="using:UniGetUI.Avalonia.Views.Controls.Settings"
              xmlns:t="using:UniGetUI.Avalonia.MarkupExtensions"
@@ -14,35 +15,51 @@
 
             <settings:TranslatedTextBlock Text="Appearance"
                                           FontWeight="SemiBold"
-                                          Margin="44,32,4,8"/>
+                                          Margin="44,32,4,8"
+                                          automation:AutomationProperties.HeadingLevel="2"/>
 
             <settings:ComboboxCard x:Name="ThemeSelector"
                                    CornerRadius="8,8,0,0"/>
 
-            <settings:ComboboxCard x:Name="StartupPageSelector"
-                                   CornerRadius="0,0,8,8"
-                                   BorderThickness="1,0,1,1"/>
+             <settings:ComboboxCard x:Name="StartupPageSelector"
+                                    CornerRadius="0,0,8,8"
+                                    BorderThickness="1,0,1,1"/>
 
-            <StackPanel x:Name="SystemTraySection" Orientation="Vertical" IsVisible="{Binding IsWindows}">
+            <Border Height="16"/>
+
+            <settings:CheckboxCard SettingName="UseClassicMode"
+                                   Text="{t:Translate Use classic mode}"
+                                   WarningText="{t:Translate Restart UniGetUI to apply this change}"
+                                   StateChangedCommand="{Binding ShowRestartRequiredCommand}"
+                                   IsEnabled="{Binding !IsBetaTester}"
+                                   IsVisible="{Binding IsWindows}"
+                                   ToolTip.Tip="{t:Translate The classic UI is disabled for beta testers}"
+                                   CornerRadius="8"/>
+
+             <StackPanel x:Name="SystemTraySection" Orientation="Vertical">
                 <settings:TranslatedTextBlock Text="UniGetUI on the background and system tray"
                                               FontWeight="SemiBold"
-                                              Margin="44,32,4,8"/>
+                                              Margin="44,32,4,8"
+                                          automation:AutomationProperties.HeadingLevel="2"/>
 
                 <settings:CheckboxCard SettingName="DisableSystemTray"
                                        Text="{t:Translate Close UniGetUI to the system tray}"
+                                       StateChangedCommand="{Binding RefreshSystemTrayCommand}"
                                        CornerRadius="8,8,0,0"/>
 
                 <settings:ButtonCard x:Name="EditAutostartSettings"
                                      CornerRadius="0,0,8,8"
                                      BorderThickness="1,0,1,1"
-                                     Text="{t:Translate Manage WingetUI autostart behaviour}"
+                                     IsVisible="{Binding IsWindows}"
+                                     Text="{t:Translate Manage UniGetUI autostart behaviour}"
                                      ButtonText="{t:Translate Open}"
                                      Command="{Binding EditAutostartSettingsCommand}"/>
             </StackPanel>
 
             <settings:TranslatedTextBlock Text="Package lists"
                                           FontWeight="SemiBold"
-                                          Margin="44,32,4,8"/>
+                                          Margin="44,32,4,8"
+                                          automation:AutomationProperties.HeadingLevel="2"/>
 
             <settings:CheckboxCard SettingName="DisableIconsOnPackageLists"
                                    Text="{t:Translate Show package icons on package lists}"

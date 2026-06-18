@@ -35,14 +35,24 @@ public sealed partial class TextboxCard : SettingsCard
         }
     }
 
+    public bool IsNumericOnly { get; set; }
+
     public string Placeholder
     {
-        set => _textbox.Watermark = value;
+        set
+        {
+            _textbox.PlaceholderText = value;
+            ApplyAutomationMetadata(_textbox, GetAutomationNameText() ?? value);
+        }
     }
 
     public string Text
     {
-        set => Header = value;
+        set
+        {
+            Header = value;
+            ApplyAutomationMetadata(_textbox, value);
+        }
     }
 
     public Uri HelpUrl
@@ -52,6 +62,7 @@ public sealed partial class TextboxCard : SettingsCard
             _helpUri = value;
             _helpbutton.IsVisible = true;
             _helpbutton.Content = CoreTools.Translate("More info");
+            ApplyAutomationMetadata(_helpbutton, CoreTools.Translate("More info"), GetAutomationNameText());
         }
     }
 
@@ -77,11 +88,23 @@ public sealed partial class TextboxCard : SettingsCard
         s.Children.Add(_textbox);
 
         Content = s;
+        ApplyAutomationMetadata(_textbox);
     }
 
     public void SaveValue()
     {
         string sanitizedText = _textbox.Text ?? "";
+
+        if (IsNumericOnly)
+        {
+            string filtered = string.Concat(sanitizedText.Where(char.IsDigit));
+            if (filtered != sanitizedText)
+            {
+                _textbox.Text = filtered; // triggers TextChanged → SaveValue again with clean text
+                return;
+            }
+            sanitizedText = filtered;
+        }
 
         if (CoreSettings.ResolveKey(setting_name).Contains("File"))
             sanitizedText = CoreTools.MakeValidFileName(sanitizedText);

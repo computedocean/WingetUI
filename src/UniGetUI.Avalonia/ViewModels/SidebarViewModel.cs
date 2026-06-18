@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Avalonia.Views;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.SettingsEngine;
@@ -23,13 +24,13 @@ public partial class SidebarViewModel : ViewModelBase
     partial void OnUpdatesBadgeCountChanged(int value) =>
         UpdatesBadgeVisible = value > 0;
 
-    partial void OnUpdatesBadgeVisibleChanged(bool _)
+    partial void OnUpdatesBadgeVisibleChanged(bool value)
     {
         OnPropertyChanged(nameof(UpdatesBadgeExpandedVisible));
         OnPropertyChanged(nameof(UpdatesBadgeCompactVisible));
     }
 
-    partial void OnBundlesBadgeVisibleChanged(bool _)
+    partial void OnBundlesBadgeVisibleChanged(bool value)
     {
         OnPropertyChanged(nameof(BundlesBadgeExpandedVisible));
         OnPropertyChanged(nameof(BundlesBadgeCompactVisible));
@@ -59,7 +60,7 @@ public partial class SidebarViewModel : ViewModelBase
         OnPropertyChanged(nameof(BundlesBadgeCompactVisible));
     }
 
-    public double PaneWidth => IsPaneOpen ? 250 : 72;
+    public double PaneWidth => IsPaneOpen ? 250 : 64;
 
     public bool UpdatesBadgeExpandedVisible => UpdatesBadgeVisible && IsPaneOpen;
     public bool UpdatesBadgeCompactVisible => UpdatesBadgeVisible && !IsPaneOpen;
@@ -73,7 +74,8 @@ public partial class SidebarViewModel : ViewModelBase
     // ─── Navigation ──────────────────────────────────────────────────────────
     public event EventHandler<PageType>? NavigationRequested;
 
-    public string VersionLabel { get; } = CoreTools.Translate("WingetUI Version {0}", CoreData.VersionName);
+    public string VersionLabel { get; } =
+        CoreTools.Translate("UniGetUI Version {0} by Devolutions", CoreData.VersionName);
 
     [RelayCommand]
     public void RequestNavigation(string? pageName)
@@ -81,6 +83,10 @@ public partial class SidebarViewModel : ViewModelBase
         if (Enum.TryParse<PageType>(pageName, out var page))
             NavigationRequested?.Invoke(this, page);
     }
+
+    [RelayCommand]
+    private static Task CheckForUpdates() =>
+        AvaloniaAutoUpdater.CheckAndInstallUpdatesAsync(autoLaunch: false, manualCheck: true);
 
     public void SelectNavButtonForPage(PageType page) =>
         SelectedPageType = page;

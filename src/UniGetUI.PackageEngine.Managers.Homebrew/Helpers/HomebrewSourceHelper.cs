@@ -10,8 +10,10 @@ namespace UniGetUI.PackageEngine.Managers.HomebrewManager;
 
 internal sealed class HomebrewSourceHelper : BaseSourceHelper
 {
+    private readonly Homebrew _brew;
+
     public HomebrewSourceHelper(Homebrew manager)
-        : base(manager) { }
+        : base(manager) { _brew = manager; }
 
     // ── Source listing ─────────────────────────────────────────────────────
 
@@ -21,15 +23,7 @@ internal sealed class HomebrewSourceHelper : BaseSourceHelper
 
         using var p = new Process
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = Manager.Status.ExecutablePath,
-                Arguments = "tap",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            },
+            StartInfo = _brew.MakeBrewStartInfo("tap"),
         };
         IProcessTaskLogger logger = Manager.TaskLogger.CreateNew(LoggableTaskType.ListSources, p);
         p.Start();

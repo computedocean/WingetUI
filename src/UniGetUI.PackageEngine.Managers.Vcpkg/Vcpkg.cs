@@ -45,6 +45,7 @@ namespace UniGetUI.PackageEngine.Managers.VcpkgManager
                 CanListDependencies = true,
                 SupportsProxy = ProxySupport.No,
                 SupportsProxyAuth = false,
+                KnowsPackageReleaseDate = PackageReleaseDateSupport.No,
             };
 
             string DefaultTriplet = GetDefaultTriplet();
@@ -69,6 +70,7 @@ namespace UniGetUI.PackageEngine.Managers.VcpkgManager
 
             Properties = new ManagerProperties
             {
+                Id = "vcpkg",
                 Name = "vcpkg",
                 Description = CoreTools.Translate(
                     "A popular C/C++ library manager. Full of C/C++ libraries and other C/C++-related utilities<br>Contains: <b>C/C++ libraries and related utilities</b>"

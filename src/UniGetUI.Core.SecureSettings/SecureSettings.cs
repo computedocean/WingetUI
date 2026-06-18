@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Tools;
@@ -6,6 +7,8 @@ namespace UniGetUI.Core.SettingsEngine.SecureSettings;
 
 public static class SecureSettings
 {
+    public static string? TEST_SecureSettingsRootOverride { private get; set; }
+
     // Various predefined secure settings keys
     public enum K
     {
@@ -36,7 +39,7 @@ public static class SecureSettings
         };
     }
 
-    private static readonly Dictionary<string, bool> _cache = new();
+    private static readonly ConcurrentDictionary<string, bool> _cache = new();
 
     public static class Args
     {
@@ -46,34 +49,43 @@ public static class SecureSettings
 
     public static bool Get(K key)
     {
-        string purifiedSetting = CoreTools.MakeValidFileName(ResolveKey(key));
-        if (_cache.TryGetValue(purifiedSetting, out var value))
+        return GetForUser(Environment.UserName, key);
+    }
+
+    public static bool GetForUser(string username, K key)
+    {
+        return GetForUser(username, ResolveKey(key));
+    }
+
+    public static bool GetForUser(string username, string setting)
+    {
+        string purifiedSetting = CoreTools.MakeValidFileName(setting);
+        string purifiedUser = CoreTools.MakeValidFileName(username);
+        string cacheKey = $"{purifiedUser}|{purifiedSetting}";
+        if (_cache.TryGetValue(cacheKey, out var value))
         {
             return value;
         }
-
-        string purifiedUser = CoreTools.MakeValidFileName(Environment.UserName);
 
         var settingsLocation = Path.Join(GetSecureSettingsRoot(), purifiedUser);
         var settingFile = Path.Join(settingsLocation, purifiedSetting);
 
         if (!Directory.Exists(settingsLocation))
         {
-            _cache[purifiedSetting] = false;
+            _cache[cacheKey] = false;
             return false;
         }
 
         bool exists = File.Exists(settingFile);
-        _cache[purifiedSetting] = exists;
+        _cache[cacheKey] = exists;
         return exists;
     }
 
     public static async Task<bool> TrySet(K key, bool enabled)
     {
         string purifiedSetting = CoreTools.MakeValidFileName(ResolveKey(key));
-        _cache.Remove(purifiedSetting);
-
         string purifiedUser = CoreTools.MakeValidFileName(Environment.UserName);
+        _cache.TryRemove($"{purifiedUser}|{purifiedSetting}", out _);
 
         if (!OperatingSystem.IsWindows())
         {
@@ -105,9 +117,8 @@ public static class SecureSettings
         try
         {
             string purifiedSetting = CoreTools.MakeValidFileName(setting);
-            _cache.Remove(purifiedSetting);
-
             string purifiedUser = CoreTools.MakeValidFileName(username);
+            _cache.TryRemove($"{purifiedUser}|{purifiedSetting}", out _);
 
             var settingsLocation = Path.Join(GetSecureSettingsRoot(), purifiedUser);
             var settingFile = Path.Join(settingsLocation, purifiedSetting);
@@ -140,6 +151,11 @@ public static class SecureSettings
 
     private static string GetSecureSettingsRoot()
     {
+        if (TEST_SecureSettingsRootOverride is not null)
+        {
+            return TEST_SecureSettingsRootOverride;
+        }
+
         if (OperatingSystem.IsWindows())
         {
             return Path.Join(
@@ -151,4 +167,5 @@ public static class SecureSettings
 
         return Path.Join(CoreData.UniGetUIDataDirectory, "SecureSettings");
     }
+
 }

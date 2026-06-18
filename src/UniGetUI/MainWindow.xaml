@@ -6,7 +6,6 @@
   xmlns:animations="using:CommunityToolkit.WinUI.Animations"
   xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
   xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-  xmlns:services="using:UniGetUI.Services"
   xmlns:widgets="using:UniGetUI.Interface.Widgets"
   Title="UniGetUI"
   mc:Ignorable="d"
@@ -36,6 +35,7 @@
       PaneToggleRequested="TitleBar_PaneToggleRequested"
       SizeChanged="TitleBar_SizeChanged"
       Visibility="Collapsed"
+      IsTabStop="False"
     >
       <!--TitleBar.IconSource>
                 <ImageIconSource ImageSource="ms-appx:///Assets/Images/icon.png" />
@@ -51,9 +51,6 @@
           QueryIcon="Find"
         />
       </TitleBar.Content>
-      <TitleBar.RightHeader>
-        <services:UserAvatar Margin="0,0,0,0" />
-      </TitleBar.RightHeader>
     </TitleBar>
     <StackPanel Grid.Row="1" Margin="0" Padding="0" BorderThickness="0" Spacing="0">
       <InfoBar
@@ -97,7 +94,7 @@
       />
     </StackPanel>
     <Frame Name="MainContentFrame" Grid.Row="2">
-      <Grid Background="{StaticResource ProgressBarBorderThemeBrush}" Visibility="Visible">
+      <Grid Background="{StaticResource ProgressBarBorderThemeBrush}" Visibility="Visible" AutomationProperties.Name="Loading UniGetUI">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*" />
           <ColumnDefinition Width="Auto" />
@@ -116,35 +113,14 @@
           Grid.ColumnSpan="3"
           Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
         />
-        <StackPanel Grid.Row="1" Grid.Column="1" Padding="0,20,0,20" Orientation="Horizontal">
-          <Border
-            Margin="-500,0,20,0"
-            BorderBrush="{ThemeResource ApplicationPageBackgroundThemeBrush}"
-            BorderThickness="500,0,0,0"
-            Canvas.ZIndex="1"
-          >
+        <!-- Splash: 540x261 keeps the 620:300 aspect ratio of the artwork. Source is a transparent PNG set theme-aware in code-behind (SvgImageSource renders blank here). The tagline's 90px left margin shifts its centering to the wordmark center (x≈315) within the 540-wide grid. -->
+        <Grid Grid.Row="1" Grid.Column="1" Width="540" Height="261">
+          <Image x:Name="SplashImage" Stretch="Uniform">
             <animations:Explicit.Animations>
               <animations:AnimationSet x:Name="InAnimation_Border">
                 <animations:TranslationAnimation
                   EasingMode="EaseOut"
-                  From="225,0"
-                  To="0,0"
-                  Duration="0:0:0.7"
-                />
-              </animations:AnimationSet>
-            </animations:Explicit.Animations>
-            <Image Width="96">
-              <Image.Source>
-                <BitmapImage UriSource="ms-appx:///Assets/Images/icon_unsquare.png" />
-              </Image.Source>
-            </Image>
-          </Border>
-          <Border Margin="0" Padding="0,10" HorizontalAlignment="Right">
-            <animations:Explicit.Animations>
-              <animations:AnimationSet x:Name="InAnimation_Text">
-                <animations:TranslationAnimation
-                  EasingMode="EaseOut"
-                  From="-225,0"
+                  From="0,40"
                   To="0,0"
                   Duration="0:0:0.7"
                 />
@@ -156,28 +132,28 @@
                 />
               </animations:AnimationSet>
             </animations:Explicit.Animations>
-            <StackPanel VerticalAlignment="Center" Orientation="Vertical">
-              <TextBlock
-                Name="UniGetUITitle"
-                Margin="0,-10,0,-20"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Center"
-                FontFamily="Segoe UI Variable Display"
-                FontSize="90"
-                FontWeight="ExtraBlack"
-                HorizontalTextAlignment="Right"
-                Text="UniGetUI"
-              />
-              <widgets:TranslatedTextBlock
-                HorizontalAlignment="Center"
-                VerticalAlignment="Bottom"
-                FontFamily="Segoe UI Variable"
-                FontSize="20"
-                Text="Package management made easy"
-              />
-            </StackPanel>
-          </Border>
-        </StackPanel>
+          </Image>
+          <widgets:TranslatedTextBlock
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Margin="110,170,0,0"
+            FontFamily="Segoe UI Variable"
+            FontSize="15"
+            WrappingMode="NoWrap"
+            Text="Package management made easy"
+          >
+            <animations:Explicit.Animations>
+              <animations:AnimationSet x:Name="InAnimation_Text">
+                <animations:OpacityAnimation
+                  EasingMode="EaseOut"
+                  From="0"
+                  To="1"
+                  Duration="0:0:0.7"
+                />
+              </animations:AnimationSet>
+            </animations:Explicit.Animations>
+          </widgets:TranslatedTextBlock>
+        </Grid>
         <ProgressRing
           Name="LoadingIndicator"
           Grid.Row="1"

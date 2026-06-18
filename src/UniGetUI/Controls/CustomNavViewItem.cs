@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using UniGetUI.Core.Tools;
 using UniGetUI.Interface;
@@ -9,7 +10,7 @@ namespace UniGetUI.Controls;
 
 internal sealed partial class CustomNavViewItem : NavigationViewItem
 {
-    int _iconSize = 24;
+    int _iconSize = 20;
     public IconType LocalIcon
     {
         set => base.Icon = new LocalIcon(value);
@@ -47,6 +48,7 @@ internal sealed partial class CustomNavViewItem : NavigationViewItem
             string text = CoreTools.Translate(value);
             _textBlock.Text = text;
             ToolTipService.SetToolTip(this, text);
+            AutomationProperties.SetName(this, text);
         }
     }
 
@@ -62,7 +64,7 @@ internal sealed partial class CustomNavViewItem : NavigationViewItem
 
     public CustomNavViewItem()
     {
-        Height = 54;
+        Height = 48;
         Resources["NavigationViewItemOnLeftIconBoxHeight"] = _iconSize;
         Resources["NavigationViewItemContentPresenterMargin"] = new Thickness(0);
 
@@ -70,9 +72,9 @@ internal sealed partial class CustomNavViewItem : NavigationViewItem
 
         _progressRing = new ProgressRing
         {
-            Width = 24,
-            Height = 24,
-            Margin = new Thickness(-42, 0, 0, 0),
+            Width = 20,
+            Height = 20,
+            Margin = new Thickness(-32, 0, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center,
             IsIndeterminate = true,

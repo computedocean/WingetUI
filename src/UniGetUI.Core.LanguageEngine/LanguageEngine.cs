@@ -1,16 +1,23 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Text.Json.Nodes;
+using System.Text;
+using System.Text.Json;
 using Jeffijoe.MessageFormat;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
-using UniGetUI.PackageEngine.Enums;
 
 namespace UniGetUI.Core.Language
 {
     public class LanguageEngine
     {
+        private static readonly Dictionary<string, string> LocaleAliases = new(StringComparer.OrdinalIgnoreCase)
+        {
+            { "es_MX", "es-MX" },
+            { "tg", "tl" },
+            { "ua", "uk" },
+        };
+
         private Dictionary<string, string> MainLangDict = [];
         public static string SelectedLocale = "??";
 
@@ -44,23 +51,11 @@ namespace UniGetUI.Core.Language
                 lang = (lang ?? string.Empty).Trim();
 
                 Locale = "en";
-                if (LanguageData.LanguageReference.ContainsKey(lang))
-                {
-                    Locale = lang;
-                }
-                else if (lang.Length >= 2)
-                {
-                    string prefix = lang[0..2].Replace("uk", "ua");
-                    if (LanguageData.LanguageReference.ContainsKey(prefix))
-                    {
-                        Locale = prefix;
-                    }
-                }
+                Locale = ResolveLocale(lang);
 
                 MainLangDict = LoadLanguageFile(Locale);
                 Formatter = new() { Locale = Locale.Replace('_', '-') };
 
-                LoadStaticTranslation();
                 SelectedLocale = Locale;
                 Logger.Info("Loaded language locale: " + Locale);
             }
@@ -73,9 +68,66 @@ namespace UniGetUI.Core.Language
                 Locale = "en";
                 MainLangDict = LoadLanguageFile(Locale);
                 Formatter = new() { Locale = "en" };
-                LoadStaticTranslation();
                 SelectedLocale = Locale;
             }
+        }
+
+        private static string ResolveLocale(string lang)
+        {
+            foreach (string candidate in GetLocaleCandidates(lang))
+            {
+                if (LanguageData.LanguageReference.ContainsKey(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return "en";
+        }
+
+        private static IEnumerable<string> GetLocaleCandidates(string lang)
+        {
+            HashSet<string> candidates = new(StringComparer.OrdinalIgnoreCase);
+
+            void AddCandidate(string? candidate)
+            {
+                if (!string.IsNullOrWhiteSpace(candidate))
+                {
+                    candidates.Add(candidate.Trim());
+                }
+            }
+
+            string requested = (lang ?? string.Empty).Trim();
+            string underscored = requested.Replace('-', '_');
+            string hyphenated = requested.Replace('_', '-');
+
+            AddCandidate(requested);
+            AddCandidate(underscored);
+            AddCandidate(hyphenated);
+
+            if (LocaleAliases.TryGetValue(requested, out string? requestedAlias))
+            {
+                AddCandidate(requestedAlias);
+            }
+
+            if (LocaleAliases.TryGetValue(underscored, out string? underscoredAlias))
+            {
+                AddCandidate(underscoredAlias);
+            }
+
+            string[] localeSegments = underscored.Split('_', StringSplitOptions.RemoveEmptyEntries);
+            if (localeSegments.Length > 0)
+            {
+                string baseLanguage = localeSegments[0];
+                AddCandidate(baseLanguage);
+
+                if (LocaleAliases.TryGetValue(baseLanguage, out string? baseLanguageAlias))
+                {
+                    AddCandidate(baseLanguageAlias);
+                }
+            }
+
+            return candidates;
         }
 
         public Dictionary<string, string> LoadLanguageFile(string LangKey)
@@ -88,7 +140,7 @@ namespace UniGetUI.Core.Language
                     "Languages",
                     "lang_" + LangKey + ".json"
                 );
-                JsonObject BundledContents = [];
+                Dictionary<string, string> LangDict = [];
 
                 if (!File.Exists(BundledLangFileToLoad))
                 {
@@ -100,15 +152,10 @@ namespace UniGetUI.Core.Language
                 {
                     try
                     {
-                        if (
-                            JsonNode.Parse(File.ReadAllText(BundledLangFileToLoad))
-                            is JsonObject parsedObject
-                        )
-                            BundledContents = parsedObject;
-                        else
-                            throw new ArgumentException(
-                                $"parsedObject was null for lang file {BundledLangFileToLoad}"
-                            );
+                        LangDict = ParseLanguageEntries(
+                            File.ReadAllText(BundledLangFileToLoad),
+                            BundledLangFileToLoad
+                        );
                     }
                     catch (Exception ex)
                     {
@@ -118,57 +165,6 @@ namespace UniGetUI.Core.Language
                         Logger.Warn(ex);
                     }
                 }
-
-                Dictionary<string, string> LangDict = BundledContents.ToDictionary(
-                    x => x.Key,
-                    x => x.Value?.ToString() ?? ""
-                );
-
-                string CachedLangFileToLoad = Path.Join(
-                    CoreData.UniGetUICacheDirectory_Lang,
-                    "lang_" + LangKey + ".json"
-                );
-
-                if (Settings.Get(Settings.K.DisableLangAutoUpdater))
-                {
-                    Logger.Warn("User has updated translations disabled");
-                }
-                else if (!File.Exists(CachedLangFileToLoad))
-                {
-                    Logger.Warn(
-                        $"Tried to access a non-existing cached language file! file={CachedLangFileToLoad}"
-                    );
-                }
-                else
-                {
-                    try
-                    {
-                        if (
-                            JsonNode.Parse(File.ReadAllText(CachedLangFileToLoad))
-                            is JsonObject parsedObject
-                        )
-                            foreach (
-                                var keyval in parsedObject.ToDictionary(x => x.Key, x => x.Value)
-                            )
-                            {
-                                LangDict[keyval.Key] = keyval.Value?.ToString() ?? "";
-                            }
-                        else
-                            throw new ArgumentException(
-                                $"parsedObject was null for lang file {CachedLangFileToLoad}"
-                            );
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Warn(
-                            $"Something went wrong when parsing language file {BundledLangFileToLoad}"
-                        );
-                        Logger.Warn(ex);
-                    }
-                }
-
-                if (!Settings.Get(Settings.K.DisableLangAutoUpdater))
-                    _ = DownloadUpdatedLanguageFile(LangKey);
 
                 return LangDict;
             }
@@ -180,57 +176,67 @@ namespace UniGetUI.Core.Language
             }
         }
 
-        /// <summary>
-        /// Downloads and saves an updated version of the translations for the specified language.
-        /// </summary>
-        /// <param name="LangKey">The Id of the language to download</param>
-        public async Task DownloadUpdatedLanguageFile(string LangKey)
+        private static Dictionary<string, string> ParseLanguageEntries(
+            string fileContents,
+            string filePath
+        )
         {
-            try
-            {
-                Uri NewFile = new(
-                    "https://raw.githubusercontent.com/Devolutions/UniGetUI/main/src/UniGetUI.Core.LanguageEngine/Assets/Languages/lang_"
-                        + LangKey
-                        + ".json"
-                );
-
-                HttpClient client = new();
-                client.DefaultRequestHeaders.UserAgent.ParseAdd(CoreData.UserAgentString);
-                string fileContents = await client.GetStringAsync(NewFile);
-
-                if (!Directory.Exists(CoreData.UniGetUICacheDirectory_Lang))
+            Dictionary<string, string> entries = [];
+            HashSet<string> duplicateKeys = [];
+            Utf8JsonReader reader = new(
+                Encoding.UTF8.GetBytes(fileContents),
+                new JsonReaderOptions
                 {
-                    Directory.CreateDirectory(CoreData.UniGetUICacheDirectory_Lang);
+                    AllowTrailingCommas = true,
+                    CommentHandling = JsonCommentHandling.Skip,
+                }
+            );
+
+            if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+            {
+                throw new JsonException($"Language file {filePath} does not contain a JSON object");
+            }
+
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndObject)
+                {
+                    break;
                 }
 
-                File.WriteAllText(
-                    Path.Join(CoreData.UniGetUICacheDirectory_Lang, "lang_" + LangKey + ".json"),
-                    fileContents
-                );
+                if (reader.TokenType != JsonTokenType.PropertyName)
+                {
+                    throw new JsonException(
+                        $"Unexpected token {reader.TokenType} in language file {filePath}"
+                    );
+                }
 
-                Logger.ImportantInfo("Lang files were updated successfully from GitHub");
+                string key = reader.GetString() ?? throw new JsonException("Translation key is null");
+                if (!reader.Read())
+                {
+                    throw new JsonException($"Missing translation value for key {key}");
+                }
+
+                using JsonDocument value = JsonDocument.ParseValue(ref reader);
+                string parsedValue = value.RootElement.ValueKind == JsonValueKind.Null
+                    ? ""
+                    : value.RootElement.ToString();
+
+                if (!entries.TryAdd(key, parsedValue))
+                {
+                    duplicateKeys.Add(key);
+                    entries[key] = parsedValue;
+                }
             }
-            catch (Exception e)
+
+            if (duplicateKeys.Count > 0)
             {
-                Logger.Warn("Could not download updated translations from GitHub");
-                Logger.Warn(e);
+                Logger.Warn(
+                    $"Language file {filePath} contains duplicate keys. Keeping the last value for: {string.Join(", ", duplicateKeys)}"
+                );
             }
-        }
 
-        public void LoadStaticTranslation()
-        {
-            CommonTranslations.ScopeNames[PackageScope.Local] = Translate("User | Local");
-            CommonTranslations.ScopeNames[PackageScope.Global] = Translate("Machine | Global");
-
-            CommonTranslations.InvertedScopeNames.Clear();
-            CommonTranslations.InvertedScopeNames.Add(
-                Translate("Machine | Global"),
-                PackageScope.Global
-            );
-            CommonTranslations.InvertedScopeNames.Add(
-                Translate("User | Local"),
-                PackageScope.Local
-            );
+            return entries;
         }
 
         public string Translate(string key)

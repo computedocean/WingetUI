@@ -103,6 +103,18 @@ public abstract class AbstractProcessOperation : AbstractOperation
         Line($" - Arguments: \"{process.StartInfo.Arguments.Trim()}\"", LineType.VerboseDetails);
         Line($"Start Time: \"{DateTime.Now}\"", LineType.VerboseDetails);
 
+        // An empty FileName means elevation was required but no elevator (UniGetUI Elevator/GSudo) is available
+        if (string.IsNullOrWhiteSpace(process.StartInfo.FileName))
+        {
+            Line(
+                CoreTools.Translate(
+                    "This operation requires administrator privileges, but the elevation tool could not be found. The operation cannot continue."
+                ),
+                LineType.Error
+            );
+            return OperationVeredict.Failure;
+        }
+
         if (_requiresUACCache)
         {
             _requiresUACCache = false;
@@ -173,8 +185,9 @@ public abstract class AbstractProcessOperation : AbstractOperation
         if (ProcessKilled)
             return OperationVeredict.Canceled;
 
+        // Raw output: redacting here would corrupt the phrases result detection matches on.
         List<string> output = new();
-        foreach (var line in GetOutput())
+        foreach (var line in GetRawOutput())
         {
             if (line.Item2 is LineType.VerboseDetails && line.Item1 == "-----------------------")
                 output.Clear();

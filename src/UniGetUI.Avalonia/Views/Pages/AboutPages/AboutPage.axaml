@@ -1,6 +1,7 @@
 <UserControl x:Class="UniGetUI.Avalonia.Views.Pages.AboutPages.AboutPage"
              xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
              xmlns:vm="using:UniGetUI.Avalonia.ViewModels.Pages.AboutPages"
              xmlns:t="using:UniGetUI.Avalonia.MarkupExtensions"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -11,11 +12,17 @@
     <ScrollViewer HorizontalScrollBarVisibility="Disabled">
         <StackPanel Orientation="Vertical" Spacing="4" Margin="16,8">
 
-            <TextBlock Text="{t:Translate About WingetUI}"
+            <TextBlock Text="{t:Translate About UniGetUI}"
                        FontSize="24"
                        FontWeight="Bold"/>
 
-            <TextBlock Text="{t:Translate Text='WingetUI is an application that makes managing your software easier, by providing an all-in-one graphical interface for your command-line package managers.'}"
+            <TextBlock Text="{t:Translate UniGetUI by Devolutions}"
+                       FontSize="14"
+                       FontWeight="SemiBold"
+                       Opacity="0.75"
+                       Margin="0,-4,0,4"/>
+
+            <TextBlock Text="{t:Translate Text='UniGetUI is an application that makes managing your software easier, by providing an all-in-one graphical interface for your command-line package managers.'}"
                        TextWrapping="Wrap"/>
 
             <TextBlock Text="{Binding VersionText}"
@@ -61,27 +68,33 @@
                     Background="Transparent"
                     BorderThickness="0"
                     Padding="0"
-                    HorizontalAlignment="Center">
+                    HorizontalAlignment="Center"
+                    automation:AutomationProperties.Name="{t:Translate UniGetUI Homepage}">
                 <TextBlock Classes="hyperlink"
-                           Text="{t:Translate UniGetUI Homepage}"/>
+                           Text="{t:Translate UniGetUI Homepage}"
+                           automation:AutomationProperties.AccessibilityView="Raw"/>
             </Button>
 
             <Button Command="{Binding OpenIssuesCommand}"
                     Background="Transparent"
                     BorderThickness="0"
                     Padding="0"
-                    HorizontalAlignment="Center">
+                    HorizontalAlignment="Center"
+                    automation:AutomationProperties.Name="{t:Translate Report an issue or submit a feature request}">
                 <TextBlock Classes="hyperlink"
-                           Text="{t:Translate Report an issue or submit a feature request}"/>
+                           Text="{t:Translate Report an issue or submit a feature request}"
+                           automation:AutomationProperties.AccessibilityView="Raw"/>
             </Button>
 
             <Button Command="{Binding OpenRepositoryCommand}"
                     Background="Transparent"
                     BorderThickness="0"
                     Padding="0"
-                    HorizontalAlignment="Center">
+                    HorizontalAlignment="Center"
+                    automation:AutomationProperties.Name="{t:Translate UniGetUI Repository}">
                 <TextBlock Classes="hyperlink"
-                           Text="{t:Translate UniGetUI Repository}"/>
+                           Text="{t:Translate UniGetUI Repository}"
+                           automation:AutomationProperties.AccessibilityView="Raw"/>
             </Button>
 
         </StackPanel>

@@ -23,16 +23,13 @@ public partial class InfoBar : UserControl
 
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
-        if (_vm is not null)
-            _vm.PropertyChanged -= OnViewModelPropertyChanged;
+        _vm?.PropertyChanged -= OnViewModelPropertyChanged;
 
         _vm = DataContext as InfoBarViewModel;
 
+        _vm?.PropertyChanged += OnViewModelPropertyChanged;
         if (_vm is not null)
-        {
-            _vm.PropertyChanged += OnViewModelPropertyChanged;
             ApplySeverity(_vm.Severity);
-        }
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -43,7 +40,14 @@ public partial class InfoBar : UserControl
 
     private void ApplySeverity(InfoBarSeverity severity)
     {
-        // Update strip colour
+        // Background + border: swap a single CSS class — DynamicResource in the style
+        // handles theme changes automatically without any event subscription.
+        BodyBorder.Classes.Set("severity-success", severity == InfoBarSeverity.Success);
+        BodyBorder.Classes.Set("severity-error", severity == InfoBarSeverity.Error);
+        BodyBorder.Classes.Set("severity-warning", severity == InfoBarSeverity.Warning);
+        BodyBorder.Classes.Set("severity-info", severity == InfoBarSeverity.Informational);
+
+        // Strip colour (solid, not theme-sensitive)
         var stripColor = severity switch
         {
             InfoBarSeverity.Warning => Color.Parse("#F7A800"),
@@ -53,29 +57,7 @@ public partial class InfoBar : UserControl
         };
         SeverityStrip.Background = new SolidColorBrush(stripColor);
 
-        // Update body background/border from theme resources
-        string bgKey = severity switch
-        {
-            InfoBarSeverity.Warning => "WarningBannerBackground",
-            InfoBarSeverity.Error => "StatusErrorBackground",
-            InfoBarSeverity.Success => "StatusSuccessBackground",
-            _ => "StatusInfoBackground",
-        };
-        string borderKey = severity switch
-        {
-            InfoBarSeverity.Warning => "WarningBannerBorderBrush",
-            InfoBarSeverity.Error => "StatusErrorBorderBrush",
-            InfoBarSeverity.Success => "StatusSuccessBorderBrush",
-            _ => "StatusInfoBorderBrush",
-        };
-
-        var theme = Application.Current?.ActualThemeVariant;
-        if (Application.Current?.TryGetResource(bgKey, theme, out var bg) == true && bg is IBrush bgBrush)
-            BodyBorder.Background = bgBrush;
-        if (Application.Current?.TryGetResource(borderKey, theme, out var border) == true && border is IBrush borderBrush)
-            BodyBorder.BorderBrush = borderBrush;
-
-        // Update icon
+        // Icon shape
         SeverityIcon.Data = Geometry.Parse(severity switch
         {
             InfoBarSeverity.Warning => WarningPath,
@@ -84,14 +66,7 @@ public partial class InfoBar : UserControl
             _ => InfoPath,
         });
 
-        // Icon foreground
-        var iconColor = severity switch
-        {
-            InfoBarSeverity.Warning => Color.Parse("#F7A800"),
-            InfoBarSeverity.Error => Color.Parse("#C42B1C"),
-            InfoBarSeverity.Success => Color.Parse("#107C10"),
-            _ => Color.Parse("#0078D4"),
-        };
-        SeverityIcon.Foreground = new SolidColorBrush(iconColor);
+        // Icon foreground (solid, not theme-sensitive)
+        SeverityIcon.Foreground = new SolidColorBrush(stripColor);
     }
 }

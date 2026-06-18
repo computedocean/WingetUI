@@ -1,3 +1,4 @@
+using UniGetUI.Core.SettingsEngine;
 using UniGetUI.PackageEngine.Classes.Manager.BaseProviders;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
@@ -28,8 +29,8 @@ internal sealed class ScoopPkgOperationHelper : BasePkgOperationHelper
             },
         ];
 
-        // If source is ellpised or source is a local path, omit source argument
-        if (package.Source.Name.Contains("...") || package.Source.Name.Contains(":\\"))
+        // If source is ellipsed, a local path, or a URL manifest, omit source argument
+        if (package.Source.Name.Contains("...") || package.Source.Name.Contains(":\\") || package.Source.Name.StartsWith("http"))
             parameters.Add($"{package.Id}");
         else
             parameters.Add($"{package.Source.Name}/{package.Id}");
@@ -108,6 +109,18 @@ internal sealed class ScoopPkgOperationHelper : BasePkgOperationHelper
                 || output_string.Contains("requires administrator rights")
                 || output_string.Contains("you need admin rights to install global apps")
             )
+        )
+        {
+            package.OverridenOptions.RunAsAdministrator = true;
+            return OperationVeredict.AutoRetry;
+        }
+
+        // Scoop can't resolve shims through the fresh 'current' junction in some contexts; an elevated (trusted) junction fixes it, so retry as admin unless elevation is disabled. See #4892
+        if (
+            package.OverridenOptions.RunAsAdministrator != true
+            && returnCode is not 0
+            && !Settings.Get(Settings.K.ProhibitElevation)
+            && output_string.Contains("Can't shim")
         )
         {
             package.OverridenOptions.RunAsAdministrator = true;

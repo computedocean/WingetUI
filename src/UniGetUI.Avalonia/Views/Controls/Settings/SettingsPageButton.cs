@@ -8,19 +8,27 @@ public partial class SettingsPageButton : SettingsCard
 {
     public string Text
     {
-        set => Header = value;
+        set
+        {
+            Header = value;
+            ApplyAutomationMetadata(this, value, GetAutomationHelpText());
+        }
     }
 
     public string UnderText
     {
-        set => Description = value;
+        set
+        {
+            Description = value;
+            ApplyAutomationMetadata(this, GetAutomationNameText(), value);
+        }
     }
 
     public IconType Icon
     {
         set => HeaderIcon = new SvgIcon
         {
-            Path = $"avares://UniGetUI.Avalonia/Assets/Symbols/{IconTypeToName(value)}.svg",
+            Path = IconTypeToPath(value),
             Width = 24,
             Height = 24,
         };
@@ -32,21 +40,25 @@ public partial class SettingsPageButton : SettingsCard
         IsClickEnabled = true;
     }
 
-    private static string IconTypeToName(IconType icon) => icon switch
+    private static string IconTypeToPath(IconType icon)
     {
-        IconType.Chocolatey => "choco",
-        IconType.Package => "package",
-        IconType.UAC => "uac",
-        IconType.Update => "update",
-        IconType.Help => "help",
-        IconType.Console => "console",
-        IconType.Checksum => "checksum",
-        IconType.Download => "download",
-        IconType.Settings => "settings",
-        IconType.SaveAs => "save_as",
-        IconType.OpenFolder => "open_folder",
-        IconType.Experimental => "experimental",
-        IconType.ClipboardList => "clipboard_list",
-        _ => icon.ToString().ToLower(),
-    };
+        string name = icon switch
+        {
+            IconType.Chocolatey => "choco",
+            IconType.Package => "package",
+            IconType.UAC => "uac",
+            IconType.Update => "update",
+            IconType.Help => "help",
+            IconType.Console => "console",
+            IconType.Checksum => "checksum",
+            IconType.Download => "download",
+            IconType.Settings => "settings",
+            IconType.SaveAs => "save_as",
+            IconType.OpenFolder => "open_folder",
+            IconType.Experimental => "experimental",
+            IconType.ClipboardList => "clipboard_list",
+            _ => icon.ToString().ToLower(),
+        };
+        return $"avares://UniGetUI.Avalonia/Assets/Symbols/{name}.svg";
+    }
 }

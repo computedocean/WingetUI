@@ -1,7 +1,10 @@
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
+using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Avalonia.ViewModels;
 using UniGetUI.Avalonia.ViewModels.Pages.SettingsPages;
 using UniGetUI.Avalonia.Views.Controls;
@@ -10,6 +13,7 @@ using UniGetUI.Core.SettingsEngine.SecureSettings;
 using UniGetUI.Core.Tools;
 using UniGetUI.Interface.Enums;
 using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.ManagerClasses.Manager;
 using UniGetUI.PackageEngine.Managers.VcpkgManager;
 using CoreSettings = UniGetUI.Core.SettingsEngine.Settings;
 using CornerRadius = global::Avalonia.CornerRadius;
@@ -75,7 +79,7 @@ public sealed partial class PackageManagerPage : UserControl, ISettingsPage
 
         var execHint = new TextBlock
         {
-            Text = CoreTools.Translate("Not finding the file you are looking for? Make sure it has been added to path."),
+            Text = CoreTools.Translate("Not finding the file you are looking for? Browse to it or make sure it has been added to PATH."),
             FontSize = 12,
             FontWeight = FontWeight.SemiBold,
             Opacity = 0.7,
@@ -85,11 +89,19 @@ public sealed partial class PackageManagerPage : UserControl, ISettingsPage
         execGrid.Children.Add(execHint);
 
         var execCombo = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetName(execCombo, CoreTools.Translate("Select the executable to be used. The following list shows the executables found by UniGetUI"));
         foreach (var path in manager.FindCandidateExecutableFiles())
-            execCombo.Items.Add(path);
+            AddExecutablePathItem(execCombo, path);
 
         string savedPath = CoreSettings.GetDictionaryItem<string, string>(CoreSettings.K.ManagerPaths, manager.Name) ?? "";
+        if (!string.IsNullOrEmpty(savedPath) && File.Exists(savedPath))
+            AddExecutablePathItem(execCombo, savedPath);
         if (string.IsNullOrEmpty(savedPath))
+        {
+            var (found, path) = manager.GetExecutableFile();
+            savedPath = found ? path : "";
+        }
+        else if (!File.Exists(savedPath))
         {
             var (found, path) = manager.GetExecutableFile();
             savedPath = found ? path : "";
@@ -102,8 +114,36 @@ public sealed partial class PackageManagerPage : UserControl, ISettingsPage
                 ViewModel.OnExecutableSelected(selected);
         };
         Grid.SetRow(execCombo, 1);
-        Grid.SetColumnSpan(execCombo, 2);
+        Grid.SetColumn(execCombo, 0);
         execGrid.Children.Add(execCombo);
+
+        var browseExecutableButton = new Button
+        {
+            Content = CoreTools.Translate("Browse..."),
+            IsEnabled = customPathsAllowed,
+            Margin = new Thickness(8, 0, 0, 0),
+        };
+        browseExecutableButton.Click += async (_, _) =>
+        {
+            if (TopLevel.GetTopLevel(this) is not { } topLevel) return;
+            var files = await topLevel.StorageProvider.OpenFilePickerAsync(
+                new FilePickerOpenOptions
+                {
+                    AllowMultiple = false,
+                    Title = CoreTools.Translate("Select executable"),
+                    FileTypeFilter = GetExecutableFileTypeFilter(),
+                });
+            if (files is not [{ } file]) return;
+
+            string? path = file.TryGetLocalPath();
+            if (string.IsNullOrWhiteSpace(path)) return;
+
+            AddExecutablePathItem(execCombo, path);
+            execCombo.SelectedItem = path;
+        };
+        Grid.SetRow(browseExecutableButton, 1);
+        Grid.SetColumn(browseExecutableButton, 1);
+        execGrid.Children.Add(browseExecutableButton);
 
         if (!customPathsAllowed)
         {
@@ -156,6 +196,7 @@ public sealed partial class PackageManagerPage : UserControl, ISettingsPage
             Background = Brushes.Transparent,
             BorderThickness = new Thickness(0),
         };
+        AutomationProperties.SetName(copyBtn, CoreTools.Translate("Copy path"));
         var pathCard = new SettingsCard
         {
             BorderThickness = new Thickness(1, 0, 1, 1),
@@ -197,6 +238,126 @@ public sealed partial class PackageManagerPage : UserControl, ISettingsPage
 
         BuildExtraControls(disableNotifsCard);
 
+        // ── Per-manager minimum update age
+        ExtraControls.Children.Add(new TextBlock
+        {
+            Margin = new Thickness(44, 24, 4, 8),
+            FontWeight = FontWeight.SemiBold,
+            Text = CoreTools.Translate("Update security"),
+        });
+
+        (string Label, string Value)[] ageItems =
+        [
+            (CoreTools.Translate("Use global setting"), ""),
+            (CoreTools.Translate("No minimum age"), "0"),
+            (CoreTools.Translate("1 day"), "1"),
+            (CoreTools.Translate("{0} days", 3), "3"),
+            (CoreTools.Translate("{0} days", 7), "7"),
+            (CoreTools.Translate("{0} days", 14), "14"),
+            (CoreTools.Translate("{0} days", 30), "30"),
+            (CoreTools.Translate("Custom..."), "custom"),
+        ];
+
+        var ageCombo = new ComboBox { MinWidth = 200 };
+        AutomationProperties.SetName(ageCombo, CoreTools.Translate("Minimum age for updates"));
+        foreach (var (label, _) in ageItems)
+            ageCombo.Items.Add(label);
+
+        string? savedAge = CoreSettings.GetDictionaryItem<string, string>(
+            CoreSettings.K.PerManagerMinimumUpdateAge, manager.Name);
+        int savedAgeIdx = Array.FindIndex(ageItems, i => i.Value == (savedAge ?? ""));
+        ageCombo.SelectedIndex = savedAgeIdx >= 0 ? savedAgeIdx : 0;
+
+        var customAgeInput = new TextBox
+        {
+            MinWidth = 200,
+            PlaceholderText = CoreTools.Translate("e.g. 10"),
+            [AutomationProperties.NameProperty] = CoreTools.Translate("Custom minimum age (days)"),
+            Text = CoreSettings.GetDictionaryItem<string, string>(
+                CoreSettings.K.PerManagerMinimumUpdateAgeCustom, manager.Name) ?? "",
+        };
+        customAgeInput.TextChanged += (_, _) =>
+        {
+            string current = customAgeInput.Text ?? "";
+            string filtered = string.Concat(current.Where(char.IsDigit));
+            if (filtered != current)
+            {
+                customAgeInput.Text = filtered;
+                return;
+            }
+            if (filtered.Length > 0)
+                CoreSettings.SetDictionaryItem(
+                    CoreSettings.K.PerManagerMinimumUpdateAgeCustom, manager.Name, filtered);
+            else
+                CoreSettings.RemoveDictionaryKey<string, string>(
+                    CoreSettings.K.PerManagerMinimumUpdateAgeCustom, manager.Name);
+        };
+
+        bool initiallyCustom = savedAge == "custom";
+        var releaseDateSupport = manager.Capabilities.KnowsPackageReleaseDate;
+        bool ageSupported = releaseDateSupport != PackageReleaseDateSupport.No;
+        object ageDescription = releaseDateSupport switch
+        {
+            PackageReleaseDateSupport.No => new TextBlock
+            {
+                Text = CoreTools.Translate("{pm} does not provide release dates for its packages, so this setting will have no effect")
+                               .Replace("{pm}", manager.DisplayName),
+                Foreground = new SolidColorBrush(Color.Parse("#e05252")),
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 12,
+            },
+            PackageReleaseDateSupport.Partial => new TextBlock
+            {
+                Text = CoreTools.Translate("{pm} only provides release dates for some of its packages, so this setting will only apply to those packages")
+                               .Replace("{pm}", manager.DisplayName),
+                Foreground = new SolidColorBrush(Color.FromRgb(224, 168, 0)),
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 12,
+            },
+            _ => CoreTools.Translate("Override the global minimum update age for this package manager"),
+        };
+
+        ageCombo.IsEnabled = ageSupported;
+        customAgeInput.IsEnabled = ageSupported;
+
+        var minimumAgeCard = new SettingsCard
+        {
+            Header = CoreTools.Translate("Minimum age for updates"),
+            Description = ageDescription,
+            Content = ageCombo,
+            CornerRadius = initiallyCustom ? new CornerRadius(8, 8, 0, 0) : new CornerRadius(8),
+            BorderThickness = new Thickness(1),
+        };
+        var customAgeCard = new SettingsCard
+        {
+            Header = CoreTools.Translate("Custom minimum age (days)"),
+            Content = customAgeInput,
+            IsVisible = initiallyCustom,
+            CornerRadius = new CornerRadius(0, 0, 8, 8),
+            BorderThickness = new Thickness(1, 0, 1, 1),
+        };
+
+        ageCombo.SelectionChanged += (_, _) =>
+        {
+            int idx = ageCombo.SelectedIndex;
+            if (idx < 0) return;
+            string val = ageItems[idx].Value;
+
+            bool isCustom = val == "custom";
+            customAgeCard.IsVisible = isCustom;
+            minimumAgeCard.CornerRadius = isCustom ? new CornerRadius(8, 8, 0, 0) : new CornerRadius(8);
+
+            if (string.IsNullOrEmpty(val))
+                CoreSettings.RemoveDictionaryKey<string, string>(
+                    CoreSettings.K.PerManagerMinimumUpdateAge, manager.Name);
+            else
+                CoreSettings.SetDictionaryItem(
+                    CoreSettings.K.PerManagerMinimumUpdateAge, manager.Name, val);
+        };
+
+        ExtraControls.Children.Add(minimumAgeCard);
+        ExtraControls.Children.Add(customAgeCard);
+
         // ── Logs card
         ManagerLogs.Text = CoreTools.Translate("View {0} logs", manager.DisplayName);
         ManagerLogs.Icon = UniGetUI.Interface.Enums.IconType.Console;
@@ -215,6 +376,34 @@ public sealed partial class PackageManagerPage : UserControl, ISettingsPage
                 "If Python cannot be found or is not listing packages but is installed on the system, " +
                 "you may need to disable the \"python.exe\" App Execution Alias in the settings.");
         }
+    }
+
+    private static IReadOnlyList<FilePickerFileType> GetExecutableFileTypeFilter()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return [new FilePickerFileType(CoreTools.Translate("All files")) { Patterns = ["*"] }];
+        }
+
+        return
+        [
+            new FilePickerFileType(CoreTools.Translate("Executable")) { Patterns = ["*.exe"] },
+            new FilePickerFileType(CoreTools.Translate("All files")) { Patterns = ["*"] },
+        ];
+    }
+
+    private static void AddExecutablePathItem(ComboBox comboBox, string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        foreach (object? item in comboBox.Items)
+        {
+            if (string.Equals(item?.ToString(), path, StringComparison.OrdinalIgnoreCase))
+                return;
+        }
+
+        comboBox.Items.Add(path);
     }
 
     private void BuildExtraControls(CheckboxCard_Dict disableNotifsCard)
@@ -239,10 +428,46 @@ public sealed partial class PackageManagerPage : UserControl, ISettingsPage
 
         switch (manager.Name)
         {
-            case "WinGet":
+            case "Winget":
                 disableNotifsCard.CornerRadius = new CornerRadius(8, 8, 0, 0);
                 disableNotifsCard.BorderThickness = new Thickness(1, 1, 1, 0);
                 ExtraControls.Children.Add(disableNotifsCard);
+
+                var wingetCliToolPreference = new ComboboxCard
+                {
+                    Text = CoreTools.Translate("WinGet command-line tool"),
+                    Description = CoreTools.Translate(
+                        "Choose which command-line tool UniGetUI uses for WinGet operations when the COM API is not used"
+                    ),
+                    SettingName = CoreSettings.K.WinGetCliToolPreference,
+                    CornerRadius = new CornerRadius(0),
+                    BorderThickness = new Thickness(1, 0, 1, 1),
+                };
+                wingetCliToolPreference.AddItem("Default", "default");
+                wingetCliToolPreference.AddItem("WinGet", "winget", false);
+                wingetCliToolPreference.AddItem("Pinget", "pinget", false);
+                wingetCliToolPreference.ShowAddedItems();
+                wingetCliToolPreference.ValueChanged += (_, _) =>
+                    _ = ViewModel.ReloadManagerCommand.ExecuteAsync(null);
+                ExtraControls.Children.Add(wingetCliToolPreference);
+
+                var wingetComApiPolicy = new ComboboxCard
+                {
+                    Text = CoreTools.Translate("WinGet COM API"),
+                    Description = CoreTools.Translate(
+                        "Choose whether UniGetUI can use the WinGet COM API before falling back to the command-line tool"
+                    ),
+                    SettingName = CoreSettings.K.WinGetComApiPolicy,
+                    CornerRadius = new CornerRadius(0),
+                    BorderThickness = new Thickness(1, 0, 1, 1),
+                };
+                wingetComApiPolicy.AddItem("Default", "default");
+                wingetComApiPolicy.AddItem("Enabled", "enabled");
+                wingetComApiPolicy.AddItem("Disabled", "disabled");
+                wingetComApiPolicy.ShowAddedItems();
+                wingetComApiPolicy.ValueChanged += (_, _) =>
+                    _ = ViewModel.ReloadManagerCommand.ExecuteAsync(null);
+                ExtraControls.Children.Add(wingetComApiPolicy);
 
                 var wingetResetBtn = new ButtonCard
                 {
@@ -250,8 +475,9 @@ public sealed partial class PackageManagerPage : UserControl, ISettingsPage
                         + $" ({CoreTools.Translate("This may help if no packages are listed")})",
                     ButtonText = CoreTools.AutoTranslated("Reset"),
                     CornerRadius = new CornerRadius(0),
+                    BorderThickness = new Thickness(1, 0, 1, 1),
                 };
-                wingetResetBtn.Click += (_, _) => { /* TODO: HandleBrokenWinGet */ };
+                wingetResetBtn.Click += (_, _) => _ = AvaloniaPackageOperationHelper.HandleBrokenWinGetAsync();
                 ExtraControls.Children.Add(wingetResetBtn);
 
                 ExtraControls.Children.Add(new CheckboxCard
@@ -262,15 +488,14 @@ public sealed partial class PackageManagerPage : UserControl, ISettingsPage
                     BorderThickness = new Thickness(1, 0, 1, 1),
                 });
 
-                var wingetUseBundled = new CheckboxCard
+                ExtraControls.Children.Add(new CheckboxCard
                 {
-                    Text = $"{CoreTools.Translate("Use bundled WinGet instead of system WinGet")} ({CoreTools.Translate("This may help if WinGet packages are not shown")})",
-                    SettingName = CoreSettings.K.ForceLegacyBundledWinGet,
+                    Text = CoreTools.Translate("Download full package manifest alongside the installer"),
+                    SettingName = CoreSettings.K.WinGetDownloadFullManifest,
                     CornerRadius = new CornerRadius(0, 0, 8, 8),
                     BorderThickness = new Thickness(1, 0, 1, 1),
-                };
-                wingetUseBundled.StateChanged += (_, _) => _ = ViewModel.ReloadManagerCommand.ExecuteAsync(null);
-                ExtraControls.Children.Add(wingetUseBundled);
+                });
+
                 break;
 
             case "Scoop":
@@ -315,19 +540,18 @@ public sealed partial class PackageManagerPage : UserControl, ISettingsPage
                 });
                 break;
 
-            case "Chocolatey":
+            case "Bun":
                 disableNotifsCard.CornerRadius = new CornerRadius(8, 8, 0, 0);
                 disableNotifsCard.BorderThickness = new Thickness(1, 1, 1, 0);
                 ExtraControls.Children.Add(disableNotifsCard);
 
-                var chocoSysChoco = new CheckboxCard
+                ExtraControls.Children.Add(new CheckboxCard
                 {
-                    Text = CoreTools.AutoTranslated("Use system Chocolatey"),
-                    SettingName = CoreSettings.K.UseSystemChocolatey,
                     CornerRadius = new CornerRadius(0, 0, 8, 8),
-                };
-                chocoSysChoco.StateChanged += (_, _) => _ = ViewModel.ReloadManagerCommand.ExecuteAsync(null);
-                ExtraControls.Children.Add(chocoSysChoco);
+                    BorderThickness = new Thickness(1, 0, 1, 1),
+                    SettingName = CoreSettings.K.BunPreferLatestVersions,
+                    Text = CoreTools.Translate("Prefer latest versions (may include breaking changes) instead of recommended safe updates"),
+                });
                 break;
 
             case "vcpkg":
@@ -378,12 +602,14 @@ public sealed partial class PackageManagerPage : UserControl, ISettingsPage
             IsEnabled = ViewModel.IsCustomVcpkgRootSet,
             Margin = new Thickness(4, 0),
         };
+        AutomationProperties.SetName(resetBtn, CoreTools.Translate("Reset vcpkg root location"));
         var openBtn = new Button
         {
             Content = CoreTools.Translate("Open"),
             IsEnabled = ViewModel.IsCustomVcpkgRootSet,
             Margin = new Thickness(4, 0),
         };
+        AutomationProperties.SetName(openBtn, CoreTools.Translate("Open vcpkg root location"));
 
         ViewModel.PropertyChanged += (_, e) =>
         {

@@ -10,22 +10,16 @@ namespace UniGetUI.PackageEngine.Managers.HomebrewManager;
 
 internal sealed class HomebrewPkgDetailsHelper : BasePkgDetailsHelper
 {
+    private readonly Homebrew _brew;
+
     public HomebrewPkgDetailsHelper(Homebrew manager)
-        : base(manager) { }
+        : base(manager) { _brew = manager; }
 
     protected override void GetDetails_UnSafe(IPackageDetails details)
     {
         using var p = new Process
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = Manager.Status.ExecutablePath,
-                Arguments = $"info --json=v2 {details.Package.Id}",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            },
+            StartInfo = _brew.MakeBrewStartInfo($"info --json=v2 {details.Package.Id}"),
         };
 
         IProcessTaskLogger logger = Manager.TaskLogger.CreateNew(
@@ -110,13 +104,16 @@ internal sealed class HomebrewPkgDetailsHelper : BasePkgDetailsHelper
 
     protected override string? GetInstallLocation_UnSafe(IPackage package)
     {
-        // Formulae: /opt/homebrew/Cellar/<name>  (Apple Silicon)
-        //           /usr/local/Cellar/<name>       (Intel)
-        foreach (var prefix in new[] { "/opt/homebrew", "/usr/local" })
+        // Apple Silicon prefix is /opt/homebrew, Intel/Linux is /usr/local (or /home/linuxbrew).
+        // Formulae live under Cellar/<name>, casks under Caskroom/<token>.
+        foreach (var prefix in new[] { "/opt/homebrew", "/usr/local", "/home/linuxbrew/.linuxbrew" })
         {
-            var path = Path.Join(prefix, "Cellar", package.Id);
-            if (Directory.Exists(path))
-                return path;
+            foreach (var kind in new[] { "Cellar", "Caskroom" })
+            {
+                var path = Path.Join(prefix, kind, package.Id);
+                if (Directory.Exists(path))
+                    return path;
+            }
         }
         return null;
     }

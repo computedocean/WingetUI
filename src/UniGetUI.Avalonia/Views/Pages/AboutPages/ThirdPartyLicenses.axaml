@@ -1,6 +1,7 @@
 <UserControl x:Class="UniGetUI.Avalonia.Views.Pages.AboutPages.ThirdPartyLicenses"
              xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
              xmlns:vm="using:UniGetUI.Avalonia.ViewModels.Pages.AboutPages"
              xmlns:t="using:UniGetUI.Avalonia.MarkupExtensions"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -11,11 +12,11 @@
     <ScrollViewer HorizontalScrollBarVisibility="Disabled">
         <StackPanel Orientation="Vertical" Spacing="4" Margin="16,8">
 
-            <TextBlock Text="{t:Translate WingetUI License}"
+            <TextBlock Text="{t:Translate UniGetUI License}"
                        FontSize="24"
                        FontWeight="Bold"/>
 
-            <TextBlock Text="{t:Translate Text='Using WingetUI implies the acceptation of the MIT License'}"
+            <TextBlock Text="{t:Translate Text='Using UniGetUI implies the acceptation of the MIT License'}"
                        TextWrapping="Wrap"/>
 
             <TextBlock Text="{t:Translate Third-party licenses}"
@@ -41,9 +42,11 @@
                                     Background="Transparent"
                                     BorderThickness="0"
                                     Padding="4,0"
-                                    HorizontalAlignment="Center">
+                                    HorizontalAlignment="Center"
+                                    automation:AutomationProperties.Name="{Binding License}">
                                 <TextBlock Classes="hyperlink"
-                                           Text="{Binding License}"/>
+                                           Text="{Binding License}"
+                                           automation:AutomationProperties.AccessibilityView="Raw"/>
                             </Button>
                             <Button Grid.Column="2"
                                     Tag="{Binding HomepageUrl}"
@@ -51,9 +54,11 @@
                                     Background="Transparent"
                                     BorderThickness="0"
                                     Padding="4,0"
-                                    HorizontalAlignment="Right">
+                                    HorizontalAlignment="Right"
+                                    automation:AutomationProperties.Name="{Binding HomepageText}">
                                 <TextBlock Classes="hyperlink"
-                                           Text="{Binding HomepageText}"/>
+                                           Text="{Binding HomepageText}"
+                                           automation:AutomationProperties.AccessibilityView="Raw"/>
                             </Button>
                         </Grid>
                     </DataTemplate>

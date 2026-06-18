@@ -1,11 +1,16 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
+using Avalonia.Interactivity;
+using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Threading;
 using UniGetUI.Avalonia.ViewModels.Pages;
 using UniGetUI.Avalonia.Views.Controls;
+using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.PackageEngine.PackageClasses;
@@ -16,6 +21,10 @@ public abstract partial class AbstractPackagesPage : UserControl,
     IKeyboardShortcutListener, IEnterLeaveListener, ISearchBoxPage
 {
     public PackagesPageViewModel ViewModel => (PackagesPageViewModel)DataContext!;
+    private readonly ContextMenu? _contextMenu;
+    private double _savedFilterPaneWidth = 220;
+    private bool _isOverlayMode;
+    private IDisposable? _sidePanelBgBinding;
 
     protected AbstractPackagesPage(PackagesPageData data)
     {
@@ -33,22 +42,6 @@ public abstract partial class AbstractPackagesPage : UserControl,
             if (GetMainWindow() is { } win)
                 await new ManageIgnoredUpdatesWindow().ShowDialog(win);
         };
-        ViewModel.SharePackageRequested += async (pkgName, url) =>
-        {
-            if (GetMainWindow() is not { } win) return;
-            if (url is null)
-            {
-                await ViewModel.ShowInfoDialog(win,
-                    CoreTools.Translate("Nothing to share"),
-                    CoreTools.Translate("Please select a package first."));
-                return;
-            }
-            var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
-            if (clipboard is not null) await clipboard.SetTextAsync(url);
-            await ViewModel.ShowInfoDialog(win,
-                CoreTools.Translate("Share link copied"),
-                CoreTools.Translate("The share link for {0} has been copied to the clipboard.", pkgName ?? ""));
-        };
 
         // "New version" sort option is only relevant on the updates page
         OrderByNewVersion_Menu.IsVisible = ViewModel.RoleIsUpdateLike;
@@ -59,8 +52,26 @@ public abstract partial class AbstractPackagesPage : UserControl,
         {
             if (args.PropertyName is nameof(PackagesPageViewModel.SortFieldIndex)
                                   or nameof(PackagesPageViewModel.SortAscending))
+            {
                 UpdateSortMenuChecks();
+                SyncOrderByButtonName();
+            }
+            if (args.PropertyName is nameof(PackagesPageViewModel.IsFilterPaneOpen))
+            {
+                SyncFiltersButtonName();
+                UpdateFilterPaneColumn(ViewModel.IsFilterPaneOpen);
+            }
         };
+        SyncFiltersButtonName();
+        SyncOrderByButtonName();
+
+        // Reload button added before subclass toolbar items (mirrors WinUI AbstractPackagesPage)
+        if (!ViewModel.DisableReload)
+        {
+            var reloadBtn = ViewModel.AddToolbarButton("reload", CoreTools.Translate("Reload"),
+                ViewModel.TriggerReload);
+            UpdateReloadButtonTooltip(reloadBtn);
+        }
 
         // Build the toolbar now that both AXAML controls and the ViewModel are ready
         GenerateToolBar(ViewModel);
@@ -68,29 +79,115 @@ public abstract partial class AbstractPackagesPage : UserControl,
         // Double-click a list row → show details
         PackageList.DoubleTapped += (_, _) => _ = ShowDetailsForPackage(SelectedItem);
 
-        // Keyboard shortcuts on the package list
-        PackageList.KeyDown += PackageList_KeyDown;
+        // Keyboard shortcuts on the package list. Handled on the tunnel route (and even when
+        // already handled) because the DataGrid swallows Enter on the bubble route otherwise.
+        PackageList.AddHandler(KeyDownEvent, PackageList_KeyDown, RoutingStrategies.Tunnel, handledEventsToo: true);
+
+        // Type-to-search: printable characters typed while the list is focused
+        // redirect focus + the typed character to the global search box.
+        PackageList.TextInput += PackageList_TextInput;
+
+        // Snap-close when splitter is dragged below the minimum (inline mode only).
+        // Using ColumnDefinition.WidthProperty fires every drag step, not just on release.
+        FilteringPanel.ColumnDefinitions[0]
+            .GetObservable(ColumnDefinition.WidthProperty)
+            .Subscribe(width =>
+            {
+                if (_isOverlayMode || !ViewModel.IsFilterPaneOpen) return;
+                if (width.IsAbsolute && width.Value >= 100)
+                {
+                    _savedFilterPaneWidth = width.Value;
+                    ViewModel.TrackedFilterPaneWidth = width.Value;
+                    Settings.SetDictionaryItem(Settings.K.SidepanelWidths, ViewModel.PageName, (int)width.Value);
+                }
+                else if (width.IsAbsolute && width.Value < 100)
+                {
+                    _savedFilterPaneWidth = 220;
+                    ViewModel.TrackedFilterPaneWidth = 220;
+                    ViewModel.IsFilterPaneOpen = false;
+                }
+            });
+
+        // Responsive: switch between inline and overlay modes based on content width.
+        FilteringPanel.GetObservable(BoundsProperty)
+            .Subscribe(bounds => OnFilteringPanelWidthChanged(bounds.Width));
+
+        // Responsive: collapse the menu bar to icon-only on narrow windows so the
+        // toolbar buttons stay reachable instead of overflowing (mirrors WinUI).
+        this.GetObservable(BoundsProperty)
+            .Subscribe(bounds => ViewModel.SetToolbarLabelsCollapsed(bounds.Width < 900));
+
+        // Grid/icons views: stretch cards to fill each row then reflow (mirrors WinUI's
+        // UniformGridLayout) instead of leaving wasted space to the right.
+        GridViewItems.GetObservable(BoundsProperty)
+            .Subscribe(bounds => UpdateGridCardWidth(bounds.Width));
+        IconsViewItems.GetObservable(BoundsProperty)
+            .Subscribe(bounds => UpdateIconCardWidth(bounds.Width));
+
+        // Overlay backdrop dismisses the filter pane when tapped.
+        FilterOverlayBackdrop.PointerPressed += (_, _) => ViewModel.IsFilterPaneOpen = false;
 
         // Wire context menu (built by subclass)
-        var contextMenu = GenerateContextMenu();
-        if (contextMenu is not null)
+        _contextMenu = GenerateContextMenu();
+        if (_contextMenu is not null)
         {
-            PackageList.ContextMenu = contextMenu;
-            contextMenu.Opening += (_, _) =>
+            PackageList.ContextMenu = _contextMenu;
+            _contextMenu.Opening += (_, _) =>
             {
                 var pkg = SelectedItem;
                 if (pkg is not null) WhenShowingContextMenu(pkg);
             };
         }
+
+        // Restore per-page filter pane width from settings.
+        var savedWidth = Settings.GetDictionaryItem<string, int>(Settings.K.SidepanelWidths, ViewModel.PageName);
+        if (savedWidth >= 100) _savedFilterPaneWidth = savedWidth;
+        ViewModel.TrackedFilterPaneWidth = _savedFilterPaneWidth;
+
+        // Apply the initial filter-pane state (AXAML defaults to 220px open).
+        UpdateFilterPaneColumn(ViewModel.IsFilterPaneOpen);
+    }
+
+    // Recompute the grid-view card slot width: fit as many >=275px columns as possible,
+    // then divide the row evenly among them so cards stretch to fill (WinUI parity).
+    private void UpdateGridCardWidth(double availableWidth)
+    {
+        if (availableWidth <= 0) return;
+        const double minSlotWidth = 275 + 8; // 275px card + 4px margin per side
+        int columns = Math.Max(1, (int)(availableWidth / minSlotWidth));
+        ViewModel.GridCardWidth = Math.Floor(availableWidth / columns);
+    }
+
+    // Same as UpdateGridCardWidth, for the smaller icon tiles (>=128px columns).
+    private void UpdateIconCardWidth(double availableWidth)
+    {
+        if (availableWidth <= 0) return;
+        const double minSlotWidth = 128 + 8; // 128px tile + 4px margin per side
+        int columns = Math.Max(1, (int)(availableWidth / minSlotWidth));
+        ViewModel.IconCardWidth = Math.Floor(availableWidth / columns);
     }
 
     // ─── UI-only: focus the package list ─────────────────────────────────────
     private void OnFocusListRequested() => PackageList.Focus();
 
+    private void UpdateReloadButtonTooltip(Button reloadButton)
+    {
+        ToolTip.SetTip(reloadButton, ViewModel.ReloadButtonTooltip);
+        ViewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName is nameof(PackagesPageViewModel.ReloadButtonTooltip))
+                ToolTip.SetTip(reloadButton, ViewModel.ReloadButtonTooltip);
+        };
+    }
+
     public void FocusPackageList()
     {
         if (ViewModel.MegaQueryBoxEnabled)
-            Dispatcher.UIThread.Post(() => MegaQueryBlock.Focus(), DispatcherPriority.Background);
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (!ViewModel.MegaQueryVisible) return;
+                MegaQueryBlock.Focus();
+            }, DispatcherPriority.ApplicationIdle);
         else
             ViewModel.RequestFocusList();
     }
@@ -125,6 +222,7 @@ public abstract partial class AbstractPackagesPage : UserControl,
     {
         MainToolbarButtonIcon.Path = $"avares://UniGetUI.Avalonia/Assets/Symbols/{svgName}.svg";
         MainToolbarButtonText.Text = label;
+        AutomationProperties.SetName(MainToolbarButton, label);
         MainToolbarButton.Click += (_, _) => onClick();
     }
 
@@ -166,6 +264,24 @@ public abstract partial class AbstractPackagesPage : UserControl,
     private static TextBlock? Check(bool show) =>
         show ? new TextBlock { Text = "✓", FontSize = 12 } : null;
 
+    private void SyncFiltersButtonName()
+    {
+        bool open = ViewModel.IsFilterPaneOpen;
+        string state = open ? CoreTools.Translate("Open") : CoreTools.Translate("Closed");
+        string label = CoreTools.Translate("Filters");
+        AutomationProperties.SetName(ToggleFiltersButton, $"{label}, {state}");
+    }
+
+    private void SyncOrderByButtonName()
+    {
+        string direction = ViewModel.SortAscending
+            ? CoreTools.Translate("Ascending")
+            : CoreTools.Translate("Descending");
+        AutomationProperties.SetName(
+            OrderByButton,
+            CoreTools.Translate("{0}: {1}, {2}", CoreTools.Translate("Order by"), ViewModel.SortFieldName, direction));
+    }
+
     private void UpdateSortMenuChecks()
     {
         OrderByName_Menu.Icon = Check(ViewModel.SortFieldIndex == 0);
@@ -178,13 +294,11 @@ public abstract partial class AbstractPackagesPage : UserControl,
     }
 
     // ─── IKeyboardShortcutListener ────────────────────────────────────────────
-    public void SearchTriggered()
-    {
-        // TODO: focus global search box
-    }
+    public void SearchTriggered() => GetMainWindow()?.FocusGlobalSearch();
 
     public void ReloadTriggered() => ViewModel.TriggerReload();
     public void SelectAllTriggered() => ViewModel.ToggleSelectAll();
+    public void DetailsTriggered() { if (SelectedItem is { } pkg) _ = ShowDetailsForPackage(pkg); }
 
     // ─── IEnterLeaveListener ──────────────────────────────────────────────────
     public virtual void OnEnter() { }
@@ -207,6 +321,34 @@ public abstract partial class AbstractPackagesPage : UserControl,
             ViewModel.SubmitSearch();
     }
 
+    // Accelerator hints shown in package context menus; handling lives in PackageList_KeyDown below.
+    // Rendered manually (not via MenuItem.InputGesture) because Avalonia's Key enum aliases
+    // Enter→Return and would display "Return" instead of WinUI's "Enter".
+    protected const string MainActionShortcut = "Ctrl+Enter";
+    protected const string OptionsShortcut = "Alt+Enter";
+    protected const string DetailsShortcut = "Enter";
+
+    /// <summary>Builds a menu header with the label on the left and a dimmed, right-aligned shortcut hint.</summary>
+    protected static Control ShortcutHeader(string label, string shortcut)
+    {
+        var grid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        grid.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
+        var hint = new TextBlock
+        {
+            Text = shortcut,
+            Opacity = 0.6,
+            Margin = new Thickness(24, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(hint, 1);
+        grid.Children.Add(hint);
+        return grid;
+    }
+
     private void PackageList_KeyDown(object? sender, KeyEventArgs e)
     {
         var pkg = SelectedItem;
@@ -225,6 +367,86 @@ public abstract partial class AbstractPackagesPage : UserControl,
                 _ = ShowDetailsForPackage(pkg);
             e.Handled = true;
         }
+    }
+
+    private void PackageList_TextInput(object? sender, TextInputEventArgs e)
+    {
+        if (string.IsNullOrEmpty(e.Text)) return;
+
+        // Append the typed character to the current query and move focus to the search box
+        GetMainWindow()?.FocusGlobalSearch(ViewModel.GlobalQueryText + e.Text);
+        e.Handled = true;
+    }
+
+    // ─── Filter pane column width management ─────────────────────────────────
+
+    private void OnFilteringPanelWidthChanged(double width)
+    {
+        if (width <= 0) return; // layout not complete yet
+        bool shouldBeOverlay = width < 1000;
+        if (shouldBeOverlay == _isOverlayMode) return;
+
+        _isOverlayMode = shouldBeOverlay;
+
+        if (_isOverlayMode && ViewModel.IsFilterPaneOpen)
+            ViewModel.IsFilterPaneOpen = false; // collapse pane when entering overlay
+        else
+            UpdateFilterPaneColumn(ViewModel.IsFilterPaneOpen);
+    }
+
+    private void UpdateFilterPaneColumn(bool open)
+    {
+        if (FilteringPanel.ColumnDefinitions.Count < 2) return;
+
+        if (_isOverlayMode)
+        {
+            // Package list fills full width; filter pane and splitter take no space.
+            FilteringPanel.ColumnDefinitions[0].Width = new GridLength(0);
+            FilteringPanel.ColumnDefinitions[1].Width = new GridLength(0);
+
+            // Float the filter pane on top of the content when open.
+            Grid.SetColumnSpan(SidePanel, 3);
+            SidePanel.ZIndex = 10;
+            SidePanel.Width = _savedFilterPaneWidth;
+            SidePanel.HorizontalAlignment = HorizontalAlignment.Left;
+
+            // Floating over content needs an opaque surface (the page surface is transparent under Mica).
+            _sidePanelBgBinding ??= SidePanel.Bind(Border.BackgroundProperty, this.GetResourceObservable("AppWindowBackground"));
+
+            // Semi-transparent backdrop covers the package list behind the pane.
+            FilterOverlayBackdrop.IsVisible = open;
+        }
+        else
+        {
+            // Inline mode: pane sits beside the package list and blends with the Mica page surface.
+            Grid.SetColumnSpan(SidePanel, 1);
+            SidePanel.ZIndex = 0;
+            SidePanel.Width = double.NaN;
+            SidePanel.HorizontalAlignment = HorizontalAlignment.Stretch;
+            _sidePanelBgBinding?.Dispose();
+            _sidePanelBgBinding = null;
+            SidePanel.Background = null;
+            FilterOverlayBackdrop.IsVisible = false;
+
+            FilteringPanel.ColumnDefinitions[0].Width = open
+                ? new GridLength(_savedFilterPaneWidth)
+                : new GridLength(0);
+            FilteringPanel.ColumnDefinitions[1].Width = open
+                ? new GridLength(4)
+                : new GridLength(0);
+        }
+    }
+
+    // ─── Card overflow button (Grid / Icons view) ─────────────────────────────
+    private void CardOverflowButton_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: PackageWrapper wrapper } button) return;
+        PackageList.SelectedItem = wrapper;
+        if (_contextMenu is null) return;
+        WhenShowingContextMenu(wrapper.Package);
+        _contextMenu.PlacementTarget = button;
+        _contextMenu.Open();
+        e.Handled = true;
     }
 
     // ─── Shared cross-page helpers ────────────────────────────────────────────

@@ -91,6 +91,8 @@ jobs:
     env:
       UNIGETUI_GITHUB_CLIENT_ID: ${{ secrets.UNIGETUI_GITHUB_CLIENT_ID }}
       UNIGETUI_GITHUB_CLIENT_SECRET: ${{ secrets.UNIGETUI_GITHUB_CLIENT_SECRET }}
+      UNIGETUI_OPENSEARCH_USERNAME: ${{ secrets.UNIGETUI_OPENSEARCH_USERNAME }}
+      UNIGETUI_OPENSEARCH_PASSWORD: ${{ secrets.UNIGETUI_OPENSEARCH_PASSWORD }}
       NUGET_PACKAGES: ${{ github.workspace }}\.nuget\packages
     strategy:
       fail-fast: false
@@ -123,7 +125,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ${{ env.NUGET_PACKAGES }}
-          key: ${{ runner.os }}-nuget-${{ hashFiles('global.json', 'src/**/*.csproj', 'src/**/*.props', 'src/**/*.targets', 'src/**/*.sln') }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('global.json', 'src/**/*.csproj', 'src/**/*.props', 'src/**/*.targets', 'src/**/*.sln', 'src/**/*.slnx') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
 
@@ -156,42 +158,19 @@ jobs:
           $PackageVersion = '${{ needs.preflight.outputs.package-version }}'
           .\scripts\set-version.ps1 -Version $PackageVersion
 
-      - name: Restore WinGet CLI cache
-        id: winget-cache
-        uses: actions/cache/restore@v5
-        with:
-          path: src/UniGetUI.PackageEngine.Managers.WinGet/winget-cli_${{ matrix.platform }}
-          key: winget-cli-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('scripts/fetch-winget-cli.ps1') }}
-
-      - name: Fetch WinGet CLI bundle
-        if: steps.winget-cache.outputs.cache-hit != 'true'
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          $Platform = '${{ matrix.platform }}'
-          .\scripts\fetch-winget-cli.ps1 -Architectures @($Platform) -Force
-
-      - name: Save WinGet CLI cache
-        if: steps.winget-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: src/UniGetUI.PackageEngine.Managers.WinGet/winget-cli_${{ matrix.platform }}
-          key: ${{ steps.winget-cache.outputs.cache-primary-key }}
-
       - name: Restore dependencies
         working-directory: src
-        run: dotnet restore UniGetUI.sln
+        run: dotnet restore UniGetUI.Windows.slnx
 
       - name: Run tests
         working-directory: src
         shell: pwsh
         run: |
           # Retry once to handle flaky tests (e.g. TaskRecyclerTests uses Random)
-          dotnet test UniGetUI.sln --no-restore --verbosity q --nologo
+          dotnet test UniGetUI.Windows.slnx --no-restore --verbosity q --nologo /p:Platform=x64
           if ($LASTEXITCODE -ne 0) {
             Write-Host "::warning::First test run failed, retrying..."
-            dotnet test UniGetUI.sln --no-restore --verbosity q --nologo
+            dotnet test UniGetUI.Windows.slnx --no-restore --verbosity q --nologo /p:Platform=x64
             if ($LASTEXITCODE -ne 0) { exit 1 }
           }
 
@@ -209,13 +188,24 @@ jobs:
 
           $TargetFramework = "$PortableTargetFramework-windows$WindowsTargetPlatformVersion"
           dotnet publish src/UniGetUI/UniGetUI.csproj /noLogo /p:Configuration=Release /p:Platform=$Platform -p:RuntimeIdentifier=win-$Platform -v m
-          if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
+          if ($LASTEXITCODE -ne 0) { throw "dotnet publish WinUI failed" }
 
           # Stage binaries
           $PublishDir = "src/UniGetUI/bin/$Platform/Release/$TargetFramework/win-$Platform/publish"
           if (Test-Path "unigetui_bin") { Remove-Item "unigetui_bin" -Recurse -Force }
           New-Item "unigetui_bin" -ItemType Directory | Out-Null
           Get-ChildItem $PublishDir | Move-Item -Destination "unigetui_bin" -Force
+
+          $MaxShippedPdbSizeBytes = 1MB
+          $PdbsToRemove = Get-ChildItem "unigetui_bin" -Filter "*.pdb" -File -Recurse | Where-Object {
+            $_.Length -gt $MaxShippedPdbSizeBytes
+          }
+
+          if ($PdbsToRemove.Count -gt 0) {
+            $RemovedPdbBytes = ($PdbsToRemove | Measure-Object -Property Length -Sum).Sum
+            $PdbsToRemove | Remove-Item -Force
+            Write-Host ("Removed {0} oversized PDBs above {1:N2} MiB ({2:N2} MiB total)." -f $PdbsToRemove.Count, ($MaxShippedPdbSizeBytes / 1MB), ($RemovedPdbBytes / 1MB))
+          }
 
           # Backward-compat alias
           Copy-Item "unigetui_bin/UniGetUI.exe" "unigetui_bin/WingetUI.exe" -Force
@@ -318,7 +308,10 @@ jobs:
     env:
       UNIGETUI_GITHUB_CLIENT_ID: ${{ secrets.UNIGETUI_GITHUB_CLIENT_ID }}
       UNIGETUI_GITHUB_CLIENT_SECRET: ${{ secrets.UNIGETUI_GITHUB_CLIENT_SECRET }}
+      UNIGETUI_OPENSEARCH_USERNAME: ${{ secrets.UNIGETUI_OPENSEARCH_USERNAME }}
+      UNIGETUI_OPENSEARCH_PASSWORD: ${{ secrets.UNIGETUI_OPENSEARCH_PASSWORD }}
       NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+      SIGNING_IDENTITY: 'Developer ID Application: Devolutions inc.'
     strategy:
       fail-fast: false
       matrix:
@@ -349,7 +342,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ${{ env.NUGET_PACKAGES }}
-          key: ${{ runner.os }}-nuget-${{ hashFiles('global.json', 'src/**/*.csproj', 'src/**/*.props', 'src/**/*.targets', 'src/**/*.sln') }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('global.json', 'src/**/*.csproj', 'src/**/*.props', 'src/**/*.targets', 'src/**/*.sln', 'src/**/*.slnx') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
 
@@ -361,7 +354,7 @@ jobs:
 
       - name: Restore dependencies
         working-directory: src
-        run: dotnet restore UniGetUI.Avalonia/UniGetUI.Avalonia.csproj
+        run: dotnet restore UniGetUI.Avalonia/UniGetUI.Avalonia.csproj --runtime ${{ matrix.runtime }}
 
       - name: Publish
         working-directory: src
@@ -372,25 +365,110 @@ jobs:
             --self-contained true \
             --output ../bin/${{ matrix.name }}
 
-      - name: Package (macOS)
+      - name: Install macOS packaging tools
         if: runner.os == 'macOS'
+        run: brew install create-dmg
+
+      - name: Check out Devolutions/actions
+        if: ${{ runner.os == 'macOS' && fromJSON(needs.preflight.outputs.dry-run) == false }}
+        uses: actions/checkout@v6
+        with:
+          repository: Devolutions/actions
+          ref: v1
+          token: ${{ secrets.DEVOLUTIONSBOT_TOKEN }}
+          path: ./.github/workflows
+
+      - name: Import Developer ID certificate
+        if: ${{ runner.os == 'macOS' && fromJSON(needs.preflight.outputs.dry-run) == false }}
+        uses: ./.github/workflows/macos-code-sign-setup
+        with:
+          base64_certificate: ${{ secrets.APPLE_APP_DEV_ID_APP_CERTIFICATE }}
+          certificate_password: ${{ secrets.APPLE_APP_DEV_ID_APP_CERTIFICATE_PASSWORD }}
+
+      - name: Package (macOS)
+        if: ${{ runner.os == 'macOS' }}
         run: |
+          set -euo pipefail
+          VERSION='${{ needs.preflight.outputs.package-version }}'
+          APP_BUNDLE="UniGetUI.app"
+          APP_EXECUTABLE="UniGetUI.Avalonia"
+          DRY_RUN='${{ needs.preflight.outputs.dry-run }}'
+
+          rm -rf "${APP_BUNDLE}" output
           mkdir -p output
+          mkdir -p "${APP_BUNDLE}/Contents/MacOS"
+          mkdir -p "${APP_BUNDLE}/Contents/Resources"
 
-          # .tar.gz
-          tar -czf output/UniGetUI.${{ matrix.name }}.tar.gz -C bin/${{ matrix.name }} .
+          cp -R "bin/${{ matrix.name }}/." "${APP_BUNDLE}/Contents/MacOS/"
+          find "${APP_BUNDLE}/Contents/MacOS" -name "*.pdb" -type f -delete
+          chmod +x "${APP_BUNDLE}/Contents/MacOS/${APP_EXECUTABLE}"
+          sed "s|@VERSION@|${VERSION}|g" \
+            scripts/macos/Info.plist \
+            > "${APP_BUNDLE}/Contents/Info.plist"
+          # Compile the appearance-aware app icon (Default/Dark/Tinted/Clear) from the Icon Composer
+          # .icon into the bundle: produces Assets.car + AppIcon.icns. Info.plist already declares
+          # CFBundleIconName=AppIcon, so macOS renders the appearance styles itself (incl. when closed).
+          xcrun actool scripts/macos/AppIcon.icon \
+            --compile "${APP_BUNDLE}/Contents/Resources" \
+            --app-icon AppIcon \
+            --output-partial-info-plist "$(mktemp).plist" \
+            --platform macosx \
+            --minimum-deployment-target 12.0 \
+            --errors --warnings
+          # Static .icns fallback for macOS < 26 (CFBundleIconFile) and the dmg volume icon.
+          cp scripts/macos/UniGetUI.icns "${APP_BUNDLE}/Contents/Resources/"
 
-          # .dmg — create a staging folder, then convert to a compressed read-only image
-          DMG_STAGING=$(mktemp -d)
-          trap "rm -rf '$DMG_STAGING'" EXIT
-          mkdir -p "$DMG_STAGING/UniGetUI"
-          cp -R bin/${{ matrix.name }}/. "$DMG_STAGING/UniGetUI/"
-          hdiutil create \
-            -volname "UniGetUI" \
-            -srcfolder "$DMG_STAGING" \
-            -ov \
-            -format UDZO \
-            output/UniGetUI.${{ matrix.name }}.dmg
+          if [ "$DRY_RUN" = "false" ]; then
+            ENTITLEMENTS="scripts/macos/Entitlements.plist"
+            find "${APP_BUNDLE}/Contents/MacOS" -type f \! -name "${APP_EXECUTABLE}" -print0 \
+              | while IFS= read -r -d '' f; do
+              codesign --force --timestamp --options runtime \
+                --entitlements "$ENTITLEMENTS" \
+                --sign "$SIGNING_IDENTITY" "$f"
+            done
+            codesign --force --timestamp --options runtime \
+              --entitlements "$ENTITLEMENTS" \
+              --sign "$SIGNING_IDENTITY" "${APP_BUNDLE}"
+            codesign --verify --verbose=2 "${APP_BUNDLE}"
+          else
+            find "${APP_BUNDLE}/Contents/MacOS" -type f | while IFS= read -r f; do
+              codesign --force --sign - "$f" 2>/dev/null || true
+            done
+            codesign --force --sign - "${APP_BUNDLE}"
+          fi
+
+          COPYFILE_DISABLE=1 tar -czf "output/UniGetUI.${{ matrix.name }}.tar.gz" "${APP_BUNDLE}"
+
+          create-dmg \
+            --volname "UniGetUI" \
+            --volicon "scripts/macos/UniGetUI.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 128 \
+            --icon "UniGetUI.app" 150 185 \
+            --hide-extension "UniGetUI.app" \
+            --app-drop-link 450 185 \
+            "output/UniGetUI.${{ matrix.name }}.dmg" \
+            "${APP_BUNDLE}"
+
+          test -f "output/UniGetUI.${{ matrix.name }}.tar.gz"
+          test -f "output/UniGetUI.${{ matrix.name }}.dmg"
+
+      - name: Sign DMG
+        if: ${{ runner.os == 'macOS' && fromJSON(needs.preflight.outputs.dry-run) == false }}
+        run: |
+          set -euo pipefail
+          DMG="output/UniGetUI.${{ matrix.name }}.dmg"
+          codesign --force --timestamp --sign "$SIGNING_IDENTITY" "$DMG"
+          codesign --verify --verbose=2 "$DMG"
+
+      - name: Notarize DMG
+        if: ${{ runner.os == 'macOS' && fromJSON(needs.preflight.outputs.dry-run) == false }}
+        uses: ./.github/workflows/macos-notarize
+        timeout-minutes: 15
+        with:
+          apple_password: ${{ secrets.APPLE_BOT_PASSWORD }}
+          package_path: output/UniGetUI.${{ matrix.name }}.dmg
 
       - name: Install Linux packaging tools
         if: runner.os == 'Linux'
@@ -560,6 +638,16 @@ jobs:
             "output/UniGetUI-release-arm64/UniGetUI.Installer.arm64.exe" = "Devolutions.UniGetUI.win-arm64.$OneDriveVersion.exe"
             "output/UniGetUI-release-x64/UniGetUI.x64.zip" = "Devolutions.UniGetUI.win-x64.$OneDriveVersion.zip"
             "output/UniGetUI-release-arm64/UniGetUI.arm64.zip" = "Devolutions.UniGetUI.win-arm64.$OneDriveVersion.zip"
+            "output/UniGetUI-macos-x64/UniGetUI.macos-x64.dmg" = "Devolutions.UniGetUI.macos-x64.$OneDriveVersion.dmg"
+            "output/UniGetUI-macos-arm64/UniGetUI.macos-arm64.dmg" = "Devolutions.UniGetUI.macos-arm64.$OneDriveVersion.dmg"
+            "output/UniGetUI-macos-x64/UniGetUI.macos-x64.tar.gz" = "Devolutions.UniGetUI.macos-x64.$OneDriveVersion.tar.gz"
+            "output/UniGetUI-macos-arm64/UniGetUI.macos-arm64.tar.gz" = "Devolutions.UniGetUI.macos-arm64.$OneDriveVersion.tar.gz"
+            "output/UniGetUI-linux-x64/UniGetUI.linux-x64.deb" = "Devolutions.UniGetUI.linux-x64.$OneDriveVersion.deb"
+            "output/UniGetUI-linux-arm64/UniGetUI.linux-arm64.deb" = "Devolutions.UniGetUI.linux-arm64.$OneDriveVersion.deb"
+            "output/UniGetUI-linux-x64/UniGetUI.linux-x64.rpm" = "Devolutions.UniGetUI.linux-x64.$OneDriveVersion.rpm"
+            "output/UniGetUI-linux-arm64/UniGetUI.linux-arm64.rpm" = "Devolutions.UniGetUI.linux-arm64.$OneDriveVersion.rpm"
+            "output/UniGetUI-linux-x64/UniGetUI.linux-x64.tar.gz" = "Devolutions.UniGetUI.linux-x64.$OneDriveVersion.tar.gz"
+            "output/UniGetUI-linux-arm64/UniGetUI.linux-arm64.tar.gz" = "Devolutions.UniGetUI.linux-arm64.$OneDriveVersion.tar.gz"
           }
 
           foreach ($entry in $Mappings.GetEnumerator()) {

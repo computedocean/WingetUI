@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.Tools;
@@ -52,10 +53,12 @@ public class Homebrew : PackageManager
             },
             SupportsProxy = ProxySupport.No,
             SupportsProxyAuth = false,
+            KnowsPackageReleaseDate = PackageReleaseDateSupport.No,
         };
 
         Properties = new ManagerProperties
         {
+            Id = "homebrew",
             Name = "Homebrew",
             Description = CoreTools.Translate(
                 "The Missing Package Manager for macOS (or Linux).<br>Contains: <b>Formulae, Casks</b>"
@@ -98,23 +101,38 @@ public class Homebrew : PackageManager
         out string callArguments)
     {
         (found, path) = GetExecutableFile();
-        callArguments = "";
+        // Force ARM64 when brew is at the Apple Silicon prefix. Without this,
+        // .NET's posix_spawn may select the x86_64 slice of universal binaries
+        // (bash, ruby) in the brew script chain, causing Homebrew to detect a
+        // Rosetta 2 context even when UniGetUI itself is ARM64-native.
+        if (path == BREW_PATHS[0]
+            && OperatingSystem.IsMacOS()
+            && RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64)
+        {
+            callArguments = $"-arm64 {path}";
+            path = "/usr/bin/arch";
+        }
+        else
+        {
+            callArguments = "";
+        }
     }
+
+    internal ProcessStartInfo MakeBrewStartInfo(string arguments) => new()
+    {
+        FileName = Status.ExecutablePath,
+        Arguments = Status.ExecutableCallArgs.Length > 0
+            ? $"{Status.ExecutableCallArgs} {arguments}"
+            : arguments,
+        UseShellExecute = false,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        CreateNoWindow = true,
+    };
 
     protected override void _loadManagerVersion(out string version)
     {
-        using var p = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = Status.ExecutablePath,
-                Arguments = "--version",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            },
-        };
+        using var p = new Process { StartInfo = MakeBrewStartInfo("--version") };
         p.Start();
         // First line: "Homebrew 4.x.x"
         version = p.StandardOutput.ReadLine()?.Replace("Homebrew ", "").Trim() ?? "";
@@ -125,18 +143,7 @@ public class Homebrew : PackageManager
 
     public override void RefreshPackageIndexes()
     {
-        using var p = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = Status.ExecutablePath,
-                Arguments = "update",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            },
-        };
+        using var p = new Process { StartInfo = MakeBrewStartInfo("update") };
         IProcessTaskLogger logger = TaskLogger.CreateNew(LoggableTaskType.RefreshIndexes, p);
         p.Start();
         logger.AddToStdOut(p.StandardOutput.ReadToEnd());
@@ -155,18 +162,7 @@ public class Homebrew : PackageManager
         IManagerSource caskSource = SourcesHelper.Factory.GetSourceOrDefault("Homebrew Cask");
         IManagerSource currentSection = formulaeSource;
 
-        using var p = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = Status.ExecutablePath,
-                Arguments = $"search {query}",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            },
-        };
+        using var p = new Process { StartInfo = MakeBrewStartInfo($"search {query}") };
         IProcessTaskLogger logger = TaskLogger.CreateNew(LoggableTaskType.FindPackages, p);
         p.Start();
 
@@ -209,18 +205,7 @@ public class Homebrew : PackageManager
         var packages = new List<Package>();
         IManagerSource source = SourcesHelper.Factory.GetSourceOrDefault(sourceName);
 
-        using var p = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = Status.ExecutablePath,
-                Arguments = $"list {typeFlag} --versions",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            },
-        };
+        using var p = new Process { StartInfo = MakeBrewStartInfo($"list {typeFlag} --versions") };
         IProcessTaskLogger logger = TaskLogger.CreateNew(LoggableTaskType.ListInstalledPackages, p);
         p.Start();
 
@@ -250,18 +235,7 @@ public class Homebrew : PackageManager
         foreach (var pkg in GetInstalledPackages())
             installed.TryAdd(pkg.Id, pkg);
 
-        using var p = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = Status.ExecutablePath,
-                Arguments = "outdated --verbose",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            },
-        };
+        using var p = new Process { StartInfo = MakeBrewStartInfo("outdated --verbose") };
         IProcessTaskLogger logger = TaskLogger.CreateNew(LoggableTaskType.ListUpdates, p);
         p.Start();
 

@@ -1,6 +1,5 @@
 using Avalonia.Controls;
-using Avalonia.Interactivity;
-using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using UniGetUI.Avalonia.ViewModels;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
@@ -18,15 +17,13 @@ public partial class InstallOptionsWindow : Window
         var vm = new InstallOptionsViewModel(package, operation, options);
         DataContext = vm;
         InitializeComponent();
+        UniGetUI.Avalonia.Infrastructure.MicaWindowHelper.Apply(this);
         vm.CloseRequested += (_, _) => Close();
     }
 
-    private async void SelectDir_Click(object? sender, RoutedEventArgs e)
+    protected override void OnOpened(EventArgs e)
     {
-        var results = await StorageProvider.OpenFolderPickerAsync(
-            new FolderPickerOpenOptions { AllowMultiple = false });
-        if (results is [{ } folder])
-            ((InstallOptionsViewModel)DataContext!).LocationText =
-                folder.TryGetLocalPath() ?? folder.Name;
+        base.OnOpened(e);
+        Dispatcher.UIThread.Post(OptionsControl.FocusProfileSelector, DispatcherPriority.Background);
     }
 }

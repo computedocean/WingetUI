@@ -11,6 +11,8 @@ using UniGetUI.Core.Tools;
 using UniGetUI.Interface.Widgets;
 using UniGetUI.PackageEngine;
 using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.ManagerClasses.Manager;
+using UniGetUI.PackageEngine.Managers.BunManager;
 using UniGetUI.PackageEngine.Managers.CargoManager;
 using UniGetUI.PackageEngine.Managers.ChocolateyManager;
 using UniGetUI.PackageEngine.Managers.DotNetManager;
@@ -74,12 +76,18 @@ namespace UniGetUI.Pages.SettingsPages.GeneralPages
                 Manager = PEInterface.PowerShell7;
             else if (Manager_T == typeof(Cargo))
                 Manager = PEInterface.Cargo;
+            else if (Manager_T == typeof(Bun))
+                Manager = PEInterface.Bun;
             else if (Manager_T == typeof(Vcpkg))
                 Manager = PEInterface.Vcpkg;
             else if (Manager_T == typeof(DotNet))
                 Manager = PEInterface.DotNet;
             else
                 throw new InvalidCastException("The specified type was not a package manager!");
+
+            // The manager failed to construct at startup (see PEInterface): there is nothing to configure.
+            if (Manager is null)
+                return;
 
             ReapplyProperties?.Invoke(this, new());
 
@@ -124,6 +132,9 @@ namespace UniGetUI.Pages.SettingsPages.GeneralPages
             ExecutableComboBox.IsEnabled = SecureSettings.Get(
                 SecureSettings.K.AllowCustomManagerPaths
             );
+            BrowseExecutableButton.IsEnabled = SecureSettings.Get(
+                SecureSettings.K.AllowCustomManagerPaths
+            );
 
             InstallOptionsPanel.Description = new InstallOptions_Manager(Manager);
             InstallOptionsPanel.Padding = new(18, 24, 18, 24);
@@ -162,6 +173,40 @@ namespace UniGetUI.Pages.SettingsPages.GeneralPages
                 DisableNotifsCard.BorderThickness = new Thickness(1, 1, 1, 0);
                 ExtraControls.Children.Add(DisableNotifsCard);
 
+                ComboboxCard WinGet_CliToolPreference = new()
+                {
+                    Text = "WinGet command-line tool",
+                    Description = CoreTools.Translate(
+                        "Choose which command-line tool UniGetUI uses for WinGet operations when the COM API is not used"
+                    ),
+                    SettingName = Settings.K.WinGetCliToolPreference,
+                    CornerRadius = new CornerRadius(0),
+                    BorderThickness = new Thickness(1, 0, 1, 1),
+                };
+                WinGet_CliToolPreference.AddItem("Default", "default");
+                WinGet_CliToolPreference.AddItem("WinGet", "winget", false);
+                WinGet_CliToolPreference.AddItem("Pinget", "pinget", false);
+                WinGet_CliToolPreference.ShowAddedItems();
+                WinGet_CliToolPreference.ValueChanged += (_, _) => _ = ReloadPackageManager();
+                ExtraControls.Children.Add(WinGet_CliToolPreference);
+
+                ComboboxCard WinGet_ComApiPolicy = new()
+                {
+                    Text = "WinGet COM API",
+                    Description = CoreTools.Translate(
+                        "Choose whether UniGetUI can use the WinGet COM API before falling back to the command-line tool"
+                    ),
+                    SettingName = Settings.K.WinGetComApiPolicy,
+                    CornerRadius = new CornerRadius(0),
+                    BorderThickness = new Thickness(1, 0, 1, 1),
+                };
+                WinGet_ComApiPolicy.AddItem("Default", "default");
+                WinGet_ComApiPolicy.AddItem("Enabled", "enabled");
+                WinGet_ComApiPolicy.AddItem("Disabled", "disabled");
+                WinGet_ComApiPolicy.ShowAddedItems();
+                WinGet_ComApiPolicy.ValueChanged += (_, _) => _ = ReloadPackageManager();
+                ExtraControls.Children.Add(WinGet_ComApiPolicy);
+
                 ButtonCard WinGet_ResetWindowsIPackageManager = new()
                 {
                     Text =
@@ -185,22 +230,23 @@ namespace UniGetUI.Pages.SettingsPages.GeneralPages
                 };
                 ExtraControls.Children.Add(WinGet_ForceLocationWhenUpdating);
 
-                CheckboxCard WinGet_UseBundled = new()
+                CheckboxCard WinGet_DownloadFullManifest = new()
                 {
-                    Text =
-                        $"{CoreTools.Translate("Use bundled WinGet instead of system WinGet")} ({CoreTools.Translate("This may help if WinGet packages are not shown")})",
-                    SettingName = Settings.K.ForceLegacyBundledWinGet,
-                    CornerRadius = new CornerRadius(0, 0, 8, 8),
+                    Text = CoreTools.Translate(
+                        "Download full package manifest alongside the installer"
+                    ),
+                    SettingName = Settings.K.WinGetDownloadFullManifest,
+                    CornerRadius = new CornerRadius(0),
                     BorderThickness = new Thickness(1, 0, 1, 1),
                 };
-                WinGet_UseBundled.StateChanged += (_, _) => _ = ReloadPackageManager();
-                ExtraControls.Children.Add(WinGet_UseBundled);
+                ExtraControls.Children.Add(WinGet_DownloadFullManifest);
 
-                /*CheckboxCard WinGet_EnableTroubleshooter = new()
+                CheckboxCard WinGet_EnableTroubleshooter = new()
                 {
                     Text = CoreTools.Translate("Enable the automatic WinGet troubleshooter"),
                     SettingName = Settings.K.DisableWinGetMalfunctionDetector,
-                    CornerRadius = new CornerRadius(0),
+                    CornerRadius = new CornerRadius(0, 0, 8, 8),
+                    BorderThickness = new Thickness(1, 0, 1, 1),
                 };
                 WinGet_EnableTroubleshooter.StateChanged += (_, _) =>
                 {
@@ -208,21 +254,6 @@ namespace UniGetUI.Pages.SettingsPages.GeneralPages
                     _ = InstalledPackagesLoader.Instance.ReloadPackages();
                 };
                 ExtraControls.Children.Add(WinGet_EnableTroubleshooter);
-
-                CheckboxCard WinGet_EnableTroubleshooter_v2 = new()
-                {
-                    Text = CoreTools.Translate("Enable an [experimental] improved WinGet troubleshooter"),
-                    SettingName = Settings.K.DisableNewWinGetTroubleshooter,
-                    // CornerRadius = new CornerRadius(0),
-                    CornerRadius = new CornerRadius(0, 0, 8, 8),
-                    BorderThickness = new Thickness(1, 0, 1, 0),
-                };
-                WinGet_EnableTroubleshooter_v2.StateChanged += (_, _) =>
-                {
-                    MainApp.Instance.MainWindow.WinGetWarningBanner.IsOpen = false;
-                    _ = InstalledPackagesLoader.Instance.ReloadPackages();
-                };
-                ExtraControls.Children.Add(WinGet_EnableTroubleshooter_v2);*/
 
                 /*CheckboxCard WinGet_HideNonApplicableUpdates = new()
                 {
@@ -255,7 +286,7 @@ namespace UniGetUI.Pages.SettingsPages.GeneralPages
                             "Utilities",
                             "install_scoop.cmd"
                         ),
-                        CoreTools.Translate("Scoop Installer - WingetUI")
+                        CoreTools.Translate("Scoop Installer - UniGetUI")
                     );
                     RestartRequired?.Invoke(this, new());
                 };
@@ -277,7 +308,7 @@ namespace UniGetUI.Pages.SettingsPages.GeneralPages
                             "Utilities",
                             "uninstall_scoop.cmd"
                         ),
-                        CoreTools.Translate("Scoop Uninstaller - WingetUI")
+                        CoreTools.Translate("Scoop Uninstaller - UniGetUI")
                     );
                     RestartRequired?.Invoke(this, new());
                 };
@@ -298,7 +329,7 @@ namespace UniGetUI.Pages.SettingsPages.GeneralPages
                             "Utilities",
                             "scoop_cleanup.cmd"
                         ),
-                        CoreTools.Translate("Clearing Scoop cache - WingetUI"),
+                        CoreTools.Translate("Clearing Scoop cache - UniGetUI"),
                         RunAsAdmin: true
                     );
                 };
@@ -313,22 +344,22 @@ namespace UniGetUI.Pages.SettingsPages.GeneralPages
                 };
                 ExtraControls.Children.Add(Scoop_CleanupOnStart);
             }
-            // ----------------------------- CHOCO EXTRA SETTINGS ------------------------------
+            // -------------------------------- BUN EXTRA SETTINGS ----------------------------------
 
-            else if (Manager is Chocolatey)
+            else if (Manager is Bun)
             {
                 DisableNotifsCard.CornerRadius = new CornerRadius(8, 8, 0, 0);
                 DisableNotifsCard.BorderThickness = new Thickness(1, 1, 1, 0);
                 ExtraControls.Children.Add(DisableNotifsCard);
 
-                CheckboxCard Chocolatey_SystemChoco = new()
+                CheckboxCard Bun_PreferLatestVersions = new()
                 {
-                    Text = CoreTools.AutoTranslated("Use system Chocolatey"),
-                    SettingName = Settings.K.UseSystemChocolatey,
                     CornerRadius = new CornerRadius(0, 0, 8, 8),
+                    BorderThickness = new Thickness(1, 0, 1, 1),
+                    SettingName = Settings.K.BunPreferLatestVersions,
+                    Text = CoreTools.Translate("Prefer latest versions (may include breaking changes) instead of recommended safe updates"),
                 };
-                Chocolatey_SystemChoco.StateChanged += (_, _) => _ = ReloadPackageManager();
-                ExtraControls.Children.Add(Chocolatey_SystemChoco);
+                ExtraControls.Children.Add(Bun_PreferLatestVersions);
             }
             // -------------------------------- VCPKG EXTRA SETTINGS --------------------------------------
 
@@ -424,6 +455,131 @@ namespace UniGetUI.Pages.SettingsPages.GeneralPages
                 ExtraControls.Children.Add(DisableNotifsCard);
             }
 
+            // ── Per-manager minimum update age
+            ExtraControls.Children.Add(new TextBlock
+            {
+                Margin = new Thickness(4, 24, 4, 8),
+                FontWeight = new Windows.UI.Text.FontWeight(600),
+                Text = CoreTools.Translate("Update security"),
+            });
+
+            (string Label, string Value)[] ageItems =
+            [
+                (CoreTools.Translate("Use global setting"), ""),
+                (CoreTools.Translate("No minimum age"), "0"),
+                (CoreTools.Translate("1 day"), "1"),
+                (CoreTools.Translate("{0} days", 3), "3"),
+                (CoreTools.Translate("{0} days", 7), "7"),
+                (CoreTools.Translate("{0} days", 14), "14"),
+                (CoreTools.Translate("{0} days", 30), "30"),
+                (CoreTools.Translate("Custom..."), "custom"),
+            ];
+
+            var ageCombo = new ComboBox { MinWidth = 200 };
+            foreach (var (label, _) in ageItems)
+                ageCombo.Items.Add(label);
+
+            string? savedAgeVal = Settings.GetDictionaryItem<string, string>(
+                Settings.K.PerManagerMinimumUpdateAge, Manager.Name);
+            int savedAgeIdx = Array.FindIndex(ageItems, i => i.Value == (savedAgeVal ?? ""));
+            ageCombo.SelectedIndex = savedAgeIdx >= 0 ? savedAgeIdx : 0;
+
+            var customAgeInput = new TextBox
+            {
+                MinWidth = 200,
+                PlaceholderText = CoreTools.Translate("e.g. 10"),
+                Text = Settings.GetDictionaryItem<string, string>(
+                    Settings.K.PerManagerMinimumUpdateAgeCustom, Manager.Name) ?? "",
+            };
+            customAgeInput.TextChanged += (_, _) =>
+            {
+                string current = customAgeInput.Text ?? "";
+                string filtered = new string(current.Where(char.IsDigit).ToArray());
+                if (filtered != current)
+                {
+                    customAgeInput.Text = filtered;
+                    return;
+                }
+                if (filtered.Length > 0)
+                    Settings.SetDictionaryItem(
+                        Settings.K.PerManagerMinimumUpdateAgeCustom, Manager.Name, filtered);
+                else
+                    Settings.RemoveDictionaryKey<string, string>(
+                        Settings.K.PerManagerMinimumUpdateAgeCustom, Manager.Name);
+            };
+
+            bool initiallyCustomAge = savedAgeVal == "custom";
+            var releaseDateSupport = Manager.Capabilities.KnowsPackageReleaseDate;
+            bool ageSupported = releaseDateSupport != PackageReleaseDateSupport.No;
+
+            object ageCardDescription = releaseDateSupport switch
+            {
+                PackageReleaseDateSupport.No => new TextBlock
+                {
+                    Text = CoreTools.Translate(
+                            "{pm} does not provide release dates for its packages, so this setting will have no effect")
+                        .Replace("{pm}", Manager.DisplayName),
+                    Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                        Windows.UI.Color.FromArgb(255, 224, 82, 82)),
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = 12,
+                },
+                PackageReleaseDateSupport.Partial => new TextBlock
+                {
+                    Text = CoreTools.Translate(
+                            "{pm} only provides release dates for some of its packages, so this setting will only apply to those packages")
+                        .Replace("{pm}", Manager.DisplayName),
+                    Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                        Windows.UI.Color.FromArgb(255, 224, 168, 0)),
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = 12,
+                },
+                _ => (object)CoreTools.Translate("Override the global minimum update age for this package manager"),
+            };
+
+            ageCombo.IsEnabled = ageSupported;
+            customAgeInput.IsEnabled = ageSupported;
+
+            var minimumAgeCard = new SettingsCard
+            {
+                Header = CoreTools.Translate("Minimum age for updates"),
+                Description = ageCardDescription,
+                Content = ageCombo,
+                CornerRadius = initiallyCustomAge ? new CornerRadius(8, 8, 0, 0) : new CornerRadius(8),
+                BorderThickness = new Thickness(1),
+            };
+            var customAgeCard = new SettingsCard
+            {
+                Header = CoreTools.Translate("Custom minimum age (days)"),
+                Content = customAgeInput,
+                Visibility = initiallyCustomAge ? Visibility.Visible : Visibility.Collapsed,
+                CornerRadius = new CornerRadius(0, 0, 8, 8),
+                BorderThickness = new Thickness(1, 0, 1, 1),
+            };
+
+            ageCombo.SelectionChanged += (_, _) =>
+            {
+                int idx = ageCombo.SelectedIndex;
+                if (idx < 0) return;
+                string val = ageItems[idx].Value;
+
+                bool isCustom = val == "custom";
+                customAgeCard.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;
+                minimumAgeCard.CornerRadius = isCustom
+                    ? new CornerRadius(8, 8, 0, 0)
+                    : new CornerRadius(8);
+
+                if (string.IsNullOrEmpty(val))
+                    Settings.RemoveDictionaryKey<string, string>(
+                        Settings.K.PerManagerMinimumUpdateAge, Manager.Name);
+                else
+                    Settings.SetDictionaryItem(
+                        Settings.K.PerManagerMinimumUpdateAge, Manager.Name, val);
+            };
+
+            ExtraControls.Children.Add(minimumAgeCard);
+            ExtraControls.Children.Add(customAgeCard);
+
             // Hide the AppExecutionAliasWarning element if Manager is not Pip
             if (Manager is Pip)
             {
@@ -464,12 +620,22 @@ namespace UniGetUI.Pages.SettingsPages.GeneralPages
             ExecutableComboBox.Items.Clear();
             foreach (var path in Manager.FindCandidateExecutableFiles())
             {
-                ExecutableComboBox.Items.Add(path);
+                AddExecutableComboBoxItem(path);
             }
-            string selectedValue =
+            string configuredValue =
                 Settings.GetDictionaryItem<string, string>(Settings.K.ManagerPaths, Manager.Name)
                 ?? "";
+            string selectedValue = configuredValue;
+            if (!string.IsNullOrEmpty(configuredValue) && File.Exists(configuredValue))
+            {
+                AddExecutableComboBoxItem(configuredValue);
+            }
             if (string.IsNullOrEmpty(selectedValue))
+            {
+                var exe = Manager.GetExecutableFile();
+                selectedValue = exe.Item1 ? exe.Item2 : "";
+            }
+            else if (!File.Exists(selectedValue))
             {
                 var exe = Manager.GetExecutableFile();
                 selectedValue = exe.Item1 ? exe.Item2 : "";
@@ -527,7 +693,7 @@ namespace UniGetUI.Pages.SettingsPages.GeneralPages
                     .Translate("{pm} was not found!")
                     .Replace("{pm}", Manager.DisplayName);
                 ManagerStatusBar.Message = CoreTools
-                    .Translate("You may need to install {pm} in order to use it with WingetUI.")
+                    .Translate("You may need to install {pm} in order to use it with UniGetUI.")
                     .Replace("{pm}", Manager.DisplayName);
             }
         }
@@ -550,15 +716,48 @@ namespace UniGetUI.Pages.SettingsPages.GeneralPages
 
         private void ExecutableComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (string.IsNullOrEmpty(ExecutableComboBox.SelectedValue.ToString()))
+            if (ExecutableComboBox.SelectedValue?.ToString() is not { Length: > 0 } selectedValue)
                 return;
 
             Settings.SetDictionaryItem(
                 Settings.K.ManagerPaths,
                 Manager!.Name,
-                ExecutableComboBox.SelectedValue.ToString()
+                selectedValue
             );
             _ = ReloadPackageManager();
+        }
+
+        private void BrowseExecutableButton_Click(object sender, RoutedEventArgs e) =>
+            _ = _browseExecutableButton_Click();
+
+        private async Task _browseExecutableButton_Click()
+        {
+            if (Manager is null)
+                return;
+
+            ExternalLibraries.Pickers.FileOpenPicker picker = new(
+                MainApp.Instance.MainWindow.GetWindowHandle()
+            );
+            string file = picker.Show(["*.exe"]);
+            if (file == string.Empty)
+                return;
+
+            Settings.SetDictionaryItem(Settings.K.ManagerPaths, Manager.Name, file);
+            await ReloadPackageManager();
+        }
+
+        private void AddExecutableComboBoxItem(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return;
+
+            foreach (object? item in ExecutableComboBox.Items)
+            {
+                if (string.Equals(item?.ToString(), path, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+
+            ExecutableComboBox.Items.Add(path);
         }
 
         private void GoToSecureSettingsBtn_Click(object sender, RoutedEventArgs e)

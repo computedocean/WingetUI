@@ -1,6 +1,7 @@
 <UserControl x:Class="UniGetUI.Avalonia.Views.Pages.SettingsPages.PackageManagerPage"
              xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
              xmlns:vm="using:UniGetUI.Avalonia.ViewModels.Pages.SettingsPages"
              xmlns:settings="using:UniGetUI.Avalonia.Views.Controls.Settings"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -24,6 +25,19 @@
         <Style Selector="Border.status-info">
             <Setter Property="Background"   Value="{DynamicResource StatusInfoBackground}"/>
             <Setter Property="BorderBrush"  Value="{DynamicResource StatusInfoBorderBrush}"/>
+        </Style>
+        <!-- Chrome-less hyperlink button (no fill/border in any state) -->
+        <Style Selector="Button.link /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.link:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.link:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
         </Style>
     </UserControl.Styles>
 
@@ -54,9 +68,14 @@
                                Opacity="0.85" TextWrapping="Wrap"/>
                     <Button IsVisible="{Binding ShowVersionVisible}"
                             Command="{Binding ShowVersionCommand}"
+                            Classes="link"
                             HorizontalAlignment="Left"
-                            Padding="0">
-                        <TextBlock Text="{Binding ShowVersionLabel}" Classes="hyperlink"/>
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Padding="0"
+                            automation:AutomationProperties.Name="{Binding ShowVersionLabel}">
+                        <TextBlock Text="{Binding ShowVersionLabel}" Classes="hyperlink"
+                                   automation:AutomationProperties.AccessibilityView="Raw"/>
                     </Button>
                     <TextBlock Text="{Binding VersionText}"
                                IsVisible="{Binding VersionTextVisible}"
@@ -87,10 +106,11 @@
             <!-- Related settings -->
             <settings:TranslatedTextBlock Text="Related settings"
                                           FontWeight="SemiBold"
-                                          Margin="44,32,4,8"/>
+                                          Margin="44,32,4,8"
+                                          automation:AutomationProperties.HeadingLevel="2"/>
 
-            <!-- Logs link card -->
-            <settings:SettingsPageButton x:Name="ManagerLogs" CornerRadius="8,8,0,0"/>
+            <!-- Logs link card (standalone; Pip overrides to a top tile when the alias warning shows) -->
+            <settings:SettingsPageButton x:Name="ManagerLogs" CornerRadius="8"/>
 
             <!-- Python App Execution Alias warning (pip only) -->
             <settings:SettingsCard x:Name="AppExecutionAliasWarning"

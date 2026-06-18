@@ -1,7 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using UniGetUI.Avalonia.ViewModels.Pages;
-using UniGetUI.Avalonia.Views.Pages;
 
 namespace UniGetUI.Avalonia.Views.Pages;
 
@@ -9,6 +8,7 @@ public partial class HelpPage : UserControl, IEnterLeaveListener
 {
     private readonly HelpPageViewModel _viewModel;
     private string _pendingNavigation = HelpPageViewModel.HelpBaseUrl;
+    private bool _adapterReady;
 
     public HelpPage()
     {
@@ -16,47 +16,46 @@ public partial class HelpPage : UserControl, IEnterLeaveListener
         DataContext = _viewModel;
         InitializeComponent();
 
-        WebViewControl.NavigationStarted += OnNavigationStarted;
-        WebViewControl.NavigationCompleted += OnNavigationCompleted;
-    }
-
-    private void OnNavigationStarted(object? sender, WebViewNavigationStartingEventArgs e)
-    {
-        NavProgressBar.IsVisible = true;
-
-        // Add iframe query param so the help site shows the embedded view
-        string url = e.Request?.ToString() ?? "";
-        if (url.Contains("marticliment.com") && !url.Contains("isWingetUIIframe"))
+        if (OperatingSystem.IsLinux())
         {
-            e.Cancel = true;
-            string modified = url.Contains('?')
-                ? url + "&isWingetUIIframe"
-                : url + "?isWingetUIIframe";
-            WebViewControl.Navigate(new Uri(modified));
+            WebViewBorder.IsVisible = false;
+            LinuxFallbackPanel.IsVisible = true;
+            return;
         }
-    }
 
-    private void OnNavigationCompleted(object? sender, WebViewNavigationCompletedEventArgs e)
-    {
-        NavProgressBar.IsVisible = false;
-        _viewModel.CurrentUrl = WebViewControl.Source?.ToString() ?? HelpPageViewModel.HelpBaseUrl;
+        WebViewControl.NavigationStarted += (_, _) =>
+            NavProgressBar.IsVisible = true;
 
-        BackButton.IsEnabled = WebViewControl.CanGoBack;
-        ForwardButton.IsEnabled = WebViewControl.CanGoForward;
+        WebViewControl.NavigationCompleted += (_, e) =>
+        {
+            NavProgressBar.IsVisible = false;
+            _viewModel.CurrentUrl = WebViewControl.Source?.ToString() ?? HelpPageViewModel.HelpBaseUrl;
+            BackButton.IsEnabled = WebViewControl.CanGoBack;
+            ForwardButton.IsEnabled = WebViewControl.CanGoForward;
+        };
+
+        // WebView2 on Windows initializes asynchronously after the control is attached
+        // to the visual tree. Navigate() called before AdapterCreated is silently dropped.
+        // This mirrors WinUI's EnsureCoreWebView2Async() pattern.
+        WebViewControl.AdapterCreated += (_, _) =>
+        {
+            _adapterReady = true;
+            WebViewControl.Navigate(new Uri(_pendingNavigation));
+        };
     }
 
     public void NavigateTo(string uriAttachment)
     {
         string url = _viewModel.GetInitialUrl(uriAttachment);
-        if (WebViewControl.IsLoaded)
+        _pendingNavigation = url;
+        if (_adapterReady)
             WebViewControl.Navigate(new Uri(url));
-        else
-            _pendingNavigation = url;
     }
 
     public void OnEnter()
     {
-        WebViewControl.Navigate(new Uri(_pendingNavigation));
+        if (_adapterReady)
+            WebViewControl.Navigate(new Uri(_pendingNavigation));
     }
 
     public void OnLeave() { }

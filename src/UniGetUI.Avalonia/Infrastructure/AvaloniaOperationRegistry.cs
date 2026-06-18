@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -8,6 +10,7 @@ using UniGetUI.Avalonia.ViewModels;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
+using UniGetUI.Interface;
 using UniGetUI.PackageEngine.Classes.Packages.Classes;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageOperations;
@@ -26,12 +29,19 @@ public static class AvaloniaOperationRegistry
     /// <summary>Bindable view-models shown in the operations panel.</summary>
     public static readonly AvaloniaList<OperationViewModel> OperationViewModels = new();
 
+    // Mirrors WinUI's MainApp.Tooltip.ErrorsOccurred / RestartRequired
+    private static readonly ConcurrentDictionary<AbstractOperation, int> _errorCounts = new();
+    private static int _errorsOccurred;
+    public static int ErrorsOccurred => _errorsOccurred;
+    public static bool RestartRequired { get; set; }
+
     /// <summary>
     /// Register an operation and create its UI view-model.
     /// Must be called before <c>operation.MainThread()</c>.
     /// </summary>
     public static void Add(AbstractOperation op)
     {
+        IpcOperationApi.Track(op);
         var vm = new OperationViewModel(op);
 
         Dispatcher.UIThread.Post(() =>
@@ -50,6 +60,9 @@ public static class AvaloniaOperationRegistry
 
         op.OperationSucceeded += (_, _) =>
         {
+            if (_errorCounts.TryRemove(op, out int errCount) && errCount > 0)
+                Interlocked.Add(ref _errorsOccurred, -errCount);
+
             if (!Settings.Get(Settings.K.MaintainSuccessfulInstalls))
                 _ = RemoveAfterDelayAsync(op, milliseconds: 4000);
 
@@ -63,6 +76,9 @@ public static class AvaloniaOperationRegistry
 
         op.OperationFailed += (_, _) =>
         {
+            _errorCounts.AddOrUpdate(op, 1, (_, n) => n + 1);
+            Interlocked.Increment(ref _errorsOccurred);
+
             _ = Task.Run(() => AppendOperationHistory(op));
             Dispatcher.UIThread.Post(() => ShowOperationFailureNotification(op));
             Dispatcher.UIThread.Post(UpdateTrayStatus);
@@ -79,25 +95,80 @@ public static class AvaloniaOperationRegistry
         };
     }
 
+    public static void RetryFailed()
+    {
+        var failed = OperationViewModels
+            .Where(vm => vm.Operation.Status is OperationStatus.Failed)
+            .ToList();
+        foreach (var vm in failed)
+            vm.Operation.Retry(AbstractOperation.RetryMode.Retry);
+    }
+
+    public static void ClearSuccessful()
+    {
+        var succeeded = OperationViewModels
+            .Where(vm => vm.Operation.Status is OperationStatus.Succeeded)
+            .ToList();
+        foreach (var vm in succeeded)
+            Remove(vm);
+    }
+
+    public static void ClearFinished()
+    {
+        var finished = OperationViewModels
+            .Where(vm => vm.Operation.Status
+                is OperationStatus.Succeeded or OperationStatus.Failed or OperationStatus.Canceled)
+            .ToList();
+        foreach (var vm in finished)
+            Remove(vm);
+    }
+
+    public static void CancelAll()
+    {
+        var active = OperationViewModels
+            .Where(vm => vm.Operation.Status is OperationStatus.Running or OperationStatus.InQueue)
+            .ToList();
+        foreach (var vm in active)
+            vm.Operation.Cancel();
+    }
+
     /// <summary>Remove a view-model (and its backing operation) from the panel. Called by the Close button.</summary>
     public static void Remove(OperationViewModel vm)
     {
+        if (_errorCounts.TryRemove(vm.Operation, out int errCount) && errCount > 0)
+            Interlocked.Add(ref _errorsOccurred, -errCount);
+
         Dispatcher.UIThread.Post(() =>
         {
             OperationViewModels.Remove(vm);
             Operations.Remove(vm.Operation);
+            UpdateTrayStatus();
         });
         while (AbstractOperation.OperationQueue.Remove(vm.Operation)) ;
+        if (vm.Operation.Status is not (OperationStatus.InQueue or OperationStatus.Running))
+        {
+            IpcOperationApi.ForgetTracking(vm.Operation.Metadata.Identifier);
+        }
     }
 
     private static async Task RemoveAfterDelayAsync(AbstractOperation op, int milliseconds)
     {
         await Task.Delay(milliseconds);
+
+        if (_errorCounts.TryRemove(op, out int errCount) && errCount > 0)
+            Interlocked.Add(ref _errorsOccurred, -errCount);
+
         Dispatcher.UIThread.Post(() =>
         {
             var vm = OperationViewModels.FirstOrDefault(v => v.Operation == op);
             if (vm is not null) OperationViewModels.Remove(vm);
             Operations.Remove(op);
+            UpdateTrayStatus();
+            if (op.Status is not (OperationStatus.InQueue or OperationStatus.Running))
+            {
+                IpcOperationApi.ForgetTracking(op.Metadata.Identifier);
+            }
+            UpdateTrayStatus();
         });
     }
 
@@ -113,15 +184,6 @@ public static class AvaloniaOperationRegistry
         if (Settings.AreProgressNotificationsDisabled())
             return;
 
-        if (WindowsAppNotificationBridge.ShowProgress(op))
-            return;
-
-        if (MacOsNotificationBridge.ShowProgress(op))
-            return;
-
-        if (TryGetMainWindow() is not { } mainWindow)
-            return;
-
         string title = op.Metadata.Title.Length > 0
             ? op.Metadata.Title
             : CoreTools.Translate("Operation in progress");
@@ -129,6 +191,19 @@ public static class AvaloniaOperationRegistry
         string message = op.Metadata.Status.Length > 0
             ? op.Metadata.Status
             : CoreTools.Translate("Please wait...");
+
+        AccessibilityAnnouncementService.Announce(
+            $"{title}. {message}",
+            AutomationLiveSetting.Polite);
+
+        if (OperatingSystem.IsWindows() && WindowsAppNotificationBridge.ShowProgress(op))
+            return;
+
+        if (OperatingSystem.IsMacOS() && MacOsNotificationBridge.ShowProgress(op))
+            return;
+
+        if (TryGetMainWindow() is not { } mainWindow)
+            return;
 
         mainWindow.ShowRuntimeNotification(
             title,
@@ -141,17 +216,6 @@ public static class AvaloniaOperationRegistry
         if (Settings.AreSuccessNotificationsDisabled())
             return;
 
-        WindowsAppNotificationBridge.RemoveProgress(op);
-
-        if (WindowsAppNotificationBridge.ShowSuccess(op))
-            return;
-
-        if (MacOsNotificationBridge.ShowSuccess(op))
-            return;
-
-        if (TryGetMainWindow() is not { } mainWindow)
-            return;
-
         string title = op.Metadata.SuccessTitle.Length > 0
             ? op.Metadata.SuccessTitle
             : CoreTools.Translate("Success!");
@@ -159,6 +223,21 @@ public static class AvaloniaOperationRegistry
         string message = op.Metadata.SuccessMessage.Length > 0
             ? op.Metadata.SuccessMessage
             : CoreTools.Translate("Success!");
+
+        AccessibilityAnnouncementService.Announce(
+            $"{title}. {message}",
+            AutomationLiveSetting.Polite);
+
+        WindowsAppNotificationBridge.RemoveProgress(op);
+
+        if (OperatingSystem.IsWindows() && WindowsAppNotificationBridge.ShowSuccess(op))
+            return;
+
+        if (OperatingSystem.IsMacOS() && MacOsNotificationBridge.ShowSuccess(op))
+            return;
+
+        if (TryGetMainWindow() is not { } mainWindow)
+            return;
 
         mainWindow.ShowRuntimeNotification(
             title,
@@ -171,17 +250,6 @@ public static class AvaloniaOperationRegistry
         if (Settings.AreErrorNotificationsDisabled())
             return;
 
-        WindowsAppNotificationBridge.RemoveProgress(op);
-
-        if (WindowsAppNotificationBridge.ShowError(op))
-            return;
-
-        if (MacOsNotificationBridge.ShowError(op))
-            return;
-
-        if (TryGetMainWindow() is not { } mainWindow)
-            return;
-
         string title = op.Metadata.FailureTitle.Length > 0
             ? op.Metadata.FailureTitle
             : CoreTools.Translate("Failed");
@@ -189,6 +257,21 @@ public static class AvaloniaOperationRegistry
         string message = op.Metadata.FailureMessage.Length > 0
             ? op.Metadata.FailureMessage
             : CoreTools.Translate("An error occurred while processing this package");
+
+        AccessibilityAnnouncementService.Announce(
+            $"{title}. {message}",
+            AutomationLiveSetting.Assertive);
+
+        WindowsAppNotificationBridge.RemoveProgress(op);
+
+        if (OperatingSystem.IsWindows() && WindowsAppNotificationBridge.ShowError(op))
+            return;
+
+        if (OperatingSystem.IsMacOS() && MacOsNotificationBridge.ShowError(op))
+            return;
+
+        if (TryGetMainWindow() is not { } mainWindow)
+            return;
 
         mainWindow.ShowRuntimeNotification(
             title,

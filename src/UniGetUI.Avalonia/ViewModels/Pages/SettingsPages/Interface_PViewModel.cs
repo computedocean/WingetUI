@@ -3,8 +3,10 @@ using CommunityToolkit.Mvvm.Input;
 using global::Avalonia;
 using global::Avalonia.Controls;
 using UniGetUI.Avalonia.ViewModels;
+using UniGetUI.Avalonia.Views;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
+using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
 
 namespace UniGetUI.Avalonia.ViewModels.Pages.SettingsPages;
@@ -12,6 +14,12 @@ namespace UniGetUI.Avalonia.ViewModels.Pages.SettingsPages;
 public partial class Interface_PViewModel : ViewModelBase
 {
     public bool IsWindows { get; } = OperatingSystem.IsWindows();
+
+    /// <summary>
+    /// True when the user is enrolled in the beta program. In that case the modern UI is forced
+    /// and the classic-mode toggle should be disabled.
+    /// </summary>
+    public bool IsBetaTester { get; } = Settings.Get(Settings.K.EnableUniGetUIBeta);
 
     [ObservableProperty] private string _iconCacheSizeText = "";
 
@@ -23,6 +31,10 @@ public partial class Interface_PViewModel : ViewModelBase
     [RelayCommand]
     private static void EditAutostartSettings()
         => CoreTools.Launch("ms-settings:startupapps");
+
+    [RelayCommand]
+    private static void RefreshSystemTray()
+        => MainWindow.Instance?.UpdateSystemTrayStatus();
 
     [RelayCommand]
     private async Task ResetIconCache(Visual? _)

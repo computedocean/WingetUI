@@ -34,7 +34,28 @@
         <ElevatorPackageArchitecture Condition="'$(ElevatorPackageArchitecture)' == ''"
             >x64</ElevatorPackageArchitecture
         >
-        <ElevatorPackageExePath>$(PkgDevolutions_UniGetUI_Elevator)\runtimes\win-$(ElevatorPackageArchitecture)\native\UniGetUI Elevator.exe</ElevatorPackageExePath>
+        <ElevatorPackageNativePath>$(PkgDevolutions_UniGetUI_Elevator)\runtimes\win-$(ElevatorPackageArchitecture)\native</ElevatorPackageNativePath>
+        <ElevatorPackageExePath>$(ElevatorPackageNativePath)\UniGetUI Elevator.exe</ElevatorPackageExePath>
+        <ElevatorPackageDllPath>$(ElevatorPackageNativePath)\getfilesiginforedist.dll</ElevatorPackageDllPath>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <PingetCliRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</PingetCliRuntimeIdentifier>
+        <PingetCliRuntimeIdentifier Condition="'$(PingetCliRuntimeIdentifier)' == '' and '$(Platform)' == 'arm64'">win-arm64</PingetCliRuntimeIdentifier>
+        <PingetCliRuntimeIdentifier Condition="'$(PingetCliRuntimeIdentifier)' == ''">win-x64</PingetCliRuntimeIdentifier>
+        <PingetCliPackageNativePath>$(PkgDevolutions_Pinget_Cli_Rust)\runtimes\$(PingetCliRuntimeIdentifier)\native</PingetCliPackageNativePath>
+        <PingetCliExecutablePath>$(PingetCliPackageNativePath)\pinget.exe</PingetCliExecutablePath>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <BundleModernApp Condition="'$(BundleModernApp)' == ''">true</BundleModernApp>
+        <ModernAppDirectoryName>Avalonia</ModernAppDirectoryName>
+        <AvaloniaProject>$(MSBuildThisFileDirectory)..\UniGetUI.Avalonia\UniGetUI.Avalonia.csproj</AvaloniaProject>
+        <AvaloniaRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</AvaloniaRuntimeIdentifier>
+        <AvaloniaRuntimeIdentifier Condition="'$(AvaloniaRuntimeIdentifier)' == '' and '$(Platform)' == 'arm64'">win-arm64</AvaloniaRuntimeIdentifier>
+        <AvaloniaRuntimeIdentifier Condition="'$(AvaloniaRuntimeIdentifier)' == ''">win-x64</AvaloniaRuntimeIdentifier>
+        <AvaloniaPublishDir>$(MSBuildProjectDirectory)\obj\$(Platform)\$(Configuration)\BundledAvalonia\$(AvaloniaRuntimeIdentifier)\</AvaloniaPublishDir>
+        <AvaloniaExecutablePath>$(AvaloniaPublishDir)UniGetUI.Avalonia.exe</AvaloniaExecutablePath>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -63,6 +84,51 @@
     </Target>
 
     <Target
+        Name="PublishBundledPingetCli"
+        BeforeTargets="PostBuildGenerateIntegrityTree;PostPublishGenerateIntegrityTree"
+        Condition="'$(DesignTimeBuild)' != 'true'"
+    >
+        <Error
+            Condition="!Exists('$(PingetCliExecutablePath)')"
+            Text="NuGet pinget executable not found at '$(PingetCliExecutablePath)'. Ensure package restore has completed for Devolutions.Pinget.Cli.Rust."
+        />
+        <Copy
+            SourceFiles="$(PingetCliExecutablePath)"
+            DestinationFolder="$(TargetDir)"
+            SkipUnchangedFiles="true"
+            Condition="'$(TargetDir)' != ''"
+        />
+        <Copy
+            SourceFiles="$(PingetCliExecutablePath)"
+            DestinationFolder="$(PublishDir)"
+            SkipUnchangedFiles="true"
+            Condition="'$(PublishDir)' != ''"
+        />
+    </Target>
+
+    <Target
+        Name="PublishBundledAvaloniaApp"
+        BeforeTargets="PostPublishGenerateIntegrityTree"
+        Condition="'$(DesignTimeBuild)' != 'true' and '$(BundleModernApp)' == 'true' and '$(PublishDir)' != '' and Exists('$(PublishDir)')"
+    >
+        <PropertyGroup>
+            <!-- Keep the trimmed Avalonia app isolated; trimmed shared assemblies are entry-point specific. -->
+            <!-- Resolve to an absolute path so the inner MSBuild call doesn't re-anchor it to the Avalonia project directory. -->
+            <BundledAvaloniaPublishDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(PublishDir)', '$(ModernAppDirectoryName)'))</BundledAvaloniaPublishDir>
+            <BundledAvaloniaExecutablePath>$(BundledAvaloniaPublishDir)UniGetUI.Avalonia.exe</BundledAvaloniaExecutablePath>
+        </PropertyGroup>
+        <MSBuild
+            Projects="$(AvaloniaProject)"
+            Targets="Restore;Publish"
+            Properties="Configuration=$(Configuration);Platform=$(Platform);TargetFramework=$(WindowsTargetFramework);RuntimeIdentifier=$(AvaloniaRuntimeIdentifier);SelfContained=true;PublishSelfContained=true;PublishTrimmed=true;TrimMode=partial;PublishSingleFile=false;PublishDir=$(BundledAvaloniaPublishDir);AppendRuntimeIdentifierToOutputPath=false;SkipBundledPingetCli=true;BundleModernApp=false"
+        />
+        <Error
+            Condition="!Exists('$(BundledAvaloniaExecutablePath)')"
+            Text="Bundled Avalonia executable was not published to '$(BundledAvaloniaExecutablePath)'."
+        />
+    </Target>
+
+    <Target
         Name="EnsureBundledElevatorFromNuGet"
         BeforeTargets="PrepareForBuild"
         Condition="'$(DesignTimeBuild)' != 'true'"
@@ -70,6 +136,10 @@
         <Error
             Condition="!Exists('$(ElevatorPackageExePath)')"
             Text="NuGet elevator executable not found at '$(ElevatorPackageExePath)'. Ensure package restore has completed for Devolutions.UniGetUI.Elevator."
+        />
+        <Error
+            Condition="!Exists('$(ElevatorPackageDllPath)')"
+            Text="NuGet elevator dependency DLL not found at '$(ElevatorPackageDllPath)'. Ensure package restore has completed for Devolutions.UniGetUI.Elevator."
         />
     </Target>
 
@@ -141,20 +211,17 @@
         <PackageReference Include="CommunityToolkit.WinUI.Converters" Version="8.2.250402" />
         <PackageReference Include="CommunityToolkit.WinUI.Media" Version="8.2.250402" />
         <PackageReference Include="H.NotifyIcon.WinUI" Version="2.3.0" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.5" />
         <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" />
         <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
         <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4948" />
         <PackageReference Include="PhotoSauce.MagicScaler" Version="0.15.0" />
         <PackageReference Include="System.Drawing.Common" Version="9.0.8" Aliases="DrawingCommon" />
-        <PackageReference Include="YamlDotNet" Version="16.3.0" />
+        <PackageReference Include="YamlDotNet" Version="17.0.1" />
         <PackageReference Include="IdentityModel.OidcClient" Version="6.0.0" />
         <PackageReference Include="Octokit" Version="14.0.0" />
-        <PackageReference
-            Include="Devolutions.UniGetUI.Elevator"
-            Version="2.6.1"
-            GeneratePathProperty="true"
-            ExcludeAssets="build;buildTransitive"
-        />
+        <PackageReference Include="Devolutions.UniGetUI.Elevator" Version="2.6.1.3" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive;native" />
+        <PackageReference Include="Devolutions.Pinget.Cli.Rust" Version="0.9.0" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive;native" />
 
         <Manifest Include="$(ApplicationManifest)" />
     </ItemGroup>
@@ -217,6 +284,12 @@
     </PropertyGroup>
     <ItemGroup>
         <PRIResource Remove="Intereface\**" />
+    </ItemGroup>
+    <ItemGroup>
+        <!-- WinUI default content deploys these to the build output but not to publish, leaving the
+             installed (unpackaged) app with no splash image. Force them into the publish output. -->
+        <Content Update="Assets\SplashScreen.png" CopyToPublishDirectory="PreserveNewest" />
+        <Content Update="Assets\SplashScreen.theme-dark.png" CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
     <ItemGroup>
         <None Update="Assets\Images\*.png">
@@ -334,7 +407,7 @@
         <ProjectReference Include="..\UniGetUI.Core.SecureSettings\UniGetUI.Core.SecureSettings.csproj" />
         <ProjectReference Include="..\UniGetUI.Core.Settings\UniGetUI.Core.Settings.csproj" />
         <ProjectReference Include="..\UniGetUI.Core.Tools\UniGetUI.Core.Tools.csproj" />
-        <ProjectReference Include="..\UniGetUI.Interface.BackgroundApi\UniGetUI.Interface.BackgroundApi.csproj" />
+        <ProjectReference Include="..\UniGetUI.Interface.IpcApi\UniGetUI.Interface.IpcApi.csproj" />
         <ProjectReference Include="..\UniGetUI.Interface.Enums\UniGetUI.Interface.Enums.csproj" />
         <ProjectReference Include="..\UniGetUI.Interface.Telemetry\UniGetUI.Interface.Telemetry.csproj" />
         <ProjectReference Include="..\UniGetUI.PackageEngine.Enums\UniGetUI.PackageEngine.Structs.csproj" />
@@ -365,10 +438,14 @@
             <Pack>false</Pack>
         </Content>
         <Content
-            Update="Assets\Utilities\getfilesiginforedist.dll"
-            Condition="'$(Platform)' == 'x64'"
+            Include="$(ElevatorPackageDllPath)"
+            Link="Assets\Utilities\getfilesiginforedist.dll"
+            Condition="Exists('$(ElevatorPackageDllPath)')"
         >
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+            <Visible>false</Visible>
+            <Pack>false</Pack>
         </Content>
         <Content Update="Assets\Utilities\install_scoop.cmd">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -386,6 +463,7 @@
 
     <ItemGroup>
         <Compile Include="..\SharedAssemblyInfo.cs" Link="SharedAssemblyInfo.cs" />
+        <Compile Include="..\Shared\SharedPreUiCommandDispatcher.cs" Link="Shared\SharedPreUiCommandDispatcher.cs" />
     </ItemGroup>
 
     <ItemGroup>

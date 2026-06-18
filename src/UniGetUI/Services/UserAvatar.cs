@@ -29,6 +29,8 @@ namespace UniGetUI.Services
         {
             VerticalContentAlignment = VerticalAlignment.Center;
             HorizontalContentAlignment = HorizontalAlignment.Center;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(this, CoreTools.Translate("User profile"));
+            ToolTipService.SetToolTip(this, CoreTools.Translate("User profile"));
             _ = RefreshStatus();
             GitHubAuthService.AuthStatusChanged += GitHubAuthService_AuthStatusChanged;
         }
@@ -69,7 +71,7 @@ namespace UniGetUI.Services
                 }
 
                 bool success = await client.SignInAsync();
-                if (!success)
+                if (!success && !client.LoginWasCancelled)
                 {
                     DialogHelper.ShowDismissableBalloon(
                         CoreTools.Translate("Failed"),
@@ -113,12 +115,14 @@ namespace UniGetUI.Services
                 IsIndeterminate = true,
                 Width = 24,
                 Height = 24,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
             };
         }
 
         private PointButton GenerateLoginControl()
         {
-            var personPicture = new PersonPicture { Width = 36, Height = 36 };
+            var personPicture = new PersonPicture { Width = 32, Height = 32 };
 
             var translatedTextBlock = new TextBlock
             {
@@ -166,7 +170,7 @@ namespace UniGetUI.Services
                 Content = stackPanel,
             };
 
-            return new PointButton
+            var btn = new PointButton
             {
                 Margin = new Thickness(0),
                 Padding = new Thickness(4),
@@ -176,6 +180,9 @@ namespace UniGetUI.Services
                 Content = personPicture,
                 Flyout = flyout,
             };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(btn, CoreTools.Translate("User profile"));
+            ToolTipService.SetToolTip(btn, CoreTools.Translate("User profile"));
+            return btn;
         }
 
         private async Task<PointButton> GenerateLogoutControl()
@@ -203,8 +210,8 @@ namespace UniGetUI.Services
 
             var personPicture = new PersonPicture
             {
-                Width = 36,
-                Height = 36,
+                Width = 32,
+                Height = 32,
                 ProfilePicture = new BitmapImage(new Uri(user.AvatarUrl)),
             };
 
@@ -289,7 +296,7 @@ namespace UniGetUI.Services
                 Content = stackPanel,
             };
 
-            return new PointButton
+            var btn = new PointButton
             {
                 Margin = new Thickness(0),
                 Padding = new Thickness(4),
@@ -299,6 +306,9 @@ namespace UniGetUI.Services
                 Content = personPicture,
                 Flyout = flyout,
             };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(btn, CoreTools.Translate("User profile"));
+            ToolTipService.SetToolTip(btn, CoreTools.Translate("User profile"));
+            return btn;
         }
     }
 }

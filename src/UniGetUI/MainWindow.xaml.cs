@@ -41,6 +41,7 @@ namespace UniGetUI.Interface
         private bool HasLoadedLastGeometry;
 
         public MainView NavigationPage = null!;
+        public bool IsInterfaceVisible => MainContentFrame.Content is not null;
         public bool BlockLoading;
         private string _currentSubtitle = "";
         private int _currentSubtitlePxLength;
@@ -60,13 +61,17 @@ namespace UniGetUI.Interface
             ExtendsContentIntoTitleBar = true;
             AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
             SetTitleBar(MainContentGrid);
-            MainContentGrid.ActualThemeChanged += (_, _) => ApplyTitleBarButtonColors();
+            // System theme changed at runtime: re-sync the cached theme, title bar and tray icon
+            MainContentGrid.ActualThemeChanged += (_, _) => { ApplyTheme(); UpdateSystemTrayStatus(); };
+            // Tray icon follows the system theme even when the app theme is fixed
+            MainApp.Instance.ThemeListener.ThemeChanged += (_) => DispatcherQueue.TryEnqueue(UpdateSystemTrayStatus);
             AppWindow.SetIcon(
                 Path.Join(CoreData.UniGetUIExecutableDirectory, "Assets", "Images", "icon.ico")
             );
 
             LoadTrayMenu();
             ApplyTheme();
+            ApplySplashImage();
             ApplyProxyVariableToProcess();
             _applySubtitleToWindow();
 
@@ -252,6 +257,11 @@ namespace UniGetUI.Interface
             {
                 AutoUpdater.ReleaseLockForAutoupdate_Window = true;
                 _ = SaveGeometry(Force: true);
+                if (MainApp.Instance.IsQuitting)
+                {
+                    return;
+                }
+
                 if (
                     !Settings.Get(Settings.K.DisableSystemTray)
                     || AutoUpdater.UpdateReadyToBeInstalled
@@ -311,28 +321,7 @@ namespace UniGetUI.Interface
 
             if (baseUrl.StartsWith("showPackage"))
             {
-                string Id = Regex.Match(baseUrl, "id=([^&]+)").Value.Split("=")[^1];
-                string CombinedManagerName = Regex
-                    .Match(baseUrl, "combinedManagerName=([^&]+)")
-                    .Value.Split("=")[^1];
-                string ManagerName = Regex.Match(baseUrl, "managerName=([^&]+)").Value.Split("=")[
-                    ^1
-                ];
-                string SourceName = Regex.Match(baseUrl, "sourceName=([^&]+)").Value.Split("=")[^1];
-
-                if (Id != "" && CombinedManagerName != "" && ManagerName == "" && SourceName == "")
-                {
-                    Logger.Warn($"URI {link} follows old scheme");
-                    DialogHelper.ShowSharedPackage_ThreadSafe(Id, CombinedManagerName);
-                }
-                else if (Id != "" && ManagerName != "" && SourceName != "")
-                {
-                    DialogHelper.ShowSharedPackage_ThreadSafe(Id, ManagerName, SourceName);
-                }
-                else
-                {
-                    Logger.Error(new UriFormatException($"Malformed URL {link}"));
-                }
+                Logger.Warn($"Ignoring unsupported package-share deep link: {link}");
             }
             else if (baseUrl.StartsWith("showUniGetUI"))
             {
@@ -388,6 +377,15 @@ namespace UniGetUI.Interface
                     )
                     {
                         /* Skip */
+                    }
+                    else if (
+                        param
+                        is IpcTransportOptions.TransportArgument
+                            or IpcTransportOptions.TcpPortArgument
+                            or IpcTransportOptions.NamedPipeArgument
+                    )
+                    {
+                        _ = ParametersToProcess.Count > 0 ? ParametersToProcess.Dequeue() : null;
                     }
                     else
                     {
@@ -484,9 +482,9 @@ namespace UniGetUI.Interface
                 { InstalledPackages, CoreTools.Translate("Installed Packages") },
                 {
                     AboutUniGetUI,
-                    CoreTools.Translate("WingetUI Version {0}", CoreData.VersionName)
+                    CoreTools.Translate("UniGetUI Version {0} by Devolutions", CoreData.VersionName)
                 },
-                { ShowUniGetUI, CoreTools.Translate("Show WingetUI") },
+                { ShowUniGetUI, CoreTools.Translate("Show UniGetUI") },
                 { QuitUniGetUI, CoreTools.Translate("Quit") },
             };
 
@@ -525,7 +523,10 @@ namespace UniGetUI.Interface
                 NavigationPage.NavigateTo(PageType.Installed);
                 Activate();
             };
-            AboutUniGetUI.Label = CoreTools.Translate("WingetUI Version {0}", CoreData.VersionName);
+            AboutUniGetUI.Label = CoreTools.Translate(
+                "UniGetUI Version {0} by Devolutions",
+                CoreData.VersionName
+            );
             ShowUniGetUI.ExecuteRequested += (_, _) =>
             {
                 Activate();
@@ -629,18 +630,13 @@ namespace UniGetUI.Interface
                     theme = registryValue > 0 ? ApplicationTheme.Light : ApplicationTheme.Dark;
                 }
 
-                if (theme == ApplicationTheme.Light)
-                {
-                    modifier += "_black";
-                }
-                else
-                {
-                    modifier += "_white";
-                }
+                bool light = theme == ApplicationTheme.Light;
+                string tone = light ? "_black" : "_white";
 
+                string iconFile = "tray" + modifier + tone + "_legacy.ico";
                 string FullIconPath = Path.Join(
                     CoreData.UniGetUIExecutableDirectory,
-                    "\\Assets\\Images\\tray" + modifier + ".ico"
+                    "\\Assets\\Images\\" + iconFile
                 );
                 if (LastTrayIcon != FullIconPath)
                 {
@@ -698,6 +694,27 @@ namespace UniGetUI.Interface
             };
 
             SetMinimizable(true);
+        }
+
+        public void ShowFromTray()
+        {
+            AppWindow.Show();
+            Activate();
+        }
+
+        private void ApplySplashImage()
+        {
+            bool dark = MainApp.Instance.ThemeListener.CurrentTheme == ApplicationTheme.Dark;
+            string asset = dark ? "SplashScreen.theme-dark.png" : "SplashScreen.png";
+            string path = Path.Join(CoreData.UniGetUIExecutableDirectory, "Assets", asset);
+            if (!File.Exists(path)) return;
+
+            // BitmapImage can't load file:// URIs and ms-appx folds ".theme-dark" into a PRI
+            // theme qualifier, so load the bytes and decode from a stream instead.
+            var bitmap = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
+            using (var stream = File.OpenRead(path))
+                bitmap.SetSource(stream.AsRandomAccessStream());
+            SplashImage.Source = bitmap;
         }
 
         public void ApplyTheme()

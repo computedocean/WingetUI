@@ -1,7 +1,9 @@
 using System.Collections;
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.NetworkInformation;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
@@ -10,6 +12,7 @@ using UniGetUI.Core.Data;
 using UniGetUI.Core.Language;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
+using UniGetUI.PackageEngine.Enums;
 #if WINDOWS
 using Windows.Networking.Connectivity;
 #endif
@@ -45,6 +48,11 @@ namespace UniGetUI.Core.Tools
 
         private static LanguageEngine LanguageEngine = new();
 
+        static CoreTools()
+        {
+            LoadStaticTranslation();
+        }
+
         /// <summary>
         /// Translate a string to the current language
         /// </summary>
@@ -74,6 +82,44 @@ namespace UniGetUI.Core.Tools
         public static void ReloadLanguageEngineInstance(string ForceLanguage = "")
         {
             LanguageEngine = new LanguageEngine(ForceLanguage);
+            LoadStaticTranslation();
+        }
+
+        /// <summary>
+        /// Translates a string into the operating system's UI language, independently of the
+        /// language currently selected in UniGetUI. Used for the "System language" entry of the
+        /// language selector so it appears in the language it would actually resolve to.
+        /// Falls back to the current app language if the system language cannot be loaded.
+        /// </summary>
+        public static string TranslateInSystemLanguage(string text)
+        {
+            try
+            {
+                string systemLocale = CultureInfo.CurrentUICulture.ToString().Replace("-", "_");
+                if (string.IsNullOrWhiteSpace(systemLocale))
+                    systemLocale = "en";
+
+                return new LanguageEngine(systemLocale).Translate(text);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Could not translate string into the system language; falling back to the app language");
+                Logger.Warn(ex);
+                return Translate(text);
+            }
+        }
+
+        private static void LoadStaticTranslation()
+        {
+            string localScopeName = CoreTools.Translate("User | Local");
+            string globalScopeName = CoreTools.Translate("Machine | Global");
+
+            CommonTranslations.ScopeNames[PackageScope.Local] = localScopeName;
+            CommonTranslations.ScopeNames[PackageScope.Global] = globalScopeName;
+
+            CommonTranslations.InvertedScopeNames.Clear();
+            CommonTranslations.InvertedScopeNames.Add(globalScopeName, PackageScope.Global);
+            CommonTranslations.InvertedScopeNames.Add(localScopeName, PackageScope.Local);
         }
 
         /// <summary>
@@ -90,9 +136,28 @@ namespace UniGetUI.Core.Tools
         public static void RelaunchProcess()
         {
             Logger.Debug("Launching process: " + CoreData.UniGetUIExecutableFile);
-            Process.Start(CoreData.UniGetUIExecutableFile);
+            ScheduleRelaunchAfterExit();
             Logger.Warn("About to kill process");
             Environment.Exit(0);
+        }
+
+        public static void ScheduleRelaunchAfterExit(string? executablePath = null)
+        {
+            executablePath ??= CoreData.UniGetUIExecutableFile;
+            int currentProcessId = Environment.ProcessId;
+            string escapedExecutablePath = executablePath.Replace("'", "''");
+            string command =
+                $"Wait-Process -Id {currentProcessId}; Start-Process -FilePath '{escapedExecutablePath}'";
+
+            Process.Start(
+                new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -WindowStyle Hidden -Command \"{command}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                }
+            );
         }
 
         /// <summary>
@@ -110,61 +175,27 @@ namespace UniGetUI.Core.Tools
             command = command.Replace(";", "").Replace("&", "").Trim();
             Logger.Debug($"Begin \"which\" search for command {command}");
 
+            _ = updateEnv;
+
+            if (string.IsNullOrWhiteSpace(command))
+            {
+                Logger.ImportantInfo($"Command {command} was not found on the system");
+                return [];
+            }
+
             string pathValue = GetSearchPath();
 
-            Process process = new()
+            List<string> lines = FindExecutableMatches(command, pathValue);
+            if (lines.Count is 0)
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = OperatingSystem.IsWindows()
-                        ? Path.Join(Environment.SystemDirectory, "where.exe")
-                        : "which",
-                    Arguments = command,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                    StandardOutputEncoding = GetCommandOutputEncoding(),
-                    StandardErrorEncoding = GetCommandOutputEncoding(),
-                },
-            };
-            if (updateEnv)
-            {
-                process.StartInfo = UpdateEnvironmentVariables(process.StartInfo);
+                Logger.ImportantInfo($"Command {command} was not found on the system");
+                return [];
             }
-            process.StartInfo.Environment["PATH"] = pathValue;
 
-            try
-            {
-                process.Start();
-                string[] lines = process
-                    .StandardOutput.ReadToEnd()
-                    .Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries);
-
-                process.WaitForExit();
-
-                if (process.ExitCode is not 0)
-                    Logger.Warn(
-                        $"Call to WhichMultiple with file {command} returned non-zero status {process.ExitCode}"
-                    );
-
-                if (lines.Length is 0)
-                {
-                    Logger.ImportantInfo($"Command {command} was not found on the system");
-                    return [];
-                }
-
-                Logger.Debug(
-                    $"Command {command} was found on {lines[0]} (with {lines.Length - 1} more occurrences)"
-                );
-                return lines.ToList();
-            }
-            catch
-            {
-                if (updateEnv)
-                    return WhichMultiple(command, false);
-                throw;
-            }
+            Logger.Debug(
+                $"Command {command} was found on {lines[0]} (with {lines.Count - 1} more occurrences)"
+            );
+            return lines;
         }
 
         public static Tuple<bool, string> Which(string command, bool updateEnv = true)
@@ -250,6 +281,7 @@ namespace UniGetUI.Core.Tools
                     p.StartInfo.ArgumentList.Add(path);
                     p.StartInfo.UseShellExecute = false;
                 }
+
                 p.StartInfo.CreateNoWindow = true;
                 p.Start();
                 await p.WaitForExitAsync();
@@ -284,6 +316,34 @@ namespace UniGetUI.Core.Tools
                 return false;
             }
         }
+
+        /// <summary>
+        /// Checks whether the current process is running inside an MSIX package (Store / sideloaded).
+        /// </summary>
+        /// <returns>True when packaged, false when running unpackaged or on a non-Windows platform.</returns>
+        public static bool IsPackagedApp()
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return false;
+            }
+
+            try
+            {
+                int len = 0;
+                int rc = GetCurrentPackageFullName(ref len, IntPtr.Zero);
+                return rc != APPMODEL_ERROR_NO_PACKAGE;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private const int APPMODEL_ERROR_NO_PACKAGE = 15700;
+
+        [DllImport("kernel32.dll", SetLastError = false)]
+        private static extern int GetCurrentPackageFullName(ref int packageFullNameLength, IntPtr packageFullName);
 
         public static Task<long> GetFileSizeAsLongAsync(Uri? url) =>
             Task.Run(() => GetFileSizeAsLong(url));
@@ -324,22 +384,22 @@ namespace UniGetUI.Core.Tools
                 if (
                     response.StatusCode
                     is HttpStatusCode.Moved
-                        or HttpStatusCode.Redirect
-                        or HttpStatusCode.RedirectMethod
-                        or HttpStatusCode.TemporaryRedirect
-                        or HttpStatusCode.PermanentRedirect
+                    or HttpStatusCode.Redirect
+                    or HttpStatusCode.RedirectMethod
+                    or HttpStatusCode.TemporaryRedirect
+                    or HttpStatusCode.PermanentRedirect
                 )
                 {
                     return GetFileName(
                         response.Headers.Location
-                            ?? throw new HttpRequestException(
-                                "A redirect code was returned but no new location was given"
-                            )
+                        ?? throw new HttpRequestException(
+                            "A redirect code was returned but no new location was given"
+                        )
                     );
                 }
 
                 return response.Content.Headers.ContentDisposition?.FileName
-                    ?? Path.GetFileName(url.LocalPath);
+                       ?? Path.GetFileName(url.LocalPath);
             }
             catch (Exception e)
             {
@@ -418,19 +478,47 @@ namespace UniGetUI.Core.Tools
         /// <summary>
         /// Converts a string into a double floating-point number.
         /// </summary>
-        /// <param name="Version">Any string</param>
+        /// <param name="version">Any string</param>
         /// <returns>The best approximation of the string as a Version</returns>
-        public static Version VersionStringToStruct(string Version)
+        public static Version VersionStringToStruct(string version)
         {
             try
             {
                 char[] separators = ['.', '-', '/', '#'];
                 string[] versionItems = ["", "", "", ""];
 
+                string[] segments = version.Split(separators, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var segment in segments)
+                {
+                    bool seenDigit = false;
+                    bool seenLetterAfterDigit = false;
+                    bool seenDigitAfterLetter = false;
+                    foreach (char c in segment)
+                    {
+                        if (char.IsDigit(c))
+                        {
+                            if (seenLetterAfterDigit)
+                                seenDigitAfterLetter = true;
+                            seenDigit = true;
+                        }
+                        else if (char.IsLetter(c) && seenDigit)
+                        {
+                            seenLetterAfterDigit = true;
+                        }
+                    }
+
+                    if (seenDigit && seenLetterAfterDigit && seenDigitAfterLetter)
+                    {
+                        Logger.Warn(
+                            $"Version string {version} appears to contain non-numeric characters within a numeric segment and will be treated as unknown");
+                        return CoreTools.Version.Null;
+                    }
+                }
+
                 int dotCount = 0;
                 bool first = true;
 
-                foreach (char c in Version)
+                foreach (char c in version)
                 {
                     if (char.IsDigit(c))
                         versionItems[dotCount] += c;
@@ -452,7 +540,7 @@ namespace UniGetUI.Core.Tools
             }
             catch
             {
-                Logger.Warn($"Failed to parse version {Version} to float");
+                Logger.Warn($"Failed to parse version {version} to float");
                 return CoreTools.Version.Null;
             }
         }
@@ -539,12 +627,29 @@ namespace UniGetUI.Core.Tools
             {
                 _isCaching = true;
                 Logger.Info("Caching admin rights for process id " + Environment.ProcessId);
+
+                var elevatorName = Path.GetFileName(CoreData.ElevatorPath);
+
+                // pkexec prompts on every invocation and has no caching protocol.
+                if (elevatorName == "pkexec")
+                {
+                    _isCaching = false;
+                    return;
+                }
+
+                // sudo: -v validates/extends the cached timestamp.
+                // Prepend -A only when the SUDO_ASKPASS helper is configured.
+                // gsudo / UniGetUI Elevator.exe: use the gsudo cache protocol.
+                string cacheArgs = elevatorName == "sudo"
+                    ? (CoreData.ElevatorArgs.Contains("-A") ? "-Av" : "-v")
+                    : "cache on --pid " + Environment.ProcessId + " -d 1";
+
                 using Process p = new()
                 {
                     StartInfo = new ProcessStartInfo
                     {
                         FileName = CoreData.ElevatorPath,
-                        Arguments = "cache on --pid " + Environment.ProcessId + " -d 1",
+                        Arguments = cacheArgs,
                         UseShellExecute = false,
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
@@ -580,12 +685,27 @@ namespace UniGetUI.Core.Tools
             Logger.Info(
                 "Resetting administrator rights cache for process id " + Environment.ProcessId
             );
+
+            var elevatorName = Path.GetFileName(CoreData.ElevatorPath);
+
+            // pkexec prompts on every invocation and has no caching protocol.
+            if (elevatorName == "pkexec")
+            {
+                return;
+            }
+
+            // sudo: -K removes all cached timestamps.
+            // gsudo / UniGetUI Elevator.exe: use the gsudo cache protocol.
+            string resetArgs = elevatorName == "sudo"
+                ? "-K"
+                : "cache off --pid " + Environment.ProcessId;
+
             using Process p = new()
             {
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = CoreData.ElevatorPath,
-                    Arguments = "cache off --pid " + Environment.ProcessId,
+                    Arguments = resetArgs,
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -844,12 +964,7 @@ namespace UniGetUI.Core.Tools
 
                 var p = new Process()
                 {
-                    StartInfo = new()
-                    {
-                        FileName = path,
-                        UseShellExecute = true,
-                        CreateNoWindow = true,
-                    },
+                    StartInfo = new() { FileName = path, UseShellExecute = true, CreateNoWindow = true, },
                 };
                 p.Start();
             }
@@ -884,11 +999,161 @@ namespace UniGetUI.Core.Tools
             }
         }
 
-        private static Encoding GetCommandOutputEncoding() =>
-            OperatingSystem.IsWindows()
-                ? CodePagesEncodingProvider.Instance.GetEncoding(CoreData.CODE_PAGE)
-                    ?? Encoding.UTF8
-                : Encoding.UTF8;
+        private static List<string> FindExecutableMatches(string command, string pathValue)
+        {
+            List<string> matches = [];
+            HashSet<string> seen = new(
+                OperatingSystem.IsWindows()
+                    ? StringComparer.OrdinalIgnoreCase
+                    : StringComparer.Ordinal
+            );
+
+            if (HasDirectoryComponent(command))
+            {
+                AddExecutableMatches(
+                    matches,
+                    seen,
+                    Path.GetDirectoryName(command) ?? string.Empty,
+                    Path.GetFileName(command)
+                );
+                return matches;
+            }
+
+            foreach (string directory in EnumerateSearchDirectories(pathValue))
+            {
+                AddExecutableMatches(matches, seen, directory, command);
+            }
+
+            return matches;
+        }
+
+        private static void AddExecutableMatches(
+            List<string> matches,
+            HashSet<string> seen,
+            string directory,
+            string command
+        )
+        {
+            string searchDirectory = NormalizeSearchDirectory(directory);
+            if (searchDirectory.Length is 0)
+            {
+                return;
+            }
+
+            foreach (string candidateName in EnumerateCandidateFileNames(command))
+            {
+                TryAddExecutablePath(Path.Combine(searchDirectory, candidateName), matches, seen);
+            }
+        }
+
+        private static IEnumerable<string> EnumerateSearchDirectories(string pathValue)
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                yield return Environment.CurrentDirectory;
+            }
+
+            foreach (string pathEntry in pathValue.Split(Path.PathSeparator))
+            {
+                string normalizedEntry = NormalizeSearchDirectory(pathEntry);
+                if (normalizedEntry.Length is not 0)
+                {
+                    yield return normalizedEntry;
+                }
+            }
+        }
+
+        private static string NormalizeSearchDirectory(string? pathEntry)
+        {
+            if (string.IsNullOrWhiteSpace(pathEntry))
+            {
+                return Environment.CurrentDirectory;
+            }
+
+            return pathEntry.Trim().Trim('"');
+        }
+
+        private static IEnumerable<string> EnumerateCandidateFileNames(string command)
+        {
+            if (!OperatingSystem.IsWindows() || Path.HasExtension(command))
+            {
+                yield return command;
+                yield break;
+            }
+
+            foreach (string extension in GetWindowsExecutableExtensions())
+            {
+                yield return command + extension;
+            }
+        }
+
+        private static IReadOnlyList<string> GetWindowsExecutableExtensions()
+        {
+            List<string> extensions = (
+                    Environment.GetEnvironmentVariable("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD"
+                )
+                .Split(';', StringSplitOptions.RemoveEmptyEntries)
+                .Select(extension => extension.Trim())
+                .Where(extension => !string.IsNullOrWhiteSpace(extension))
+                .Select(extension => extension.StartsWith('.') ? extension : "." + extension)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return extensions.Count > 0 ? extensions : [".COM", ".EXE", ".BAT", ".CMD"];
+        }
+
+        private static void TryAddExecutablePath(
+            string candidatePath,
+            List<string> matches,
+            HashSet<string> seen
+        )
+        {
+            if (!File.Exists(candidatePath) || !IsExecutablePath(candidatePath))
+            {
+                return;
+            }
+
+            string fullPath = Path.GetFullPath(candidatePath);
+            if (seen.Add(fullPath))
+            {
+                matches.Add(fullPath);
+            }
+        }
+
+        private static bool IsExecutablePath(string candidatePath)
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                return true;
+            }
+
+            try
+            {
+                const UnixFileMode ExecutableBits =
+                    UnixFileMode.UserExecute
+                    | UnixFileMode.GroupExecute
+                    | UnixFileMode.OtherExecute;
+
+                return (File.GetUnixFileMode(candidatePath) & ExecutableBits) is not 0;
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return false;
+            }
+            catch (NotSupportedException)
+            {
+                return false;
+            }
+        }
+
+        private static bool HasDirectoryComponent(string command) =>
+            Path.IsPathRooted(command)
+            || command.Contains(Path.DirectorySeparatorChar)
+            || command.Contains(Path.AltDirectorySeparatorChar);
 
         private static string GetSearchPath()
         {
@@ -905,15 +1170,15 @@ namespace UniGetUI.Core.Tools
 
             string separator = Path.PathSeparator.ToString();
             string pathValue =
-                (
-                    Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User)
-                    ?? string.Empty
-                ) + separator;
+            (
+                Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User)
+                ?? string.Empty
+            ) + separator;
             pathValue +=
-                (
-                    Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine)
-                    ?? string.Empty
-                ) + separator;
+            (
+                Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine)
+                ?? string.Empty
+            ) + separator;
             pathValue +=
                 Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Process)
                 ?? string.Empty;

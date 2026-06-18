@@ -37,6 +37,7 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $SrcDir = Join-Path $RepoRoot "src"
+$WindowsSolution = Join-Path $SrcDir "UniGetUI.Windows.slnx"
 $PublishProject = Join-Path $SrcDir "UniGetUI" "UniGetUI.csproj"
 $BinDir = Join-Path $RepoRoot "unigetui_bin"
 $BuildPropsPath = Join-Path $SrcDir "Directory.Build.props"
@@ -66,7 +67,7 @@ Write-Host "Building UniGetUI version: $PackageVersion"
 # --- Test ---
 if (-not $SkipTests) {
     Write-Host "`n=== Running tests ===" -ForegroundColor Cyan
-    dotnet test (Join-Path $SrcDir "UniGetUI.sln") --verbosity q --nologo --ignore-failed-sources
+    dotnet test $WindowsSolution --verbosity q --nologo --ignore-failed-sources /p:Platform=$Platform
     if ($LASTEXITCODE -ne 0) {
         throw "Tests failed with exit code $LASTEXITCODE"
     }
@@ -74,15 +75,11 @@ if (-not $SkipTests) {
 
 # --- Build / Publish ---
 Write-Host "`n=== Publishing $Configuration|$Platform ===" -ForegroundColor Cyan
-dotnet clean (Join-Path $SrcDir "UniGetUI.sln") -v m --nologo
-
-# --- Fetch winget-cli payload ---
-Write-Host "`n=== Fetching winget-cli ($Platform) ===" -ForegroundColor Cyan
-& (Join-Path $PSScriptRoot "fetch-winget-cli.ps1") -Architectures @($Platform) -Force
+dotnet clean $WindowsSolution -v m --nologo /p:Platform=$Platform
 
 dotnet publish $PublishProject /noLogo /p:Configuration=$Configuration /p:Platform=$Platform --ignore-failed-sources -v m
 if ($LASTEXITCODE -ne 0) {
-    throw "dotnet publish failed with exit code $LASTEXITCODE"
+    throw "dotnet publish WinUI failed with exit code $LASTEXITCODE"
 }
 
 # --- Stage binaries ---
@@ -90,6 +87,19 @@ if (Test-Path $BinDir) { Remove-Item $BinDir -Recurse -Force }
 New-Item $BinDir -ItemType Directory | Out-Null
 # Move published output into unigetui_bin
 Get-ChildItem $PublishDir | Move-Item -Destination $BinDir -Force
+
+# Keep smaller symbols for useful local crash source information, and prune oversized ones.
+$MaxShippedPdbSizeBytes = 1MB
+
+$PdbsToRemove = Get-ChildItem $BinDir -Filter "*.pdb" -File | Where-Object {
+    $_.Length -gt $MaxShippedPdbSizeBytes
+}
+
+if ($PdbsToRemove.Count -gt 0) {
+    $RemovedPdbBytes = ($PdbsToRemove | Measure-Object -Property Length -Sum).Sum
+    $PdbsToRemove | Remove-Item -Force
+    Write-Host ("Removed {0} oversized PDBs above {1:N2} MiB ({2:N2} MiB total)." -f $PdbsToRemove.Count, ($MaxShippedPdbSizeBytes / 1MB), ($RemovedPdbBytes / 1MB))
+}
 
 # WingetUI.exe alias for backward compat
 Copy-Item (Join-Path $BinDir "UniGetUI.exe") (Join-Path $BinDir "WingetUI.exe") -Force

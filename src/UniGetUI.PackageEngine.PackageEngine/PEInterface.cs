@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using UniGetUI.Core.Logging;
 using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.Managers.BunManager;
 using UniGetUI.PackageEngine.Managers.CargoManager;
 using UniGetUI.PackageEngine.Managers.DotNetManager;
 using UniGetUI.PackageEngine.Managers.NpmManager;
@@ -15,7 +16,12 @@ using UniGetUI.PackageEngine.Managers.PowerShellManager;
 using UniGetUI.PackageEngine.Managers.ScoopManager;
 using UniGetUI.PackageEngine.Managers.WingetManager;
 #else
+using UniGetUI.PackageEngine.Managers.AptManager;
+using UniGetUI.PackageEngine.Managers.DnfManager;
 using UniGetUI.PackageEngine.Managers.HomebrewManager;
+using UniGetUI.PackageEngine.Managers.PacmanManager;
+using UniGetUI.PackageEngine.Managers.SnapManager;
+using UniGetUI.PackageEngine.Managers.FlatpakManager;
 #endif
 
 namespace UniGetUI.PackageEngine
@@ -27,34 +33,85 @@ namespace UniGetUI.PackageEngine
     {
         private const int ManagerLoadTimeout = 60; // 60 seconds timeout for Package Manager initialization (in seconds)
 #if WINDOWS
-        public static readonly WinGet WinGet = new();
-        public static readonly Scoop Scoop = new();
-        public static readonly Chocolatey Chocolatey = new();
+        public static readonly WinGet? WinGet = Create(() => new WinGet());
+        public static readonly Scoop? Scoop = Create(() => new Scoop());
+        public static readonly Chocolatey? Chocolatey = Create(() => new Chocolatey());
 #endif
-        public static readonly Npm Npm = new();
-        public static readonly Pip Pip = new();
-        public static readonly DotNet DotNet = new();
-        public static readonly PowerShell7 PowerShell7 = new();
+        public static readonly Npm? Npm = Create(() => new Npm());
+        public static readonly Bun? Bun = Create(() => new Bun());
+        public static readonly Pip? Pip = Create(() => new Pip());
+        public static readonly DotNet? DotNet = Create(() => new DotNet());
+        public static readonly PowerShell7? PowerShell7 = Create(() => new PowerShell7());
 #if WINDOWS
-        public static readonly PowerShell PowerShell = new();
+        public static readonly PowerShell? PowerShell = Create(() => new PowerShell());
 #endif
-        public static readonly Cargo Cargo = new();
-        public static readonly Vcpkg Vcpkg = new();
+        public static readonly Cargo? Cargo = Create(() => new Cargo());
+        public static readonly Vcpkg? Vcpkg = Create(() => new Vcpkg());
 #if !WINDOWS
-        public static readonly Homebrew Homebrew = new();
+        public static readonly Apt? Apt = Create(() => new Apt());
+        public static readonly Dnf? Dnf = Create(() => new Dnf());
+        public static readonly Pacman? Pacman = Create(() => new Pacman());
+        public static readonly Homebrew? Homebrew = Create(() => new Homebrew());
+        public static readonly Snap? Snap = Create(() => new Snap());
+        public static readonly Flatpak? Flatpak = Create(() => new Flatpak());
 #endif
 
         public static readonly IPackageManager[] Managers = CreateManagers();
 
+        // A single manager that fails to construct must not take down the whole engine (and with it
+        // the app, via TypeInitializationException). Log it and leave the field null; CreateManagers
+        // drops nulls so the rest of the managers stay usable.
+        private static T? Create<T>(Func<T> factory) where T : class, IPackageManager
+        {
+            try
+            {
+                return factory();
+            }
+            catch (Exception ex)
+            {
+                // Logging runs inside its own guard: this method must never throw, or it would
+                // re-trigger the TypeInitializationException it exists to prevent (it runs from
+                // a static field initializer).
+                try
+                {
+                    Logger.Error($"Failed to construct package manager {typeof(T).Name}; it will be unavailable this session.");
+                    Logger.Error(ex);
+                }
+                catch { /* swallow: never let static initialization fail */ }
+                return null;
+            }
+        }
+
         private static IPackageManager[] CreateManagers()
         {
-            List<IPackageManager> managers = [Npm, Pip, Cargo, Vcpkg, DotNet, PowerShell7];
+            List<IPackageManager?> candidates = [Npm, Bun, Pip, Cargo, Vcpkg, DotNet, PowerShell7];
 #if WINDOWS
-            managers.InsertRange(0, [WinGet, Scoop, Chocolatey]);
-            managers.Add(PowerShell);
+            candidates.InsertRange(0, [WinGet, Scoop, Chocolatey]);
+            candidates.Add(PowerShell);
 #else
-            managers.Insert(0, Homebrew);
+            candidates.Insert(0, Homebrew);
+            if (OperatingSystem.IsLinux())
+            {
+                var families = ReadLinuxDistroFamilies();
+                // If /etc/os-release is unreadable, include both as a safe fallback.
+                bool unknown = families.Count == 0;
+                if (unknown || families.Contains("debian") || families.Contains("ubuntu"))
+                    candidates.Add(Apt);
+                if (unknown || families.Contains("fedora") || families.Contains("rhel") || families.Contains("centos"))
+                    candidates.Add(Dnf);
+                if (unknown || families.Contains("arch"))
+                    candidates.Add(Pacman);
+                if (unknown || families.Contains("ubuntu") || families.Contains("debian") || families.Contains("fedora") || families.Contains("arch"))
+                {
+                    candidates.Add(Snap);
+                    candidates.Add(Flatpak);
+                }
+            }
 #endif
+            List<IPackageManager> managers = [];
+            foreach (IPackageManager? manager in candidates)
+                if (manager is not null)
+                    managers.Add(manager);
             return [.. managers];
         }
 
@@ -97,6 +154,28 @@ namespace UniGetUI.PackageEngine
                 Logger.Error(ex);
             }
         }
+
+#if !WINDOWS
+        [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+        private static HashSet<string> ReadLinuxDistroFamilies()
+        {
+            var families = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                foreach (var line in File.ReadLines("/etc/os-release"))
+                {
+                    if (!line.StartsWith("ID=", StringComparison.Ordinal) &&
+                        !line.StartsWith("ID_LIKE=", StringComparison.Ordinal))
+                        continue;
+                    var value = line[(line.IndexOf('=') + 1)..].Trim('"');
+                    foreach (var token in value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                        families.Add(token);
+                }
+            }
+            catch { /* /etc/os-release not readable — caller will use fallback */ }
+            return families;
+        }
+#endif
     }
 
     public class PackageBundlesLoader_I : PackageBundlesLoader

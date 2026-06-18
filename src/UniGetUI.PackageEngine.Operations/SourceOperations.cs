@@ -4,9 +4,6 @@ using UniGetUI.Core.Tools;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.PackageOperations;
-#if WINDOWS
-using UniGetUI.PackageEngine.Managers.WingetManager;
-#endif
 
 namespace UniGetUI.PackageEngine.Operations
 {
@@ -15,6 +12,7 @@ namespace UniGetUI.PackageEngine.Operations
         protected abstract void Initialize();
 
         protected IManagerSource Source;
+        public IManagerSource ManagerSource => Source;
         public bool ForceAsAdministrator { get; private set; }
 
         public SourceOperation(IManagerSource source, IReadOnlyList<InnerOperation>? preOps)
@@ -51,78 +49,30 @@ namespace UniGetUI.PackageEngine.Operations
             }
         }
 
-        public static IReadOnlyList<InnerOperation> CreateInstallPreOps(
-            IManagerSource source,
-            bool forceLocalWinGet
-        )
-        {
-            if (!IsWinGetManager(source.Manager))
-                return [];
-            if (forceLocalWinGet)
-                return [];
-            if (source.Manager.Status.ExecutablePath == GetBundledWinGetPath())
-                return [];
-            return [new(new AddSourceOperation(source, true), mustSucceed: true)];
-        }
-
-        public static IReadOnlyList<InnerOperation> CreateUninstallPreOps(
-            IManagerSource source,
-            bool forceLocalWinGet
-        )
-        {
-            if (!IsWinGetManager(source.Manager))
-                return [];
-            if (forceLocalWinGet)
-                return [];
-            if (source.Manager.Status.ExecutablePath == GetBundledWinGetPath())
-                return [];
-            // In this case, must succeed is set to false since we cannot ensure that bundled WinGet will
-            // have this source added
-            return [new(new RemoveSourceOperation(source, true), mustSucceed: false)];
-        }
-
         protected static bool IsWinGetManager(IPackageManager manager)
         {
 #if WINDOWS
-            return manager is WinGet;
+            return manager.Name == "Winget";
 #else
             return false;
-#endif
-        }
-
-        protected static string? GetBundledWinGetPath()
-        {
-#if WINDOWS
-            return WinGet.BundledWinGetPath;
-#else
-            return null;
 #endif
         }
     }
 
     public class AddSourceOperation : SourceOperation
     {
-        private readonly bool _forceLocalWinGet;
-
-        public AddSourceOperation(IManagerSource source, bool forceLocalWinGet = false)
-            : base(source, CreateInstallPreOps(source, forceLocalWinGet))
-        {
-            _forceLocalWinGet = forceLocalWinGet;
-        }
+        public AddSourceOperation(IManagerSource source)
+            : base(source, []) { }
 
         protected override void PrepareProcessStartInfo()
         {
             var exePath = Source.Manager.Status.ExecutablePath;
-            if (IsWinGetManager(Source.Manager) && _forceLocalWinGet)
-            {
-                exePath = GetBundledWinGetPath() ?? exePath;
-            }
-
             bool admin = false;
             if (RequiresAdminRights())
             {
                 if (
-                    Settings.Get(Settings.K.DoCacheAdminRights)
+                    OperatingSystem.IsLinux()
+                    || Settings.Get(Settings.K.DoCacheAdminRights)
                     || Settings.Get(Settings.K.DoCacheAdminRightsForBatches)
                 )
                     RequestCachingOfUACPrompt();
@@ -133,10 +83,10 @@ namespace UniGetUI.PackageEngine.Operations
                 admin = true;
                 process.StartInfo.FileName = CoreData.ElevatorPath;
                 process.StartInfo.Arguments =
-                    $"\"{exePath}\" "
+                    ($"{CoreData.ElevatorArgs} \"{exePath}\" "
                     + Source.Manager.Status.ExecutableCallArgs
                     + " "
-                    + string.Join(" ", Source.Manager.SourcesHelper.GetAddSourceParameters(Source));
+                    + string.Join(" ", Source.Manager.SourcesHelper.GetAddSourceParameters(Source))).TrimStart();
             }
             else
             {
@@ -208,26 +158,18 @@ namespace UniGetUI.PackageEngine.Operations
 
     public class RemoveSourceOperation : SourceOperation
     {
-        private readonly bool _forceLocalWinGet;
-
-        public RemoveSourceOperation(IManagerSource source, bool forceLocalWinGet = false)
-            : base(source, CreateUninstallPreOps(source, forceLocalWinGet))
-        {
-            _forceLocalWinGet = forceLocalWinGet;
-        }
+        public RemoveSourceOperation(IManagerSource source)
+            : base(source, []) { }
 
         protected override void PrepareProcessStartInfo()
         {
             var exePath = Source.Manager.Status.ExecutablePath;
-            if (IsWinGetManager(Source.Manager) && _forceLocalWinGet)
-            {
-                exePath = GetBundledWinGetPath() ?? exePath;
-            }
             bool admin = false;
             if (RequiresAdminRights())
             {
                 if (
-                    Settings.Get(Settings.K.DoCacheAdminRights)
+                    OperatingSystem.IsLinux()
+                    || Settings.Get(Settings.K.DoCacheAdminRights)
                     || Settings.Get(Settings.K.DoCacheAdminRightsForBatches)
                 )
                     RequestCachingOfUACPrompt();
@@ -238,13 +180,13 @@ namespace UniGetUI.PackageEngine.Operations
                 admin = true;
                 process.StartInfo.FileName = CoreData.ElevatorPath;
                 process.StartInfo.Arguments =
-                    $"\"{exePath}\" "
+                    ($"{CoreData.ElevatorArgs} \"{exePath}\" "
                     + Source.Manager.Status.ExecutableCallArgs
                     + " "
                     + string.Join(
                         " ",
                         Source.Manager.SourcesHelper.GetRemoveSourceParameters(Source)
-                    );
+                    )).TrimStart();
             }
             else
             {

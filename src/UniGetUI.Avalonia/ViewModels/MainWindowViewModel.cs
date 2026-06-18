@@ -1,5 +1,6 @@
 using System.Collections.Specialized;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -16,10 +17,12 @@ using UniGetUI.Avalonia.Views.Pages.SettingsPages;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
+using UniGetUI.Interface.Enums;
 using UniGetUI.PackageEngine;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.PackageEngine.PackageLoader;
+using UniGetUI.PackageOperations;
 
 namespace UniGetUI.Avalonia.ViewModels;
 
@@ -50,11 +53,70 @@ public partial class MainWindowViewModel : ViewModelBase
     public event EventHandler<bool>? CanGoBackChanged;
     public event EventHandler<PageType>? CurrentPageChanged;
 
+    [ObservableProperty]
+    private string _announcementText = "";
+
+    [ObservableProperty]
+    private AutomationLiveSetting _announcementLiveSetting = AutomationLiveSetting.Polite;
+
     // ─── Operations panel ─────────────────────────────────────────────────────
     public AvaloniaList<OperationViewModel> Operations => AvaloniaOperationRegistry.OperationViewModels;
 
     [ObservableProperty]
     private bool _operationsPanelVisible;
+
+    [ObservableProperty]
+    private bool _operationsPanelExpanded = true;
+
+    private readonly List<AbstractOperation> _operationBatch = new();
+
+    public string OperationsHeaderText
+    {
+        get
+        {
+            int total = _operationBatch.Count;
+            if (total == 0)
+                return CoreTools.Translate("Operations");
+            int completed = _operationBatch.Count(o =>
+                o.Status is OperationStatus.Succeeded or OperationStatus.Failed or OperationStatus.Canceled);
+            return CoreTools.Translate("{0} of {1} operations completed", completed, total);
+        }
+    }
+
+    private void AddToBatch(AbstractOperation op)
+    {
+        if (_operationBatch.Count > 0
+            && _operationBatch.All(o => o.Status is not (OperationStatus.InQueue or OperationStatus.Running)))
+        {
+            foreach (var old in _operationBatch)
+                old.StatusChanged -= OnOperationStatusChanged;
+            _operationBatch.Clear();
+        }
+
+        if (!_operationBatch.Contains(op))
+        {
+            _operationBatch.Add(op);
+            op.StatusChanged += OnOperationStatusChanged;
+        }
+    }
+
+    private void OnOperationStatusChanged(object? sender, OperationStatus e)
+        => Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(OperationsHeaderText)));
+
+    [RelayCommand]
+    private void ToggleOperationsPanel() => OperationsPanelExpanded = !OperationsPanelExpanded;
+
+    [RelayCommand]
+    private void RetryFailedOperations() => AvaloniaOperationRegistry.RetryFailed();
+
+    [RelayCommand]
+    private void ClearSuccessfulOperations() => AvaloniaOperationRegistry.ClearSuccessful();
+
+    [RelayCommand]
+    private void ClearFinishedOperations() => AvaloniaOperationRegistry.ClearFinished();
+
+    [RelayCommand]
+    private void CancelAllOperations() => AvaloniaOperationRegistry.CancelAll();
 
     // ─── Sidebar ─────────────────────────────────────────────────────────────
     public SidebarViewModel Sidebar { get; } = new();
@@ -82,13 +144,11 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void SubscribeToPageViewModel(AbstractPackagesPage? page)
     {
-        if (_subscribedPageViewModel is not null)
-            _subscribedPageViewModel.PropertyChanged -= OnPageViewModelPropertyChanged;
+        _subscribedPageViewModel?.PropertyChanged -= OnPageViewModelPropertyChanged;
 
         _subscribedPageViewModel = page?.ViewModel;
 
-        if (_subscribedPageViewModel is not null)
-            _subscribedPageViewModel.PropertyChanged += OnPageViewModelPropertyChanged;
+        _subscribedPageViewModel?.PropertyChanged += OnPageViewModelPropertyChanged;
     }
 
     private void OnPageViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -100,6 +160,14 @@ public partial class MainWindowViewModel : ViewModelBase
             _syncingSearch = false;
         }
     }
+
+    // ─── Title bar ───────────────────────────────────────────────────────────
+    // Mirrors WinUI behavior: the version appears next to "UniGetUI" only when
+    // the ShowVersionNumberOnTitlebar setting is enabled (the setting is gated
+    // on restart, so a one-shot read at construction is sufficient).
+    public string TitleBarText { get; } = Settings.Get(Settings.K.ShowVersionNumberOnTitlebar)
+        ? $"UniGetUI {CoreTools.Translate("version {0}", CoreData.VersionName)}"
+        : "UniGetUI";
 
     // ─── Banners ─────────────────────────────────────────────────────────────
     public InfoBarViewModel UpdatesBanner { get; } = new() { Severity = InfoBarSeverity.Success };
@@ -113,6 +181,8 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public MainWindowViewModel()
     {
+        AccessibilityAnnouncementService.AnnouncementRequested += OnAnnouncementRequested;
+
         DiscoverPage = new DiscoverSoftwarePage();
         UpdatesPage = new SoftwareUpdatesPage();
         InstalledPage = new InstalledPackagesPage();
@@ -139,17 +209,16 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             upgLoader.PackagesChanged += (_, _) =>
                 Dispatcher.UIThread.Post(() =>
-                    Sidebar.UpdatesBadgeCount = upgLoader.Count());
+                {
+                    Sidebar.UpdatesBadgeCount = upgLoader.Count();
+                    MainWindow.Instance?.UpdateSystemTrayStatus();
+                });
             Sidebar.UpdatesBadgeCount = upgLoader.Count();
-
-            upgLoader.FinishedLoading += (_, _) =>
-            {
-                var upgradable = upgLoader.Packages.ToList();
-                if (upgradable.Count == 0) return;
-                WindowsAppNotificationBridge.ShowUpdatesAvailableNotification(upgradable);
-                MacOsNotificationBridge.ShowUpdatesAvailableNotification(upgradable);
-            };
+            // Notifications and auto-update logic are handled by SoftwareUpdatesPage.WhenPackagesLoaded
         }
+
+        WindowsAppNotificationBridge.NotificationActivated += action =>
+            Dispatcher.UIThread.Post(() => HandleNotificationActivation(action));
 
         BundlesPage.UnsavedChangesStateChanged += (_, _) =>
             Dispatcher.UIThread.Post(() =>
@@ -160,6 +229,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
         AvaloniaAutoUpdater.UpdateAvailable += version => Dispatcher.UIThread.Post(() =>
         {
+            UpdatesBanner.Severity = InfoBarSeverity.Success;
             UpdatesBanner.Title = CoreTools.Translate("UniGetUI {0} is ready to be installed.", version);
             UpdatesBanner.Message = CoreTools.Translate("The update process will start after closing UniGetUI");
             UpdatesBanner.ActionButtonText = CoreTools.Translate("Update now");
@@ -168,9 +238,33 @@ public partial class MainWindowViewModel : ViewModelBase
             UpdatesBanner.IsOpen = true;
         });
 
+        AvaloniaAutoUpdater.StatusChanged += status => Dispatcher.UIThread.Post(() =>
+        {
+            UpdatesBanner.Severity = status.Severity;
+            UpdatesBanner.Title = status.Title;
+            UpdatesBanner.Message = status.Message;
+            UpdatesBanner.ActionButtonText = status.ActionButtonText ?? "";
+            UpdatesBanner.ActionButtonCommand = status.ActionButtonAction is { } action
+                ? new CommunityToolkit.Mvvm.Input.RelayCommand(action)
+                : null;
+            UpdatesBanner.IsClosable = status.IsClosable;
+            UpdatesBanner.IsOpen = true;
+        });
+
+        // If the previous update attempt was killed mid-flow (typically by the
+        // installer terminating us during file replacement), surface a banner now
+        // that subscriptions are wired up.
+        AvaloniaAutoUpdater.CheckForOrphanedUpdateAttempt();
+
         // Keep OperationsPanelVisible in sync with the live operations list
-        Operations.CollectionChanged += (_, _) =>
+        Operations.CollectionChanged += (_, e) =>
+        {
+            if (e.NewItems is not null)
+                foreach (OperationViewModel vm in e.NewItems)
+                    AddToBatch(vm.Operation);
             OperationsPanelVisible = Operations.Count > 0;
+            OnPropertyChanged(nameof(OperationsHeaderText));
+        };
 
         if (OperatingSystem.IsWindows() && CoreTools.IsAdministrator() && !Settings.Get(Settings.K.AlreadyWarnedAboutAdmin))
         {
@@ -200,7 +294,36 @@ public partial class MainWindowViewModel : ViewModelBase
             TelemetryWarner.IsOpen = true;
         }
 
-        LoadDefaultPage();
+        if (WasUpdatedSinceLastRun() && !Settings.Get(Settings.K.DisableReleaseNotesOnUpdate))
+        {
+            NavigateTo(PageType.ReleaseNotes);
+        }
+        else
+        {
+            LoadDefaultPage();
+        }
+    }
+
+    // Returns true the first time the app runs after being updated to a newer build
+    private static bool WasUpdatedSinceLastRun()
+    {
+        _ = int.TryParse(Settings.GetValue(Settings.K.LastKnownBuildNumber), out int lastBuild);
+
+        if (lastBuild != CoreData.BuildNumber)
+        {
+            Settings.SetValue(Settings.K.LastKnownBuildNumber, CoreData.BuildNumber.ToString());
+        }
+
+        return lastBuild != 0 && lastBuild < CoreData.BuildNumber;
+    }
+
+    private void OnAnnouncementRequested(object? _, AccessibilityAnnouncement announcement)
+    {
+        AnnouncementLiveSetting = announcement.LiveSetting;
+        AnnouncementText = string.Empty;
+        Dispatcher.UIThread.Post(
+            () => AnnouncementText = announcement.Message,
+            DispatcherPriority.Background);
     }
 
     // ─── Navigation ──────────────────────────────────────────────────────────
@@ -263,11 +386,16 @@ public partial class MainWindowViewModel : ViewModelBase
     public void NavigateTo(PageType newPage_t, bool toHistory = true)
     {
         if (newPage_t is PageType.About) { _ = ShowAboutDialog(); return; }
-        if (newPage_t is PageType.Quit) { (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Shutdown(); return; }
+        if (newPage_t is PageType.Quit) { MainWindow.Instance?.QuitApplication(); return; }
+
+        if (_currentPage == newPage_t)
+        {
+            // Re-focus the primary control even when we're already on the page
+            (CurrentPageContent as AbstractPackagesPage)?.FocusPackageList();
+            return;
+        }
 
         Sidebar.SelectNavButtonForPage(newPage_t);
-
-        if (_currentPage == newPage_t) return;
 
         var newPage = GetPageForType(newPage_t);
         var oldPage = CurrentPageContent as Control;
@@ -286,7 +414,6 @@ public partial class MainWindowViewModel : ViewModelBase
             CanGoBackChanged?.Invoke(this, true);
         }
 
-        (newPage as AbstractPackagesPage)?.FocusPackageList();
         (newPage as AbstractPackagesPage)?.FilterPackages();
         (newPage as IEnterLeaveListener)?.OnEnter();
 
@@ -305,8 +432,28 @@ public partial class MainWindowViewModel : ViewModelBase
             GlobalSearchEnabled = false;
         }
 
+        // Focus after search state is restored so MegaQueryVisible is already correct
+        (newPage as AbstractPackagesPage)?.FocusPackageList();
+
+        AccessibilityAnnouncementService.Announce(GetPageAnnouncement(newPage_t));
         CurrentPageChanged?.Invoke(this, newPage_t);
     }
+
+    private static string GetPageAnnouncement(PageType pageType) => pageType switch
+    {
+        PageType.Discover => CoreTools.Translate("Discover Packages"),
+        PageType.Updates => CoreTools.Translate("Software Updates"),
+        PageType.Installed => CoreTools.Translate("Installed Packages"),
+        PageType.Bundles => CoreTools.Translate("Package Bundles"),
+        PageType.Settings => CoreTools.Translate("Settings"),
+        PageType.Managers => CoreTools.Translate("Package Managers"),
+        PageType.OwnLog => CoreTools.Translate("UniGetUI Log"),
+        PageType.ManagerLog => CoreTools.Translate("Package Manager logs"),
+        PageType.OperationHistory => CoreTools.Translate("Operation history"),
+        PageType.Help => CoreTools.Translate("Help"),
+        PageType.ReleaseNotes => CoreTools.Translate("Release notes"),
+        _ => CoreTools.Translate("UniGetUI"),
+    };
 
     public void NavigateBack()
     {
@@ -361,6 +508,28 @@ public partial class MainWindowViewModel : ViewModelBase
         if (owner is not null)
             await new AboutWindow().ShowDialog(owner);
         Sidebar.SelectNavButtonForPage(_currentPage);
+    }
+
+    // ─── Notification activation ─────────────────────────────────────────────
+    private void HandleNotificationActivation(string action)
+    {
+        if (action == NotificationArguments.UpdateAllPackages)
+        {
+            _ = AvaloniaPackageOperationHelper.UpdateAllAsync();
+        }
+        else if (action == NotificationArguments.ShowOnUpdatesTab)
+        {
+            NavigateTo(PageType.Updates);
+            MainWindow.Instance?.ShowFromTray();
+        }
+        else if (action == NotificationArguments.Show)
+        {
+            MainWindow.Instance?.ShowFromTray();
+        }
+        else if (action == NotificationArguments.ReleaseSelfUpdateLock)
+        {
+            AvaloniaAutoUpdater.ReleaseLockForAutoupdate_Notification = true;
+        }
     }
 
     // ─── Search box ──────────────────────────────────────────────────────────

@@ -1,8 +1,12 @@
+using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.Windows.AppLifecycle;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
+using UniGetUI.Core.Tools;
+using UniGetUI.Interface;
+using UniGetUI.Shared;
 
 namespace UniGetUI
 {
@@ -14,68 +18,49 @@ namespace UniGetUI
             // Having an async main method breaks WebView2
             try
             {
-                if (args.Contains(CLIHandler.HELP))
+                if (ShouldPrepareCliConsole(args))
                 {
-                    CLIHandler.Help();
-                    Environment.Exit(0);
+                    WindowsConsoleHost.PrepareCliIO();
+                }
+
+                if (SharedPreUiCommandDispatcher.TryHandle(args, SharedPreUiCommandDispatcher.WinUiExitCodes) is { } preUiExitCode)
+                {
+                    Environment.ExitCode = preUiExitCode;
+                    return;
                 }
                 else if (args.Contains(CLIHandler.MIGRATE_WINGETUI_TO_UNIGETUI))
                 {
-                    int ret = CLIHandler.WingetUIToUniGetUIMigrator();
-                    Environment.Exit(ret);
+                    Environment.ExitCode = CLIHandler.WingetUIToUniGetUIMigrator();
+                    return;
                 }
                 else if (
                     args.Contains(CLIHandler.UNINSTALL_UNIGETUI)
                     || args.Contains(CLIHandler.UNINSTALL_WINGETUI)
                 )
                 {
-                    int ret = CLIHandler.UninstallUniGetUI();
-                    Environment.Exit(ret);
+                    Environment.ExitCode = CLIHandler.UninstallUniGetUI();
+                    return;
                 }
-                else if (args.Contains(CLIHandler.IMPORT_SETTINGS))
+                else if (IpcCliSyntax.IsIpcCommand(args))
                 {
-                    int ret = CLIHandler.ImportSettings();
-                    Environment.Exit(ret);
+                    Environment.ExitCode = CLIHandler.Automation(args);
+                    return;
                 }
-                else if (args.Contains(CLIHandler.EXPORT_SETTINGS))
+                else if (args.Contains(CLIHandler.HEADLESS))
                 {
-                    int ret = CLIHandler.ExportSettings();
-                    Environment.Exit(ret);
+                    Environment.ExitCode = WinUiHeadlessHost.RunAsync(args).GetAwaiter().GetResult();
+                    return;
                 }
-                else if (args.Contains(CLIHandler.ENABLE_SETTING))
+                else if (UpdateInProgressGuard.IsUpdateInProgress())
                 {
-                    int ret = CLIHandler.EnableSetting();
-                    Environment.Exit(ret);
+                    // Update is replacing install files; the installer relaunches us when done.
+                    Logger.Warn("An update is replacing install files; aborting UI startup until it completes.");
+                    Environment.ExitCode = 0;
+                    return;
                 }
-                else if (args.Contains(CLIHandler.DISABLE_SETTING))
+                else if (!ModernAppLauncher.IsClassicModeEnabled())
                 {
-                    int ret = CLIHandler.DisableSetting();
-                    Environment.Exit(ret);
-                }
-                else if (args.Contains(CLIHandler.SET_SETTING_VAL))
-                {
-                    int ret = CLIHandler.SetSettingsValue();
-                    Environment.Exit(ret);
-                }
-                else if (args.Contains(CLIHandler.ENABLE_SECURE_SETTING))
-                {
-                    int ret = CLIHandler.EnableSecureSetting();
-                    Environment.Exit(ret);
-                }
-                else if (args.Contains(CLIHandler.DISABLE_SECURE_SETTING))
-                {
-                    int ret = CLIHandler.DisableSecureSetting();
-                    Environment.Exit(ret);
-                }
-                else if (args.Contains(CLIHandler.ENABLE_SECURE_SETTING_FOR_USER))
-                {
-                    int ret = CLIHandler.EnableSecureSettingForUser();
-                    Environment.Exit(ret);
-                }
-                else if (args.Contains(CLIHandler.DISABLE_SECURE_SETTING_FOR_USER))
-                {
-                    int ret = CLIHandler.DisableSecureSettingForUser();
-                    Environment.Exit(ret);
+                    ModernAppLauncher.Launch(args);
                 }
                 else
                 {
@@ -87,6 +72,11 @@ namespace UniGetUI
             {
                 CrashHandler.ReportFatalException(e);
             }
+        }
+
+        private static bool ShouldPrepareCliConsole(IReadOnlyList<string> args)
+        {
+            return IpcCliSyntax.HasVerbCommand(args);
         }
 
         /// <summary>
@@ -105,11 +95,21 @@ namespace UniGetUI
                         Welcome to UniGetUI Version {CoreData.VersionName}
                     """;
 
+                Logger.RedactUsername = Core.SettingsEngine.Settings.Get(Core.SettingsEngine.Settings.K.RedactUsernameInLog);
+
                 Logger.ImportantInfo(textart);
                 Logger.ImportantInfo("  ");
                 Logger.ImportantInfo($"Build {CoreData.BuildNumber}");
+                Logger.ImportantInfo("UI Framework: WinUI 3");
                 Logger.ImportantInfo($"Data directory {CoreData.UniGetUIDataDirectory}");
                 Logger.ImportantInfo($"Encoding Code Page set to {CoreData.CODE_PAGE}");
+                Logger.ImportantInfo($"OS: {RuntimeInformation.OSDescription}");
+                Logger.ImportantInfo($"Process arch: {RuntimeInformation.ProcessArchitecture} (OS: {RuntimeInformation.OSArchitecture})");
+                Logger.ImportantInfo($"Runtime: {RuntimeInformation.FrameworkDescription}");
+                Logger.ImportantInfo($"Elevated: {CoreTools.IsAdministrator()}");
+                Logger.ImportantInfo($"Packaged (MSIX): {CoreTools.IsPackagedApp()}");
+                string[] cmdArgs = Environment.GetCommandLineArgs();
+                Logger.ImportantInfo($"Args: {(cmdArgs.Length > 1 ? string.Join(" ", cmdArgs.Skip(1)) : "(none)")}");
 
                 // WinRT single-instance fancy stuff
                 WinRT.ComWrappersSupport.InitializeComWrappers();
