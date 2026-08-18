@@ -1,49 +1,44 @@
-<Window xmlns="https://github.com/avaloniaui"
+<dialogs:ImmersiveDialog xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
+        xmlns:dialogs="using:UniGetUI.Avalonia.Views.DialogPages"
+        xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
         xmlns:vm="using:UniGetUI.Avalonia.ViewModels"
         xmlns:controls="using:UniGetUI.Avalonia.Views.Controls"
         xmlns:t="using:UniGetUI.Avalonia.MarkupExtensions"
         x:Class="UniGetUI.Avalonia.Views.ManageIgnoredUpdatesWindow"
         x:DataType="vm:ManageIgnoredUpdatesViewModel"
-        Width="900" MinWidth="520"
-        Height="500" MinHeight="280"
-        CanResize="True"
-        ShowInTaskbar="False"
-        Background="{DynamicResource AppDialogBackground}"
-        WindowStartupLocation="CenterOwner"
-        Title="{Binding Title}">
+        Title="{Binding Title}"
+        MaxWidth="850"
+        MinWidth="520"
+        MaxHeight="500"
+        MinHeight="280"
+        HorizontalContentAlignment="Stretch"
+        VerticalContentAlignment="Stretch">
 
-    <Window.Styles>
-        <Style Selector="DataGridCell:current /template/ Grid#FocusVisual">
-            <Setter Property="IsVisible" Value="False"/>
+    <dialogs:ImmersiveDialog.Styles>
+        <!-- WinUI-style row hover highlight. The base Background must be set via a style
+             (not a local value) so the :pointerover setter can override it. -->
+        <Style Selector="Border.row">
+            <Setter Property="Background" Value="Transparent"/>
         </Style>
-        <Style Selector="DataGridCell:current">
-            <Setter Property="BorderBrush" Value="Transparent"/>
+        <Style Selector="Border.row:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
         </Style>
-    </Window.Styles>
+    </dialogs:ImmersiveDialog.Styles>
 
-    <Grid RowDefinitions="Auto,Auto,*"
-          Margin="16"
-          RowSpacing="8">
+    <Grid RowDefinitions="Auto,*"
+          Margin="20"
+          RowSpacing="12">
 
-        <!-- ── Title ── -->
-        <TextBlock Grid.Row="0"
-                   Text="{Binding Title}"
-                   FontSize="20"
-                   FontWeight="SemiBold"
-                   Margin="0,0,0,4"
-                   automation:AutomationProperties.HeadingLevel="1"/>
-
-        <!-- ── Header: description + Reset list button ── -->
-        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
-
+        <!-- ── Description + Reset list button ── -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="8">
             <TextBlock Text="{Binding Description}"
                        TextWrapping="Wrap"
                        VerticalAlignment="Center"
                        Opacity="0.75"/>
 
             <Button x:Name="ResetButton" Grid.Column="1" VerticalAlignment="Center"
+                    Classes="secondary-action"
                     automation:AutomationProperties.Name="{Binding ResetLabel}">
                 <TextBlock Text="{Binding ResetLabel}"/>
                 <Button.Flyout>
@@ -66,6 +61,7 @@
                                        Text="{Binding ResetConfirm}"
                                        TextWrapping="Wrap"/>
                             <Button Grid.Row="1" Grid.Column="0"
+                                    Classes="secondary-action"
                                     Content="{Binding ResetYes}"
                                     automation:AutomationProperties.Name="{Binding ResetYes}"
                                     HorizontalAlignment="Stretch"
@@ -83,141 +79,97 @@
 
         </Grid>
 
-        <!-- ── Package list (DataGrid, mirrors the main package list) ── -->
-        <Border Grid.Row="2"
+        <!-- ── Package list (mirrors the WinUI ItemsView: flat rows, no header) ── -->
+        <Border Grid.Row="1"
                 CornerRadius="8"
-                BorderThickness="1"
-                BorderBrush="{DynamicResource AppBorderBrush}"
-                Margin="0,4,0,0">
-            <Panel>
+                Background="{DynamicResource IgnoredUpdatesListBackground}">
+          <Panel>
 
-                <!-- Empty state -->
-                <TextBlock Text="{Binding EmptyLabel}"
-                           IsVisible="{Binding ShowEmptyLabel}"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           FontSize="20"
-                           FontWeight="Bold"
-                           Opacity="0.5"/>
+            <!-- Empty state -->
+            <TextBlock Text="{Binding EmptyLabel}"
+                       IsVisible="{Binding ShowEmptyLabel}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       FontSize="20"
+                       FontWeight="Bold"
+                       Opacity="0.5"/>
 
-                <DataGrid ItemsSource="{Binding Entries}"
-                          x:Name="IgnoredUpdatesGrid"
-                          AutoGenerateColumns="False"
-                          CanUserReorderColumns="True"
-                          CanUserResizeColumns="True"
-                          CanUserSortColumns="True"
-                          SelectionMode="Single"
-                          GridLinesVisibility="Horizontal"
-                          automation:AutomationProperties.Name="{Binding Title}"
-                          automation:AutomationProperties.HelpText="{Binding Description}"
-                          IsVisible="{Binding HasEntries}">
-                    <DataGrid.Columns>
+            <ScrollViewer IsVisible="{Binding HasEntries}"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Entries}"
+                              x:Name="IgnoredUpdatesGrid"
+                              Padding="2,4"
+                              automation:AutomationProperties.Name="{Binding Title}"
+                              automation:AutomationProperties.HelpText="{Binding Description}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Vertical" Spacing="0"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:IgnoredPackageEntryViewModel">
+                          <Border Classes="row" Height="36" Margin="0" CornerRadius="4"
+                                  Padding="8,0">
+                            <Grid ColumnSpacing="4"
+                                  automation:AutomationProperties.Name="{Binding AutomationName}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*" MaxWidth="120"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*" MaxWidth="170"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*" MaxWidth="90"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
 
-                        <DataGridTemplateColumn Header="{Binding $parent[Window].((vm:ManageIgnoredUpdatesViewModel)DataContext).ColName}"
-                                                Width="2*">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate x:DataType="vm:IgnoredPackageEntryViewModel">
-                                    <StackPanel Orientation="Horizontal" Spacing="6"
-                                                automation:AutomationProperties.Name="{Binding AutomationName}"
-                                                VerticalAlignment="Center" Margin="0,0,4,0">
-                                        <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/package.svg"
-                                                          Width="16" Height="16" VerticalAlignment="Center"/>
-                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                                <controls:SvgIcon Grid.Column="0" Width="24" Height="24" VerticalAlignment="Center"
+                                                  Path="avares://UniGetUI/Assets/Symbols/package.svg"/>
+                                <TextBlock Grid.Column="1" VerticalAlignment="Center" Margin="2,0"
+                                           Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}"/>
 
-                        <DataGridTemplateColumn Header="{Binding $parent[Window].((vm:ManageIgnoredUpdatesViewModel)DataContext).ColId}"
-                                                Width="2*">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate x:DataType="vm:IgnoredPackageEntryViewModel">
-                                    <StackPanel Orientation="Horizontal" Spacing="6"
-                                                automation:AutomationProperties.Name="{Binding Id}"
-                                                VerticalAlignment="Center" Margin="0,0,4,0">
-                                        <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/id.svg"
-                                                          Width="16" Height="16" VerticalAlignment="Center"/>
-                                        <TextBlock Text="{Binding Id}" VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Id}"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                                <controls:SvgIcon Grid.Column="2" Width="24" Height="24" VerticalAlignment="Center"
+                                                  Path="avares://UniGetUI/Assets/Symbols/id.svg"/>
+                                <TextBlock Grid.Column="3" VerticalAlignment="Center" Margin="2,0"
+                                           Text="{Binding Id}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Id}"/>
 
-                        <DataGridTemplateColumn Header="{Binding $parent[Window].((vm:ManageIgnoredUpdatesViewModel)DataContext).ColVersion}"
-                                                Width="*">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate x:DataType="vm:IgnoredPackageEntryViewModel">
-                                    <StackPanel Orientation="Horizontal" Spacing="6"
-                                                automation:AutomationProperties.Name="{Binding VersionDisplay}"
-                                                VerticalAlignment="Center" Margin="0,0,4,0">
-                                        <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/version.svg"
-                                                          Width="16" Height="16" VerticalAlignment="Center"/>
-                                        <TextBlock Text="{Binding VersionDisplay}" VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                                <controls:SvgIcon Grid.Column="4" Width="24" Height="24" VerticalAlignment="Center"
+                                                  Path="avares://UniGetUI/Assets/Symbols/version.svg"/>
+                                <TextBlock Grid.Column="5" VerticalAlignment="Center" Margin="2,0"
+                                           Text="{Binding VersionDisplay}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding VersionDisplay}"/>
 
-                        <DataGridTemplateColumn Header="{Binding $parent[Window].((vm:ManageIgnoredUpdatesViewModel)DataContext).ColNewVersion}"
-                                                Width="*">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate x:DataType="vm:IgnoredPackageEntryViewModel">
-                                    <StackPanel Orientation="Horizontal" Spacing="6"
-                                                automation:AutomationProperties.Name="{Binding NewVersion}"
-                                                VerticalAlignment="Center" Margin="0,0,4,0">
-                                        <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/upgradable.svg"
-                                                          Width="16" Height="16" VerticalAlignment="Center"/>
-                                        <TextBlock Text="{Binding NewVersion}" VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                                <controls:SvgIcon Grid.Column="6" Width="24" Height="24" VerticalAlignment="Center"
+                                                  Path="avares://UniGetUI/Assets/Symbols/upgradable.svg"/>
+                                <TextBlock Grid.Column="7" VerticalAlignment="Center" Margin="2,0"
+                                           Text="{Binding NewVersion}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding NewVersion}"/>
 
-                        <DataGridTemplateColumn Header="{Binding $parent[Window].((vm:ManageIgnoredUpdatesViewModel)DataContext).ColManager}"
-                                               Width="*">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate x:DataType="vm:IgnoredPackageEntryViewModel">
-                                    <StackPanel Orientation="Horizontal" Spacing="6"
-                                                automation:AutomationProperties.Name="{Binding Manager}"
-                                                VerticalAlignment="Center" Margin="0,0,4,0">
-                                        <controls:SvgIcon Path="{Binding ManagerIconPath}"
-                                                          Width="16" Height="16"
-                                                          VerticalAlignment="Center"/>
-                                        <TextBlock Text="{Binding Manager}"
-                                                   VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                                <controls:SvgIcon Grid.Column="8" Width="24" Height="24" VerticalAlignment="Center"
+                                                  Path="{Binding ManagerIconPath}"/>
+                                <TextBlock Grid.Column="9" VerticalAlignment="Center" Margin="2,0"
+                                           Text="{Binding Manager}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Manager}"/>
 
-                        <!-- Remove button column -->
-                        <DataGridTemplateColumn Width="48">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate x:DataType="vm:IgnoredPackageEntryViewModel">
-                                    <Button Width="32" Height="32"
-                                            Padding="0"
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            Command="{Binding RemoveCommand}"
-                                            automation:AutomationProperties.Name="{Binding RemoveAutomationName}"
-                                            ToolTip.Tip="{t:Translate Text='Remove from list'}">
-                                        <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/delete.svg"
-                                                          Width="16" Height="16"/>
-                                    </Button>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                                <Button Grid.Column="10" Width="32" Height="32" Padding="0" Margin="4,0,0,0"
+                                        Classes="secondary-action"
+                                        VerticalAlignment="Center"
+                                        Command="{Binding RemoveCommand}"
+                                        automation:AutomationProperties.Name="{Binding RemoveAutomationName}"
+                                        ToolTip.Tip="{t:Translate Text='Remove from list'}">
+                                    <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/delete.svg"
+                                                      Width="16" Height="16"/>
+                                </Button>
+                            </Grid>
+                          </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
 
-                    </DataGrid.Columns>
-                </DataGrid>
-
-            </Panel>
+          </Panel>
         </Border>
 
     </Grid>
-</Window>
+</dialogs:ImmersiveDialog>

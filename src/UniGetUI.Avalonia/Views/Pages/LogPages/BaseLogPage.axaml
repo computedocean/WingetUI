@@ -36,6 +36,7 @@
                         VerticalAlignment="Center">
                 <TextBlock x:Name="LogLevelLabel"
                            Text="{t:Translate Log level:}"
+                           FontSize="14"
                            VerticalAlignment="Center"/>
                 <ComboBox Width="250"
                           CornerRadius="6"

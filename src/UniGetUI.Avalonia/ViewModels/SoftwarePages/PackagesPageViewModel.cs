@@ -8,6 +8,8 @@ using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -55,6 +57,7 @@ public struct PackagesPageData
     public string IconName;   // SVG filename without extension, e.g. "search"
 
     public string NoPackages_BackgroundText;
+    public string NoPackages_ImagePath;   // optional avares:// illustration shown when no packages are present
     public string NoPackages_SourcesText;
     public string NoPackages_SubtitleText_Base;
     public string MainSubtitle_StillLoading;
@@ -114,7 +117,20 @@ public partial class PackagesPageViewModel : ViewModelBase
         }
     }
 
-    public double FilterPaneColumnWidth => IsFilterPaneOpen ? _trackedFilterPaneWidth : 0.0;
+    private bool _filterPaneOverlaysContent;
+    public bool FilterPaneOverlaysContent
+    {
+        get => _filterPaneOverlaysContent;
+        set
+        {
+            if (_filterPaneOverlaysContent == value) return;
+            _filterPaneOverlaysContent = value;
+            OnPropertyChanged(nameof(FilterPaneColumnWidth));
+        }
+    }
+
+    public double FilterPaneColumnWidth =>
+        IsFilterPaneOpen && !FilterPaneOverlaysContent ? _trackedFilterPaneWidth : 0.0;
     partial void OnIsFilterPaneOpenChanged(bool value)
     {
         OnPropertyChanged(nameof(FilterPaneColumnWidth));
@@ -135,6 +151,7 @@ public partial class PackagesPageViewModel : ViewModelBase
     private readonly string _noPackagesSubtitleBase;
     private readonly string _stillLoadingSubtitle;
     private readonly bool _showLastCheckedTime;
+    private readonly bool _showPackageIllustrations;
     private DateTime _lastLoadTime = DateTime.Now;
 
     protected AbstractPackageLoader Loader;
@@ -145,6 +162,9 @@ public partial class PackagesPageViewModel : ViewModelBase
     [ObservableProperty] private string _subtitle = "";
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private bool _backgroundTextVisible;
+    [ObservableProperty] private bool _loadingImageVisible;
+    [ObservableProperty] private Bitmap? _noPackagesImage;
+    [ObservableProperty] private bool _noPackagesImageVisible;
     [ObservableProperty] private string _backgroundText = "";
     [ObservableProperty] private bool _sourcesPlaceholderVisible = true;
     [ObservableProperty] private bool _sourcesTreeVisible;
@@ -194,7 +214,6 @@ public partial class PackagesPageViewModel : ViewModelBase
     // ─── Events (replace abstract methods) ───────────────────────────────────
     public event Action<ReloadReason>? PackagesLoaded;
     public event Action? PackageCountUpdated;
-    public event Action<IPackage>? ShowingContextMenu;
     public event Action? FocusListRequested;
 
     // ─── Events: view-side dialog/navigation requests ─────────────────────────
@@ -208,14 +227,20 @@ public partial class PackagesPageViewModel : ViewModelBase
     {
         PageName = data.PageName;
         PageTitle = data.PageTitle;
-        PageIconPath = $"avares://UniGetUI.Avalonia/Assets/Symbols/{data.IconName}.svg";
+        PageIconPath = $"avares://UniGetUI/Assets/Symbols/{data.IconName}.svg";
         DisableFilterOnQueryChange = data.DisableFilterOnQueryChange;
         MegaQueryBoxEnabled = data.MegaQueryBlockEnabled;
         DisableReload = data.DisableReload;
         LoadsOnStart = !data.DisableAutomaticPackageLoadOnStart;
         _showLastCheckedTime = data.ShowLastLoadTime;
+        _showPackageIllustrations = !Settings.Get(Settings.K.DisablePackageIllustrations);
         NoPackagesText = data.NoPackages_BackgroundText;
         NoMatchesText = data.NoMatches_BackgroundText;
+        if (_showPackageIllustrations && !string.IsNullOrEmpty(data.NoPackages_ImagePath))
+        {
+            using var stream = AssetLoader.Open(new Uri(data.NoPackages_ImagePath));
+            NoPackagesImage = new Bitmap(stream);
+        }
         _noPackagesSubtitleBase = data.NoPackages_SubtitleText_Base;
         _stillLoadingSubtitle = data.MainSubtitle_StillLoading;
         SimilarSearchEnabled = !data.DisableSuggestedResultsRadio;
@@ -249,6 +274,13 @@ public partial class PackagesPageViewModel : ViewModelBase
         // Use backing field to avoid writing to settings during construction.
         _isFilterPaneOpen = !Settings.GetDictionaryItem<string, bool>(Settings.K.HideToggleFilters, PageName);
 
+        // Restore per-page sort preferences (default: Name, ascending).
+        int savedSortField = Settings.GetDictionaryItem<string, int>(Settings.K.PackageListSortFieldIndex, PageName);
+        if (savedSortField is < 0 or > 4 || (savedSortField is 3 && !RoleIsUpdateLike))
+            savedSortField = 0;
+        SortFieldIndex = savedSortField;
+        SortAscending = !Settings.GetDictionaryItem<string, bool>(Settings.K.PackageListSortDescending, PageName);
+
         _localPackagesNode.PackageName = CoreTools.Translate("Local");
 
         if (Loader.IsLoading)
@@ -275,7 +307,7 @@ public partial class PackagesPageViewModel : ViewModelBase
     {
         var icon = new SvgIcon
         {
-            Path = $"avares://UniGetUI.Avalonia/Assets/Symbols/{svgName}.svg",
+            Path = $"avares://UniGetUI/Assets/Symbols/{svgName}.svg",
             Width = 20,
             Height = 20,
             VerticalAlignment = VerticalAlignment.Center,
@@ -347,13 +379,10 @@ public partial class PackagesPageViewModel : ViewModelBase
     {
         object? bgResource = null;
         Application.Current?.Resources.TryGetResource("AppWindowBackground", Application.Current.ActualThemeVariant, out bgResource);
-        var dialog = new Window
+        var dialog = new UniGetUI.Avalonia.Views.DialogPages.ImmersiveDialog
         {
-            Width = 460,
-            Height = 180,
-            CanResize = false,
-            ShowInTaskbar = false,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            MaxWidth = 460,
+            MaxHeight = 180,
             Title = title,
             Background = bgResource as IBrush,
         };
@@ -481,6 +510,14 @@ public partial class PackagesPageViewModel : ViewModelBase
             FilterPackages();
     }
 
+    public void ClearSearchQuery()
+    {
+        QueryBackup = "";
+        if (string.IsNullOrEmpty(GlobalQueryText)) return;
+        GlobalQueryText = "";
+        if (!MegaQueryBoxEnabled) FilterPackages();
+    }
+
     [RelayCommand]
     public void SubmitSearch()
     {
@@ -544,15 +581,22 @@ public partial class PackagesPageViewModel : ViewModelBase
         {
             BackgroundText = _stillLoadingSubtitle;
             BackgroundTextVisible = true;
+            LoadingImageVisible = _showPackageIllustrations;
+            NoPackagesImageVisible = false;
         }
         else if (FilteredPackages.Count == 0)
         {
-            BackgroundText = string.IsNullOrWhiteSpace(query) ? NoPackagesText : NoMatchesText;
-            BackgroundTextVisible = !MegaQueryBoxEnabled || !string.IsNullOrWhiteSpace(query);
+            bool noQuery = string.IsNullOrWhiteSpace(query);
+            BackgroundText = noQuery ? NoPackagesText : NoMatchesText;
+            BackgroundTextVisible = !MegaQueryBoxEnabled || !noQuery;
+            LoadingImageVisible = false;
+            NoPackagesImageVisible = noQuery && BackgroundTextVisible && NoPackagesImage is not null;
         }
         else
         {
             BackgroundTextVisible = false;
+            LoadingImageVisible = false;
+            NoPackagesImageVisible = false;
         }
     }
 
@@ -588,12 +632,14 @@ public partial class PackagesPageViewModel : ViewModelBase
         });
         OnPropertyChanged(nameof(SortFieldName));
         FilterPackages();
+        Settings.SetDictionaryItem(Settings.K.PackageListSortFieldIndex, PageName, value);
     }
 
     partial void OnSortAscendingChanged(bool value)
     {
         FilteredPackages.SetSortDirection(value);
         FilterPackages();
+        Settings.SetDictionaryItem(Settings.K.PackageListSortDescending, PageName, !value);
     }
 
     // ─── Selection ────────────────────────────────────────────────────────────

@@ -53,6 +53,7 @@
             <!-- Status section heading -->
             <TextBlock Text="{Binding StatusSectionTitle}"
                        Margin="44,32,4,8"
+                       FontSize="14"
                        FontWeight="SemiBold"/>
 
             <!-- Status banner -->
@@ -77,10 +78,10 @@
                         <TextBlock Text="{Binding ShowVersionLabel}" Classes="hyperlink"
                                    automation:AutomationProperties.AccessibilityView="Raw"/>
                     </Button>
-                    <TextBlock Text="{Binding VersionText}"
+                    <SelectableTextBlock Text="{Binding VersionText}"
                                IsVisible="{Binding VersionTextVisible}"
-                               FontFamily="Courier New"
-                               FontSize="12"
+                               FontFamily="Consolas,Cascadia Mono,Menlo,monospace"
+                               FontSize="14"
                                TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>
@@ -92,11 +93,11 @@
             <ContentControl x:Name="PathHolder"/>
 
             <!-- Install options heading and panel -->
-            <TextBlock Text="{Binding InstallSectionTitle}" Margin="44,32,4,8" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding InstallSectionTitle}" Margin="44,32,4,8" FontSize="14" FontWeight="SemiBold"/>
             <ContentControl x:Name="InstallOptionsHolder"/>
 
             <!-- Manager-specific settings heading -->
-            <TextBlock Text="{Binding SettingsSectionTitle}" Margin="44,32,4,8" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding SettingsSectionTitle}" Margin="44,32,4,8" FontSize="14" FontWeight="SemiBold"/>
 
             <!-- Manager-specific extra controls – built in code-behind -->
             <StackPanel x:Name="ExtraControls"
@@ -105,6 +106,7 @@
 
             <!-- Related settings -->
             <settings:TranslatedTextBlock Text="Related settings"
+                                          FontSize="14"
                                           FontWeight="SemiBold"
                                           Margin="44,32,4,8"
                                           automation:AutomationProperties.HeadingLevel="2"/>

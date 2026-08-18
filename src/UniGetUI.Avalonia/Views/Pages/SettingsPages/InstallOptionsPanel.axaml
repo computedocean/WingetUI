@@ -21,6 +21,7 @@
                     <TextBlock Grid.Column="0"
                                Text="{Binding HeaderText}"
                                VerticalAlignment="Center"
+                               FontSize="14"
                                TextWrapping="Wrap"/>
                     <Button x:Name="ResetButton"
                             Grid.Column="1"
@@ -37,7 +38,7 @@
                             IsEnabled="{Binding !IsLoading}"
                             Margin="4,0,0,0"/>
                 </Grid>
-                <ProgressBar IsIndeterminate="True"
+                <ProgressBar IsIndeterminate="{Binding IsLoading}"
                              IsVisible="{Binding IsLoading}"
                              Height="4"/>
             </StackPanel>
@@ -87,6 +88,7 @@
                                    Grid.Column="0"
                                    Text="{Binding ArchLabel}"
                                    VerticalAlignment="Center"
+                                   FontSize="14"
                                    Opacity="{Binding ArchOpacity}"/>
                         <ComboBox Grid.Column="1"
                                   ItemsSource="{Binding ArchitectureItems}"
@@ -103,6 +105,7 @@
                                    Grid.Column="0"
                                    Text="{Binding ScopeLabel}"
                                    VerticalAlignment="Center"
+                                   FontSize="14"
                                    Opacity="{Binding ScopeOpacity}"/>
                         <ComboBox Grid.Column="1"
                                   ItemsSource="{Binding ScopeItems}"
@@ -118,6 +121,7 @@
                         <TextBlock Grid.Column="0"
                                    Text="{Binding LocationLabel}"
                                    VerticalAlignment="Center"
+                                   FontSize="14"
                                    Opacity="{Binding LocationOpacity}"/>
                         <Button x:Name="SelectDirButton"
                                 Grid.Column="1"
@@ -131,10 +135,13 @@
                                 Command="{Binding ResetLocationCommand}"
                                 IsEnabled="{Binding LocationResetEnabled}"/>
                     </Grid>
-                    <TextBlock Text="{Binding LocationText}"
-                               FontFamily="Courier New"
-                               Opacity="0.6"
-                               TextWrapping="Wrap"/>
+                    <TextBox Text="{Binding LocationText}"
+                             Classes="search-field-standalone multiline"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             FontFamily="Consolas,Cascadia Mono,Menlo,monospace"
+                             FontSize="14"
+                             Opacity="0.6"/>
 
                     <!-- CLI disabled warning -->
                     <TextBlock Text="{Binding CliDisabledLabel}"
@@ -154,20 +161,30 @@
                     </Button>
 
                     <!-- CLI arguments: always shown, disabled by security setting -->
+                    <TextBlock Text="{Binding CliArgsHintLabel}"
+                               IsVisible="{Binding CliSectionEnabled}"
+                               TextWrapping="Wrap"
+                               Opacity="0.7"
+                               FontSize="12"
+                               Margin="0,8,0,0"/>
                     <Grid ColumnDefinitions="*,2*"
                           RowDefinitions="Auto,Auto,Auto"
                           RowSpacing="8"
                           ColumnSpacing="8"
-                          Margin="0,8,0,0">
+                          Margin="0,4,0,0">
                         <TextBlock x:Name="InstallArgsLabelBlock"
                                    Grid.Row="0" Grid.Column="0"
                                    Text="{Binding InstallArgsLabel}"
                                    VerticalAlignment="Center"
+                                   FontSize="14"
                                    Opacity="{Binding CliOpacity}"/>
                         <TextBox   Grid.Row="0" Grid.Column="1"
+                                   Classes="search-field-standalone multiline"
                                    Text="{Binding CustomInstall}"
+                                   AcceptsReturn="True"
                                    IsEnabled="{Binding CliSectionEnabled}"
-                                   FontFamily="Courier New"
+                                   FontFamily="Consolas,Cascadia Mono,Menlo,monospace"
+                                   FontSize="14"
                                    x:Name="CustomInstallBox"
                                    automation:AutomationProperties.LabeledBy="{Binding #InstallArgsLabelBlock}"/>
 
@@ -175,11 +192,15 @@
                                    Grid.Row="1" Grid.Column="0"
                                    Text="{Binding UpdateArgsLabel}"
                                    VerticalAlignment="Center"
+                                   FontSize="14"
                                    Opacity="{Binding CliOpacity}"/>
                         <TextBox   Grid.Row="1" Grid.Column="1"
+                                   Classes="search-field-standalone multiline"
                                    Text="{Binding CustomUpdate}"
+                                   AcceptsReturn="True"
                                    IsEnabled="{Binding CliSectionEnabled}"
-                                   FontFamily="Courier New"
+                                   FontFamily="Consolas,Cascadia Mono,Menlo,monospace"
+                                   FontSize="14"
                                    x:Name="CustomUpdateBox"
                                    automation:AutomationProperties.LabeledBy="{Binding #UpdateArgsLabelBlock}"/>
 
@@ -187,14 +208,30 @@
                                    Grid.Row="2" Grid.Column="0"
                                    Text="{Binding UninstallArgsLabel}"
                                    VerticalAlignment="Center"
+                                   FontSize="14"
                                    Opacity="{Binding CliOpacity}"/>
                         <TextBox   Grid.Row="2" Grid.Column="1"
+                                   Classes="search-field-standalone multiline"
                                    Text="{Binding CustomUninstall}"
+                                   AcceptsReturn="True"
                                    IsEnabled="{Binding CliSectionEnabled}"
-                                   FontFamily="Courier New"
+                                   FontFamily="Consolas,Cascadia Mono,Menlo,monospace"
+                                   FontSize="14"
                                    x:Name="CustomUninstallBox"
                                    automation:AutomationProperties.LabeledBy="{Binding #UninstallArgsLabelBlock}"/>
                     </Grid>
+
+                    <Button IsVisible="{Binding CliSectionEnabled}"
+                            HorizontalAlignment="Left"
+                            Command="{Binding CopyInstallArgsToOthersCommand}"
+                            automation:AutomationProperties.Name="{Binding CopyInstallArgsLabel}"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Padding="0"
+                            Margin="0,4,0,0">
+                        <TextBlock Text="{Binding CopyInstallArgsLabel}" Classes="hyperlink"
+                                   automation:AutomationProperties.AccessibilityView="Raw"/>
+                    </Button>
 
                 </StackPanel>
             </Border>

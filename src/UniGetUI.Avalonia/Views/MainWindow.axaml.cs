@@ -1,18 +1,25 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using UniGetUI.Avalonia.Extensions;
 using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Avalonia.ViewModels;
+using UniGetUI.Avalonia.Views.Controls;
+using UniGetUI.Avalonia.Views.DialogPages;
 using UniGetUI.Avalonia.Views.Pages;
+using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
@@ -42,6 +49,25 @@ public partial class MainWindow : Window
 {
     private const string FORCE_NATIVE_LINUX_DECORATIONS_ENVIRONMENT_VARIABLE = "UNIGETUI_FORCE_NATIVE_LINUX_DECORATIONS";
 
+    // Back/toggle button size on macOS. The native title bar is ~28 px tall and the traffic lights are
+    // centred in it, so a button sharing that centre line has to fit inside those 28 px — the 32 px
+    // AXAML size would overflow past the top of the window (see SetupTitleBar).
+    private const double MAC_TITLE_BAR_CONTROL_SIZE = 24;
+
+    // Centre line of the macOS traffic lights, measured from the top of the window: they sit centred in
+    // the native 28 px NSTitlebarContainerView. This can't be read back from WindowDecorationMargin,
+    // because ExtendClientAreaTitleBarHeightHint makes that report our requested 44 px instead.
+    private const double MAC_TRAFFIC_LIGHT_CENTER_Y = 14;
+
+    // Left inset for the title-bar row on macOS. The close/minimise/zoom cluster ends ~59 px in, and
+    // the row's first glyph starts 4 px past this inset (the button's padding), so this leaves a ~21 px
+    // gap — enough for the row to read as separate from the window buttons rather than crowding them.
+    private const double MAC_TRAFFIC_LIGHT_INSET = 76;
+
+    // Last known macOS title-bar height; seeded with the requested height for the window's first layout
+    // pass and while fullscreen reports a collapsed decoration margin.
+    private double _macTitleBarHeight = 44;
+
     // Workaround for Avalonia 12 issue #21160 / #21212: BorderOnly + ExtendClientArea
     // strips WS_CAPTION / WS_THICKFRAME, which makes DWM disable Aero Snap drag-to-top,
     // Win+Up, and the maximize/minimize/restore animations. Re-add those bits on every
@@ -51,6 +77,25 @@ public partial class MainWindow : Window
     private const uint WM_STYLECHANGING = 0x007C;
     private const uint WM_GETMINMAXINFO = 0x0024;
     private const uint WM_NCCALCSIZE = 0x0083;
+    // Snap Layouts: DWM shows the maximize flyout only when WM_NCHITTEST reports HTMAXBUTTON
+    // over the button. That routes the button's input through non-client messages, so the
+    // click and hover/press visuals are driven from the WndProc below (the Avalonia Button
+    // no longer sees pointer events there).
+    private const uint WM_NCHITTEST = 0x0084;
+    private const uint WM_NCMOUSEMOVE = 0x00A0;
+    private const uint WM_NCMOUSELEAVE = 0x02A2;
+    private const uint WM_NCLBUTTONDOWN = 0x00A1;
+    private const uint WM_NCLBUTTONUP = 0x00A2;
+    private const uint WM_NCLBUTTONDBLCLK = 0x00A3;
+    private const uint WM_MOUSEMOVE = 0x0200;
+    private const uint WM_SYSCOMMAND = 0x0112;
+    private const uint WM_SETTINGCHANGE = 0x001A;
+    private const uint WM_DWMCOLORIZATIONCOLORCHANGED = 0x0320;
+    private const nint SC_MAXIMIZE = 0xF030;
+    private const nint SC_RESTORE = 0xF120;
+    private const int HTMAXBUTTON = 9;
+    private const uint TME_LEAVE = 0x0002;
+    private const uint TME_NONCLIENT = 0x0010;
     private const int GWL_STYLE = -16;
     private const uint WS_CAPTION = 0x00C00000;
     private const uint WS_THICKFRAME = 0x00040000;
@@ -68,15 +113,30 @@ public partial class MainWindow : Window
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     private const int DWMWA_BORDER_COLOR = 34;
     private const int DWMWCP_ROUND = 2;
-    private const int DWMWA_COLOR_NONE = unchecked((int)0xFFFFFFFE);
+    private const int WINDOW_BORDER_COLOR_LIGHT = 0x00B9B9B9;
+    private const int WINDOW_BORDER_COLOR_DARK = 0x004A4A4A;
 
     private bool _focusSidebarSelectionOnNextPageChange;
+    private bool _maxButtonHover;
+    private bool _maxButtonPressed;
     private TrayService? _trayService;
     private bool _allowClose;
     private int _isQuitting;
 
+    // Saved outer size (DIPs) awaiting a native, exact restore in OnOpened on Windows.
+    private double _pendingRestoreWidth;
+    private double _pendingRestoreHeight;
+
     // Last user-chosen height (px) of the operations panel; restored when re-expanded.
     private double _operationsPanelHeight = 240;
+    private bool _userResizedPanel;
+    private readonly HashSet<OperationViewModel> _badgeSubscriptions = new();
+    private readonly SemaphoreSlim _modalTransitionSemaphore = new(1, 1);
+    private readonly List<ImmersiveDialog> _modalStack = new();
+    private readonly Dictionary<ImmersiveDialog, Control?> _modalFocusHistory = new();
+    private readonly List<UniGetUiWebView> _webViewsHiddenForModal = new();
+    private IDisposable? _modalTitleSubscription;
+    private Control? _focusBeforeModal;
 
     public enum RuntimeNotificationLevel
     {
@@ -87,6 +147,11 @@ public partial class MainWindow : Window
 
     public static MainWindow? Instance { get; private set; }
 
+    // True while the window is on screen (visible and not minimized). Read from any thread by
+    // the notification bridge to suppress OS toasts while the user is looking at the app.
+    private static volatile bool _isOnScreen;
+    public static bool IsWindowOnScreen => _isOnScreen;
+
     private MainWindowViewModel ViewModel => (MainWindowViewModel)DataContext!;
     public PageType CurrentPage => ViewModel.CurrentPage_t;
 
@@ -96,20 +161,35 @@ public partial class MainWindow : Window
         DataContext = new MainWindowViewModel();
         InitializeComponent();
         SetupTitleBar();
+        SetupTitleBarFocusOpacity();
+        SetupResponsiveRail();
 
         RestoreGeometry();
 
         KeyDown += Window_KeyDown;
         ViewModel.CurrentPageChanged += OnCurrentPageChanged;
+        // Title-bar back button: visible whenever there's somewhere to go back to (mirrors WinUI's TitleBar.IsBackButtonVisible).
+        ViewModel.CanGoBackChanged += (_, canGoBack) => BackButton.IsVisible = canGoBack;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        ViewModel.Operations.CollectionChanged += OnOperationsCollectionChanged;
+        OperationsSplitter.DragCompleted += OnOperationsSplitterDragCompleted;
+        SyncBadgeSubscriptions();
         UpdateOperationsPanelRow();
 
         Resized += (_, _) => _ = SaveGeometryAsync();
+        ModalLayer.SizeChanged += (_, _) => UpdateModalSurfaceSize();
         PositionChanged += (_, _) => _ = SaveGeometryAsync();
-        this.GetObservable(WindowStateProperty).Subscribe(state => { _ = SaveGeometryAsync(); });
+        this.GetObservable(WindowStateProperty).SubscribeValue(state => { UpdateOnScreenState(); _ = SaveGeometryAsync(); });
+        this.GetObservable(IsVisibleProperty).SubscribeValue(_ => UpdateOnScreenState());
 
         _trayService = new TrayService(this);
         _trayService.UpdateStatus();
+
+        // Let the elevation code activate us right before a UAC prompt, so we own the foreground
+        // and can delegate it to the consent UI (#5146). Only activate when we're already on screen;
+        // don't yank a tray-hidden window forward during silent/background elevation.
+        CoreData.BringMainWindowToForegroundAsync = () =>
+            Dispatcher.UIThread.InvokeAsync(() => { if (IsVisible) ShowFromTray(); }).GetTask();
     }
 
     protected override void OnOpened(EventArgs e)
@@ -138,6 +218,28 @@ public partial class MainWindow : Window
         }
 
         SetupMicaAndAccentBorder();
+
+        ActualThemeVariantChanged += (_, _) =>
+        {
+            if (MicaWindowHelper.IsMicaEnabled()
+                && TryGetPlatformHandle()?.Handle is { } themeHandle && themeHandle != 0)
+                ApplyWindowBorderColor(themeHandle);
+        };
+
+        // Restore the saved size as an exact outer rect in physical pixels. Because our
+        // WM_NCCALCSIZE keeps client == window rect, this round-trips with SaveGeometry with no
+        // frame drift, unlike Avalonia's Width/Height setter (see RestoreGeometry).
+        if (_pendingRestoreWidth > 0 && _pendingRestoreHeight > 0 && WindowState == WindowState.Normal
+            && TryGetPlatformHandle()?.Handle is { } sizeHandle && sizeHandle != 0)
+        {
+            uint dpi = NativeMethods.GetDpiForWindow(sizeHandle);
+            if (dpi == 0) dpi = 96;
+            double scale = dpi / 96.0;
+            NativeMethods.SetWindowPos(sizeHandle, 0, 0, 0,
+                (int)Math.Round(_pendingRestoreWidth * scale), (int)Math.Round(_pendingRestoreHeight * scale),
+                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        _pendingRestoreWidth = _pendingRestoreHeight = 0;
     }
 
     protected override void OnClosing(WindowClosingEventArgs e)
@@ -145,6 +247,7 @@ public partial class MainWindow : Window
         if (!_allowClose && (OperatingSystem.IsMacOS() || !Settings.Get(Settings.K.DisableSystemTray)))
         {
             e.Cancel = true;
+            ViewModel.ClearAllSearchQueries();
             Hide();
             return;
         }
@@ -163,6 +266,18 @@ public partial class MainWindow : Window
 
     private void Window_KeyDown(object? sender, KeyEventArgs e)
     {
+        // A WinUI ContentDialog is a true modal scope: background navigation and package-page
+        // shortcuts must not run while keyboard focus is inside the dialog.
+        if (ModalLayer.IsVisible)
+        {
+            if (e.Key == Key.Escape)
+            {
+                (ModalContent.Content as ImmersiveDialog)?.Close();
+                e.Handled = true;
+            }
+            return;
+        }
+
         bool isCtrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
         bool isShift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
 
@@ -216,6 +331,11 @@ public partial class MainWindow : Window
 
     private void OnCurrentPageChanged(object? sender, PageType pageType)
     {
+        // Like WinUI's NavigationView: picking a page collapses the sliding flyout back to the rail.
+        // A docked pane stays put (it's a persistent inline pane, not a transient overlay).
+        if (!ViewModel.Sidebar.Docked)
+            ViewModel.Sidebar.IsPaneOpen = false;
+
         if (!_focusSidebarSelectionOnNextPageChange)
             return;
 
@@ -227,74 +347,219 @@ public partial class MainWindow : Window
         }, DispatcherPriority.Background);
     }
 
+    private void BackButton_Click(object? sender, RoutedEventArgs e) => ViewModel.NavigateBack();
+
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(MainWindowViewModel.OperationsPanelExpanded)
                            or nameof(MainWindowViewModel.OperationsPanelVisible))
+        {
             UpdateOperationsPanelRow();
+            ScheduleOperationsAutoSize();
+        }
+
+        // Expanding the panel while an operation has failed jumps to that op (the failure
+        // badge on the chevron is what drew the user here).
+        if (e.PropertyName is nameof(MainWindowViewModel.OperationsPanelExpanded)
+            && ViewModel.OperationsPanelExpanded)
+            ScrollToFirstFailedOperation();
     }
 
-    // Drive the operations-panel grid row: a resizable pixel height while the panel is
-    // open, Auto otherwise so it collapses to just the toolbar (or vanishes when empty).
-    // The GridSplitter writes the row height directly, so we read it back to preserve the
-    // user's chosen size across collapse/expand.
-    private void UpdateOperationsPanelRow()
+    private void ScrollToFirstFailedOperation()
     {
-        if (MainContentGrid.RowDefinitions.Count < 3)
+        if (ViewModel.FirstFailedOperation is not { } failed)
             return;
 
-        RowDefinition row = MainContentGrid.RowDefinitions[2];
+        // Defer until the just-shown list has laid out its containers.
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (OperationsList.ContainerFromItem(failed) is Control container)
+                container.BringIntoView();
+        }, DispatcherPriority.Background);
+    }
+
+    private void UpdateOperationsPanelRow()
+    {
+        if (ContentRoot.RowDefinitions.Count < 3)
+            return;
+
+        RowDefinition row = ContentRoot.RowDefinitions[2];
         if (ViewModel.OperationsPanelVisible && ViewModel.OperationsPanelExpanded)
         {
-            row.MinHeight = 80;
-            row.Height = new GridLength(_operationsPanelHeight, GridUnitType.Pixel);
+            row.MinHeight = 48;
+            double height = _userResizedPanel ? _operationsPanelHeight : ComputeOperationsAutoHeight();
+            if (height <= 0)
+                height = _operationsPanelHeight;
+            row.Height = new GridLength(height, GridUnitType.Pixel);
         }
         else
         {
-            if (row.Height.IsAbsolute && row.Height.Value > 0)
+            if (_userResizedPanel && row.Height.IsAbsolute && row.Height.Value > 0)
                 _operationsPanelHeight = row.Height.Value;
             row.MinHeight = 0;
             row.Height = GridLength.Auto;
         }
     }
 
+    private double ComputeOperationsAutoHeight()
+    {
+        int count = ViewModel.Operations.Count;
+        if (count == 0)
+            return 0;
+
+        const double chrome = 42;
+        const double fallbackRow = 68;
+
+        double rows = 0;
+        int visible = Math.Min(count, 3);
+        for (int i = 0; i < visible; i++)
+            rows += (OperationsList.ContainerFromIndex(i) as Control)?.Bounds.Height ?? fallbackRow;
+
+        return chrome + rows;
+    }
+
+    private void ScheduleOperationsAutoSize()
+    {
+        if (_userResizedPanel)
+            return;
+        Dispatcher.UIThread.Post(UpdateOperationsPanelRow, DispatcherPriority.Loaded);
+    }
+
+    private void OnOperationsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (ViewModel.Operations.Count == 0)
+            _userResizedPanel = false;
+        SyncBadgeSubscriptions();
+        ScheduleOperationsAutoSize();
+    }
+
+    private void SyncBadgeSubscriptions()
+    {
+        _badgeSubscriptions.RemoveWhere(vm =>
+        {
+            if (ViewModel.Operations.Contains(vm))
+                return false;
+            vm.Badges.CollectionChanged -= OnOperationBadgesChanged;
+            return true;
+        });
+
+        foreach (OperationViewModel vm in ViewModel.Operations)
+            if (_badgeSubscriptions.Add(vm))
+                vm.Badges.CollectionChanged += OnOperationBadgesChanged;
+    }
+
+    private void OnOperationBadgesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        => ScheduleOperationsAutoSize();
+
+    private void OnOperationsSplitterDragCompleted(object? sender, VectorEventArgs e)
+    {
+        if (!ViewModel.OperationsPanelVisible || !ViewModel.OperationsPanelExpanded)
+            return;
+
+        if (ContentRoot.RowDefinitions.Count >= 3)
+        {
+            RowDefinition row = ContentRoot.RowDefinitions[2];
+            if (row.Height.IsAbsolute && row.Height.Value > 0)
+                _operationsPanelHeight = row.Height.Value;
+        }
+        _userResizedPanel = true;
+    }
+
+    // ─── Navigation rail / docked pane (responsive) ────────────────────────────
+    // Feed the live window width to the sidebar, which resolves the layout mode and drives
+    // the NavRail / NavDock / overlay visibility bindings.
+    private void SetupResponsiveRail()
+        => MainContentRoot.GetObservable(BoundsProperty)
+            .SubscribeValue(b =>
+            {
+                if (b.Width <= 0) return;
+                ViewModel.Sidebar.WindowWidth = b.Width;
+            });
+
+    // Re-reads the NavMenuMode setting so the layout switch applies live from the settings page.
+    public void RefreshNavigationMode()
+        => ViewModel.Sidebar.Mode = SidebarViewModel.ParseMode(Settings.GetValue(Settings.K.NavMenuMode));
+
+    // Light-dismiss: clicking outside the open flyout closes it (no darkening — the layer is transparent).
+    private void FlyoutDismiss_PointerPressed(object? sender, PointerPressedEventArgs e)
+        => ViewModel.Sidebar.IsPaneOpen = false;
+
+    // Title-bar caption follows window focus (WinUI behaviour): full opacity — white title — when active, dimmed when not.
+    private void SetupTitleBarFocusOpacity()
+        => this.GetObservable(IsActiveProperty).SubscribeValue(active =>
+        {
+            HamburgerPanel.Opacity = active ? 1.0 : 0.6;
+            WindowButtons.Opacity = active ? 1.0 : 0.55;
+
+            // WinUI replaces inactive Mica with SolidBackgroundFillColorBase rather than leaving
+            // a partially wallpaper-tinted backdrop. AppWindowBackground is that token
+            // (#F3F3F3 light / #202020 dark), so make the fallback fully opaque while inactive.
+            InactiveMicaFallback.Opacity =
+                MicaWindowHelper.IsMicaEnabled() && !active ? 1.0 : 0.0;
+        });
+
     private void SetupTitleBar()
     {
         if (OperatingSystem.IsMacOS())
         {
-            // macOS: extend into the native title bar area.
-            // WindowDecorationMargin.Top drives TitleBarGrid.Height via binding.
-            // Traffic lights sit on the left → keep the 65 px HamburgerPanel margin.
+            // macOS: extend into the native title bar area. Request a 44 px bar (matching
+            // Windows/Linux) so the centred search pill keeps its size and position.
+            //
+            // The bar height alone can't align the left-hand row, though: macOS keeps the traffic
+            // lights centred in the real ~28 px NSTitlebarContainerView, and Avalonia's height hint
+            // only stretches its own title-bar material/underline — it never repositions the buttons.
+            // Centring the row in the 44 px band therefore put it at y=22 while the traffic lights
+            // stayed at y=14, so back/toggle/title sat 8 px below the window buttons.
+            //
+            // So the bar stays 44 px for the search pill, and only the left-hand row is pinned to the
+            // traffic lights' centre line (see ApplyMacTitleBarLayout / MAC_TRAFFIC_LIGHT_*).
             ExtendClientAreaToDecorationsHint = true;
-            ExtendClientAreaTitleBarHeightHint = -1;
+            ExtendClientAreaTitleBarHeightHint = 44;
+            ApplyMacTitleBarControlSizes();
 
-            // In fullscreen the native title bar is hidden and WindowDecorationMargin
-            // collapses to 0, which would clip the search box and hamburger. Use a fixed
-            // title bar height in that state, and drop the traffic-light reservation
-            // since the traffic lights aren't shown either.
-            this.GetObservable(WindowStateProperty).Subscribe(state =>
+            // Drive height/inset from code rather than the AXAML bindings: in fullscreen the native
+            // title bar is hidden and WindowDecorationMargin collapses to 0, which would clip the
+            // search box and hamburger. Track the window state and the live decoration margin
+            // directly rather than via string-based Bindings: reflection bindings are trim-unsafe
+            // (IL2026).
+            TitleBarGrid.ClearValue(HeightProperty);
+
+            void ApplyMacTitleBarLayout()
             {
-                if (state == WindowState.FullScreen)
+                bool fullScreen = WindowState == WindowState.FullScreen;
+
+                // Keep the last good decoration height so entering/leaving fullscreen (where the
+                // margin collapses to 0) doesn't shift the content.
+                if (!fullScreen && WindowDecorationMargin.Top > 0)
                 {
-                    TitleBarGrid.ClearValue(HeightProperty);
-                    TitleBarGrid.Height = 44;
-                    MainContentGrid.ClearValue(MarginProperty);
-                    MainContentGrid.Margin = new Thickness(0, 44, 0, 0);
+                    _macTitleBarHeight = WindowDecorationMargin.Top;
+                }
+
+                TitleBarGrid.Height = _macTitleBarHeight;
+                MainContentRoot.Margin = new Thickness(0, _macTitleBarHeight, 0, 0);
+
+                if (fullScreen)
+                {
+                    // No traffic lights in fullscreen: drop their horizontal reservation and just
+                    // centre the row in the bar.
+                    HamburgerPanel.VerticalAlignment = VerticalAlignment.Center;
                     HamburgerPanel.Margin = new Thickness(10, 0, 8, 0);
                 }
                 else
                 {
-                    TitleBarGrid.Bind(HeightProperty, new Binding("WindowDecorationMargin.Top")
-                    {
-                        RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor) { AncestorType = typeof(Window) },
-                    });
-                    MainContentGrid.Bind(MarginProperty, new Binding("WindowDecorationMargin")
-                    {
-                        RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor) { AncestorType = typeof(Window) },
-                    });
-                    HamburgerPanel.Margin = new Thickness(65, 0, 8, 0);
+                    // Pin the row to the traffic lights: top-aligned, offset so its centre line
+                    // matches theirs, and inset far enough to clear the close/minimise/zoom cluster.
+                    HamburgerPanel.VerticalAlignment = VerticalAlignment.Top;
+                    HamburgerPanel.Margin = new Thickness(
+                        MAC_TRAFFIC_LIGHT_INSET,
+                        MAC_TRAFFIC_LIGHT_CENTER_Y - (MAC_TITLE_BAR_CONTROL_SIZE / 2),
+                        8,
+                        0);
                 }
-            });
+            }
+
+            this.GetObservable(WindowStateProperty).SubscribeValue(_ => ApplyMacTitleBarLayout());
+            this.GetObservable(WindowDecorationMarginProperty).SubscribeValue(_ => ApplyMacTitleBarLayout());
         }
         else if (OperatingSystem.IsWindows())
         {
@@ -308,11 +573,11 @@ public partial class MainWindow : Window
             if (MicaWindowHelper.IsMicaEnabled())
                 TransparencyLevelHint = new[] { WindowTransparencyLevel.Mica };
             TitleBarGrid.ClearValue(HeightProperty);
-            TitleBarGrid.Height = 44;
+            TitleBarGrid.Height = 50;
             HamburgerPanel.Margin = new Thickness(10, 0, 8, 0);
             WindowButtons.IsVisible = true;
-            MainContentGrid.Margin = new Thickness(0, 44, 0, 0);
-            this.GetObservable(WindowStateProperty).Subscribe(state =>
+            MainContentRoot.Margin = new Thickness(0, 50, 0, 0);
+            this.GetObservable(WindowStateProperty).SubscribeValue(state =>
             {
                 UpdateMaximizeButtonState(state == WindowState.Maximized);
             });
@@ -328,9 +593,9 @@ public partial class MainWindow : Window
             TitleBarGrid.Height = 44;
             HamburgerPanel.Margin = new Thickness(10, 0, 8, 0);
             WindowButtons.IsVisible = !useNativeDecorations;
-            MainContentGrid.Margin = new Thickness(0, 44, 0, 0);
+            MainContentRoot.Margin = new Thickness(0, 44, 0, 0);
             // Keep maximize icon in sync with window state
-            this.GetObservable(WindowStateProperty).Subscribe(state =>
+            this.GetObservable(WindowStateProperty).SubscribeValue(state =>
             {
                 UpdateMaximizeButtonState(state == WindowState.Maximized);
             });
@@ -341,6 +606,21 @@ public partial class MainWindow : Window
             {
                 CreateResizeGrips();
             }
+        }
+    }
+
+    /// <summary>
+    /// Shrinks the back/toggle buttons so they fit inside macOS' native (~28 px) title bar band, which
+    /// is where the traffic lights live. The AXAML size targets the taller Windows/Linux bars; at 32 px
+    /// a button centred on the traffic lights' centre line would overflow past the top of the window.
+    /// The centred search pill is unaffected — it stays centred in the full 44 px bar.
+    /// </summary>
+    private void ApplyMacTitleBarControlSizes()
+    {
+        foreach (Button button in new[] { BackButton, SidebarToggleButton })
+        {
+            button.Width = MAC_TITLE_BAR_CONTROL_SIZE;
+            button.Height = MAC_TITLE_BAR_CONTROL_SIZE;
         }
     }
 
@@ -606,6 +886,15 @@ public partial class MainWindow : Window
             Width = width;
             Height = height;
             Position = new PixelPoint(x, y);
+            // On Windows our WM_NCCALCSIZE makes the client rect equal the full window rect, so the
+            // saved size is the outer size. Avalonia's Width/Height setter re-adds WS_THICKFRAME via
+            // AdjustWindowRectEx, inflating the window a little on every restart; OnOpened restores
+            // the exact outer rect natively to cancel that drift.
+            if (OperatingSystem.IsWindows())
+            {
+                _pendingRestoreWidth = width;
+                _pendingRestoreHeight = height;
+            }
         }
         else
         {
@@ -668,11 +957,58 @@ public partial class MainWindow : Window
     {
         MaximizeIcon.Data = Geometry.Parse(
             isMaximized
-                ? "M2,0 H10 V8 H2 Z M0,2 H8 V10 H0 Z"
+                ? "M3,0 H10 V7 H8 V2 H3 Z M0,3 H7 V10 H0 Z"
                 : "M0,0 H10 V10 H0 Z");
         ToolTip.SetTip(
             MaximizeButton,
             CoreTools.Translate(isMaximized ? "Restore" : "Maximize"));
+    }
+
+    // True when the WM_NCHITTEST screen point (physical px in lParam) falls within the maximize
+    // button's bounds — the area for which we claim HTMAXBUTTON so Snap Layouts can attach.
+    private bool HitTestMaximizeButton(nint lParam)
+    {
+        if (!MaximizeButton.IsVisible || !MaximizeButton.IsEnabled)
+            return false;
+        try
+        {
+            int x = unchecked((short)(lParam.ToInt64() & 0xFFFF));
+            int y = unchecked((short)((lParam.ToInt64() >> 16) & 0xFFFF));
+            PixelPoint topLeft = MaximizeButton.PointToScreen(new Point(0, 0));
+            PixelPoint bottomRight = MaximizeButton.PointToScreen(
+                new Point(MaximizeButton.Bounds.Width, MaximizeButton.Bounds.Height));
+            return x >= topLeft.X && x < bottomRight.X && y >= topLeft.Y && y < bottomRight.Y;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    // Emulates the button's pointer-over/pressed fill (lost once input is non-client) using the
+    // same Fluent brushes the neighbouring min/close buttons use, so the row stays consistent.
+    private void SetMaximizeButtonVisual(bool hover, bool pressed)
+    {
+        _maxButtonHover = hover;
+        _maxButtonPressed = pressed;
+
+        string? key = pressed ? "ButtonBackgroundPressed" : hover ? "ButtonBackgroundPointerOver" : null;
+        if (key is not null && this.TryFindResource(key, ActualThemeVariant, out var res) && res is IBrush brush)
+            MaximizeButton.Background = brush;
+        else
+            MaximizeButton.ClearValue(BackgroundProperty);
+    }
+
+    private static void TrackNonClientMouseLeave(nint hWnd)
+    {
+        var tme = new NativeMethods.TRACKMOUSEEVENT
+        {
+            cbSize = (uint)Marshal.SizeOf<NativeMethods.TRACKMOUSEEVENT>(),
+            dwFlags = TME_LEAVE | TME_NONCLIENT,
+            hwndTrack = hWnd,
+            dwHoverTime = 0,
+        };
+        NativeMethods.TrackMouseEvent(ref tme);
     }
 
     // Applies the Windows 11 Mica look when it's actually usable (Win11 + transparency on):
@@ -696,6 +1032,16 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Mica was requested; None means DWM granted no backdrop, so the transparent window would
+        // render pure black (#5111). Latch Mica off and keep a solid background instead.
+        if (ActualTransparencyLevel == WindowTransparencyLevel.None)
+        {
+            MicaWindowHelper.NotifyMicaUnavailable();
+            if (this.TryFindResource("AppWindowBackground", ActualThemeVariant, out var solidBg) && solidBg is IBrush solidBrush)
+                Background = solidBrush;
+            return;
+        }
+
         // The custom NCCALCSIZE frame keeps WS_THICKFRAME, so DWM still has a frame to round.
         int corner = DWMWCP_ROUND;
         NativeMethods.DwmSetWindowAttribute(handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref corner, sizeof(int));
@@ -704,18 +1050,127 @@ public partial class MainWindow : Window
         // the backdrop show through the chrome and page area.
         Background = Brushes.Transparent;
 
-        // Suppress the window border colour so the main window doesn't get the accent edge
-        // (the dialogs keep it via MicaWindowHelper).
-        int noBorder = DWMWA_COLOR_NONE;
-        NativeMethods.DwmSetWindowAttribute(handle, DWMWA_BORDER_COLOR, ref noBorder, sizeof(int));
+        ApplyWindowBorderColor(handle);
+    }
+
+    private void ApplyWindowBorderColor(nint handle)
+    {
+        int color;
+        if (TryReadDwmDword("ColorPrevalence", out int prevalence) && prevalence != 0
+            && TryReadDwmDword("AccentColor", out int accent))
+            color = accent & 0x00FFFFFF; // stored 0xAABBGGRR -> COLORREF 0x00BBGGRR
+        else
+            color = ActualThemeVariant == ThemeVariant.Dark ? WINDOW_BORDER_COLOR_DARK : WINDOW_BORDER_COLOR_LIGHT;
+
+        NativeMethods.DwmSetWindowAttribute(handle, DWMWA_BORDER_COLOR, ref color, sizeof(int));
+    }
+
+    private static bool TryReadDwmDword(string valueName, out int value)
+    {
+        value = 0;
+        try
+        {
+            var data = new byte[4];
+            int size = data.Length;
+            int rc = NativeMethods.RegGetValueW(NativeMethods.HKEY_CURRENT_USER,
+                @"Software\Microsoft\Windows\DWM", valueName,
+                NativeMethods.RRF_RT_REG_DWORD, out _, data, ref size);
+            if (rc == 0)
+            {
+                value = BitConverter.ToInt32(data, 0);
+                return true;
+            }
+        }
+        catch { /* ignore */ }
+        return false;
     }
 
     private static nint OnWindowsWndProc(nint hWnd, uint msg, nint wParam, nint lParam, ref bool handled)
     {
+        if ((msg == WM_DWMCOLORIZATIONCOLORCHANGED || msg == WM_SETTINGCHANGE)
+            && Instance is { } borderOwner && MicaWindowHelper.IsMicaEnabled())
+        {
+            borderOwner.ApplyWindowBorderColor(hWnd);
+        }
+
+        if (msg == WM_SETTINGCHANGE && Instance is { } trayOwner)
+        {
+            trayOwner.UpdateSystemTrayStatus();
+        }
+
+        // ── Snap Layouts: report HTMAXBUTTON over the custom maximize button so Win11 shows the
+        // layout flyout, and emulate hover/press/click since input now arrives as NC messages. ──
+        if (Instance is { } self && self.WindowButtons.IsVisible)
+        {
+            switch (msg)
+            {
+                case WM_NCHITTEST:
+                    if (self.HitTestMaximizeButton(lParam))
+                    {
+                        handled = true;
+                        return HTMAXBUTTON;
+                    }
+                    break;
+
+                case WM_NCMOUSEMOVE:
+                    if (wParam == HTMAXBUTTON)
+                    {
+                        self.SetMaximizeButtonVisual(hover: true, self._maxButtonPressed);
+                        TrackNonClientMouseLeave(hWnd);
+                        handled = true;
+                        return 0;
+                    }
+                    self.SetMaximizeButtonVisual(hover: false, pressed: false);
+                    break;
+
+                case WM_MOUSEMOVE:
+                    if (self._maxButtonHover)
+                        self.SetMaximizeButtonVisual(hover: false, pressed: false);
+                    break;
+
+                case WM_NCMOUSELEAVE:
+                    self.SetMaximizeButtonVisual(hover: false, pressed: false);
+                    break;
+
+                case WM_NCLBUTTONDOWN when wParam == HTMAXBUTTON:
+                    self.SetMaximizeButtonVisual(hover: true, pressed: true);
+                    handled = true;
+                    return 0;
+
+                case WM_NCLBUTTONUP when wParam == HTMAXBUTTON:
+                    bool wasPressed = self._maxButtonPressed;
+                    self.SetMaximizeButtonVisual(hover: true, pressed: false);
+                    if (wasPressed)
+                        NativeMethods.PostMessage(hWnd, WM_SYSCOMMAND,
+                            self.WindowState == WindowState.Maximized ? SC_RESTORE : SC_MAXIMIZE, 0);
+                    handled = true;
+                    return 0;
+
+                case WM_NCLBUTTONDBLCLK when wParam == HTMAXBUTTON:
+                    handled = true;   // the down/up pair already toggled; swallow the follow-up dblclk
+                    return 0;
+            }
+        }
+
         // Force client = full window rect. Avalonia's ExtendClientArea handler only overrides
         // the top inset, leaving the WS_THICKFRAME left/right/bottom resize border as glass.
         if (msg == WM_NCCALCSIZE && wParam.ToInt64() != 0)
         {
+            // Maximized: client = work area (the window already equals it), not a phantom frame inset (#5117/#5013).
+            if (NativeMethods.IsZoomed(hWnd))
+            {
+                nint monitor = NativeMethods.MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+                if (monitor != 0)
+                {
+                    var mi = new NativeMethods.MONITORINFO { cbSize = Marshal.SizeOf<NativeMethods.MONITORINFO>() };
+                    if (NativeMethods.GetMonitorInfo(monitor, ref mi))
+                    {
+                        var p = Marshal.PtrToStructure<NativeMethods.NCCALCSIZE_PARAMS>(lParam);
+                        p.rgrc0 = mi.rcWork;
+                        Marshal.StructureToPtr(p, lParam, false);
+                    }
+                }
+            }
             handled = true;
             return 0;
         }
@@ -797,6 +1252,13 @@ public partial class MainWindow : Window
     // OperatingSystem.IsWindows(), so non-Windows targets never invoke user32.dll at runtime.
     private static class NativeMethods
     {
+        public static readonly nint HKEY_CURRENT_USER = new(unchecked((int)0x80000001));
+        public const int RRF_RT_REG_DWORD = 0x00000010;
+
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+        public static extern int RegGetValueW(nint hkey, string lpSubKey, string lpValue, int dwFlags,
+            out int pdwType, byte[] pvData, ref int pcbData);
+
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
         public static extern nint GetWindowLongPtr(nint hWnd, int nIndex);
 
@@ -812,10 +1274,22 @@ public partial class MainWindow : Window
 
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool PostMessage(nint hWnd, uint Msg, nint wParam, nint lParam);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool TrackMouseEvent(ref TRACKMOUSEEVENT lpEventTrack);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool AdjustWindowRectExForDpi(ref RECT lpRect, uint dwStyle, [MarshalAs(UnmanagedType.Bool)] bool bMenu, uint dwExStyle, uint dpi);
 
         [DllImport("user32.dll")]
         public static extern nint MonitorFromWindow(nint hwnd, uint dwFlags);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool IsZoomed(nint hWnd);
 
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -836,6 +1310,15 @@ public partial class MainWindow : Window
         {
             public int X;
             public int Y;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct TRACKMOUSEEVENT
+        {
+            public uint cbSize;
+            public uint dwFlags;
+            public nint hwndTrack;
+            public uint dwHoverTime;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -864,6 +1347,16 @@ public partial class MainWindow : Window
             public RECT rcMonitor;
             public RECT rcWork;
             public uint dwFlags;
+        }
+
+        // rgrc is a RECT[3] laid out inline; only rgrc[0] (the proposed client rect) is needed here.
+        [StructLayout(LayoutKind.Sequential)]
+        public struct NCCALCSIZE_PARAMS
+        {
+            public RECT rgrc0;
+            public RECT rgrc1;
+            public RECT rgrc2;
+            public nint lppos;
         }
     }
 
@@ -986,8 +1479,43 @@ public partial class MainWindow : Window
 
     private void SearchBox_KeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter)
+        // While the settings-search dropdown is open, drive it from the box: arrows move the
+        // highlight, Enter jumps to it, Escape dismisses.
+        if (ViewModel.IsSuggestionsOpen)
+        {
+            switch (e.Key)
+            {
+                case Key.Down: ViewModel.MoveSuggestionSelection(1); e.Handled = true; return;
+                case Key.Up: ViewModel.MoveSuggestionSelection(-1); e.Handled = true; return;
+                case Key.Escape: ViewModel.CloseSuggestions(); e.Handled = true; return;
+                case Key.Enter: ViewModel.SubmitGlobalSearch(); e.Handled = true; return;
+            }
+        }
+        else if (e.Key == Key.Enter)
+        {
             ViewModel.SubmitGlobalSearch();
+        }
+    }
+
+    private void ClearSearchBox_Click(object? sender, RoutedEventArgs e)
+    {
+        ViewModel.GlobalSearchText = "";
+        GlobalSearchBox.Focus();
+    }
+
+    private void SuggestionsList_Tapped(object? sender, TappedEventArgs e)
+    {
+        if (SuggestionsList.SelectedItem is SettingsSearchResult result)
+            ViewModel.SelectSuggestion(result);
+    }
+
+    private void OperationCard_Tapped(object? sender, TappedEventArgs e)
+    {
+        if (e.Source is Visual source && source.FindAncestorOfType<Button>(includeSelf: true) is not null)
+            return;
+
+        if ((sender as Control)?.DataContext is OperationViewModel op)
+            op.ShowDetailsCommand.Execute(null);
     }
 
     // ─── Public navigation API ────────────────────────────────────────────────
@@ -996,6 +1524,260 @@ public partial class MainWindow : Window
     public void OpenManagerSettings(IPackageManager? manager = null) =>
         ViewModel.OpenManagerSettings(manager);
     public void ShowHelp(string uriAttachment = "") => ViewModel.ShowHelp(uriAttachment);
+
+    /// <summary>
+    /// Shows the ignored-updates editor as a modal surface inside this window. Keeping the
+    /// surface in the owner's visual tree makes it resize with the app and avoids a second
+    /// task-switcher/window-management target.
+    /// </summary>
+    public async Task ShowManageIgnoredUpdatesAsync()
+    {
+        var dialog = new ManageIgnoredUpdatesWindow();
+        await ShowImmersiveDialogAsync(dialog);
+    }
+
+    public async Task ShowImmersiveDialogAsync(ImmersiveDialog dialog)
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void CloseDialog(object? sender, EventArgs args) => completion.TrySetResult();
+        bool opened = false;
+        bool added = false;
+        dialog.CloseRequested += CloseDialog;
+
+        try
+        {
+            await _modalTransitionSemaphore.WaitAsync();
+            try
+            {
+                if (_modalStack.Contains(dialog))
+                    throw new InvalidOperationException("The immersive dialog is already open.");
+
+                if (_modalStack.Count == 0)
+                {
+                    _focusBeforeModal = FocusManager?.GetFocusedElement() as Control;
+                    HideNativeWebViewsForModal();
+                    // Block pointer input without putting every underlying control into Avalonia's
+                    // disabled visual state. The modal layer owns focus while it is visible.
+                    MainContentRoot.IsHitTestVisible = false;
+                    TitleBarGrid.IsHitTestVisible = false;
+                }
+                else
+                {
+                    _modalFocusHistory[_modalStack[^1]] =
+                        FocusManager?.GetFocusedElement() as Control;
+                }
+
+                ModalContent.Content = null;
+                _modalStack.Add(dialog);
+                added = true;
+                PresentModal(dialog);
+                dialog.NotifyOpened();
+                opened = true;
+                await AnimateModalAsync(opening: true);
+                FocusModalIfNeeded(dialog);
+            }
+            finally
+            {
+                _modalTransitionSemaphore.Release();
+            }
+
+            await completion.Task;
+        }
+        finally
+        {
+            dialog.CloseRequested -= CloseDialog;
+            await _modalTransitionSemaphore.WaitAsync();
+            try
+            {
+                int index = added ? _modalStack.IndexOf(dialog) : -1;
+                bool isTopmost = index >= 0 && index == _modalStack.Count - 1;
+                if (isTopmost)
+                {
+                    try
+                    {
+                        await AnimateModalAsync(opening: false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error(ex);
+                    }
+                    ModalContent.Content = null;
+                }
+
+                if (index >= 0)
+                    _modalStack.RemoveAt(index);
+                _modalFocusHistory.Remove(dialog);
+
+                if (opened)
+                {
+                    try
+                    {
+                        dialog.NotifyClosed();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error(ex);
+                    }
+                }
+
+                if (_modalStack.Count > 0)
+                {
+                    PresentModal(_modalStack[^1]);
+                    ModalLayer.Opacity = 1;
+                    ModalSurface.Opacity = 1;
+                    ModalSurface.RenderTransform = null;
+                    RestoreModalFocus(_modalStack[^1]);
+                }
+                else
+                {
+                    _modalTitleSubscription?.Dispose();
+                    _modalTitleSubscription = null;
+                    ModalLayer.IsVisible = false;
+                    ModalContent.Content = null;
+                    ModalTitle.Text = "";
+                    MainContentRoot.IsHitTestVisible = true;
+                    TitleBarGrid.IsHitTestVisible = true;
+                    RestoreNativeWebViewsAfterModal();
+                    Dispatcher.UIThread.Post(
+                        () => _focusBeforeModal?.Focus(),
+                        DispatcherPriority.Background);
+                    _focusBeforeModal = null;
+                }
+            }
+            finally
+            {
+                _modalTransitionSemaphore.Release();
+            }
+        }
+    }
+
+    private void PresentModal(ImmersiveDialog dialog)
+    {
+        _modalTitleSubscription?.Dispose();
+        _modalTitleSubscription = dialog.GetObservable(ImmersiveDialog.TitleProperty)
+            .SubscribeValue(title => ModalTitle.Text = title ?? "");
+        ModalCloseButton.IsVisible = dialog.IsCloseButtonVisible;
+        ModalTitle.Margin = dialog.TitleMargin;
+        ModalContent.Content = dialog;
+        ModalLayer.IsVisible = true;
+        UpdateModalSurfaceSize();
+    }
+
+    private void HideNativeWebViewsForModal()
+    {
+        _webViewsHiddenForModal.Clear();
+        foreach (UniGetUiWebView webView in MainContentRoot.GetVisualDescendants().OfType<UniGetUiWebView>())
+        {
+            if (!webView.IsVisible)
+                continue;
+
+            _webViewsHiddenForModal.Add(webView);
+            webView.IsVisible = false;
+        }
+    }
+
+    private void RestoreNativeWebViewsAfterModal()
+    {
+        foreach (UniGetUiWebView webView in _webViewsHiddenForModal)
+            webView.IsVisible = true;
+        _webViewsHiddenForModal.Clear();
+    }
+
+    private void FocusModalIfNeeded(ImmersiveDialog dialog)
+    {
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (ReferenceEquals(ModalContent.Content, dialog) && !dialog.IsKeyboardFocusWithin)
+                    ModalCloseButton.Focus();
+            },
+            DispatcherPriority.Background);
+    }
+
+    private void RestoreModalFocus(ImmersiveDialog dialog)
+    {
+        _modalFocusHistory.Remove(dialog, out Control? previousFocus);
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (!ReferenceEquals(ModalContent.Content, dialog))
+                    return;
+                if (previousFocus?.Focus() != true && !dialog.IsKeyboardFocusWithin)
+                    ModalCloseButton.Focus();
+            },
+            DispatcherPriority.Background);
+    }
+
+    private void ModalCloseButton_Click(object? sender, RoutedEventArgs e) =>
+        (ModalContent.Content as ImmersiveDialog)?.Close();
+
+    private void UpdateModalSurfaceSize()
+    {
+        if (ModalContent.Content is not ImmersiveDialog dialog)
+            return;
+
+        const double maximumSurfaceWidth = 1200;
+        const double maximumSurfaceHeight = 900;
+        double layerWidth = ModalLayer.Bounds.Width > 0 ? ModalLayer.Bounds.Width : Bounds.Width;
+        double layerHeight = ModalLayer.Bounds.Height > 0 ? ModalLayer.Bounds.Height : Bounds.Height;
+        double availableWidth = Math.Max(0, layerWidth - 96);
+        double availableHeight = Math.Max(0, layerHeight - 96);
+
+        ModalSurface.MaxWidth = Math.Min(maximumSurfaceWidth, availableWidth);
+        ModalSurface.MaxHeight = Math.Min(maximumSurfaceHeight, availableHeight);
+        ModalSurface.Width = double.IsFinite(dialog.MaxWidth)
+            ? Math.Min(dialog.MaxWidth, ModalSurface.MaxWidth)
+            : double.NaN;
+        ModalSurface.Height = double.IsFinite(dialog.MaxHeight)
+            ? Math.Min(dialog.MaxHeight, ModalSurface.MaxHeight)
+            : double.NaN;
+    }
+
+    private async Task AnimateModalAsync(bool opening)
+    {
+        if (MotionPreference.ReducedMotion)
+        {
+            ModalLayer.Opacity = opening ? 1 : 0;
+            ModalSurface.Opacity = opening ? 1 : 0;
+            ModalSurface.RenderTransform = null;
+            return;
+        }
+
+        var scale = new ScaleTransform();
+        ModalSurface.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
+        ModalSurface.RenderTransform = scale;
+
+        double fromOpacity = opening ? 0 : 1;
+        double toOpacity = opening ? 1 : 0;
+        double fromScale = opening ? 1.06 : 1;
+        double toScale = opening ? 1 : 1.06;
+        var duration = TimeSpan.FromMilliseconds(opening ? 180 : 120);
+        long started = Stopwatch.GetTimestamp();
+        while (true)
+        {
+            double progress = Math.Clamp(
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds / duration.TotalMilliseconds,
+                0,
+                1);
+            double eased = 1 - Math.Pow(1 - progress, 3);
+            double opacity = fromOpacity + ((toOpacity - fromOpacity) * eased);
+            double currentScale = fromScale + ((toScale - fromScale) * eased);
+
+            ModalLayer.Opacity = opacity;
+            ModalSurface.Opacity = opacity;
+            scale.ScaleX = currentScale;
+            scale.ScaleY = currentScale;
+
+            if (progress >= 1)
+                break;
+            await Task.Delay(16);
+        }
+
+        ModalLayer.Opacity = toOpacity;
+        ModalSurface.Opacity = toOpacity;
+        scale.ScaleX = toScale;
+        scale.ScaleY = toScale;
+    }
 
     /// <summary>
     /// Focuses the global search box and optionally pre-fills a character typed
@@ -1013,6 +1795,7 @@ public partial class MainWindow : Window
     }
 
     // ─── Public API (legacy compat) ───────────────────────────────────────────
+    // Surfaces a fresh, auto-dismissing toast per call (name kept for pre-toast callers).
     public void ShowBanner(string title, string message, RuntimeNotificationLevel level)
     {
         if (level == RuntimeNotificationLevel.Progress) return;
@@ -1023,15 +1806,36 @@ public partial class MainWindow : Window
             RuntimeNotificationLevel.Success => InfoBarSeverity.Success,
             _ => InfoBarSeverity.Informational,
         };
-        ViewModel.ErrorBanner.ActionButtonText = "";
-        ViewModel.ErrorBanner.ActionButtonCommand = null;
-        ViewModel.ErrorBanner.Title = title;
-        ViewModel.ErrorBanner.Message = message;
-        ViewModel.ErrorBanner.Severity = severity;
-        ViewModel.ErrorBanner.IsOpen = true;
+
+        var toast = new InfoBarViewModel
+        {
+            Title = title,
+            Message = message,
+            Severity = severity,
+            IsClosable = true,
+            IsOpen = true,
+        };
+        toast.OnClosed = () => ViewModel.DismissToast(toast);
+        ViewModel.ShowToast(toast);
+    }
+
+    // Pause/resume a toast's auto-dismiss countdown while the pointer is over it.
+    private void Toast_PointerEntered(object? sender, PointerEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is InfoBarViewModel vm)
+            ViewModel.PauseToast(vm);
+    }
+
+    private void Toast_PointerExited(object? sender, PointerEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is InfoBarViewModel vm)
+            ViewModel.ResumeToast(vm);
     }
 
     public void UpdateSystemTrayStatus() => _trayService?.UpdateStatus();
+
+    private void UpdateOnScreenState()
+        => _isOnScreen = IsVisible && WindowState != WindowState.Minimized;
 
     public void ShowRuntimeNotification(string title, string message, RuntimeNotificationLevel level) =>
         ShowBanner(title, message, level);
@@ -1039,11 +1843,18 @@ public partial class MainWindow : Window
     // ─── BackgroundAPI integration ────────────────────────────────────────────
     public void ShowFromTray()
     {
+        // Show() restores a hidden window to its pre-maximize size, so re-apply Maximized if it was:
+        // a native maximize (Snap Layouts / Win+Up) never updates Avalonia's _showWindowState.
+        bool restoreMaximized = !IsVisible && WindowState == WindowState.Maximized;
         if (!IsVisible)
             Show();
-        if (WindowState == WindowState.Minimized)
+        if (restoreMaximized)
+            WindowState = WindowState.Maximized;
+        else if (WindowState == WindowState.Minimized)
             WindowState = WindowState.Normal;
         Activate();
+
+        AvaloniaOperationRegistry.PromptPendingShortcutsIfAny();
     }
 
     public bool IsQuitting => Interlocked.CompareExchange(ref _isQuitting, 0, 0) == 1;

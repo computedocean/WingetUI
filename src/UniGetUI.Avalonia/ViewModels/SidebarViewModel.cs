@@ -24,18 +24,6 @@ public partial class SidebarViewModel : ViewModelBase
     partial void OnUpdatesBadgeCountChanged(int value) =>
         UpdatesBadgeVisible = value > 0;
 
-    partial void OnUpdatesBadgeVisibleChanged(bool value)
-    {
-        OnPropertyChanged(nameof(UpdatesBadgeExpandedVisible));
-        OnPropertyChanged(nameof(UpdatesBadgeCompactVisible));
-    }
-
-    partial void OnBundlesBadgeVisibleChanged(bool value)
-    {
-        OnPropertyChanged(nameof(BundlesBadgeExpandedVisible));
-        OnPropertyChanged(nameof(BundlesBadgeCompactVisible));
-    }
-
     // ─── Loading indicators ───────────────────────────────────────────────────
     [ObservableProperty]
     private bool _discoverIsLoading;
@@ -47,25 +35,84 @@ public partial class SidebarViewModel : ViewModelBase
     private bool _installedIsLoading;
 
     // ─── Pane open/closed ─────────────────────────────────────────────────────
+    // NavMenuMode: Automatic mirrors WinUI (dock ≥1600px, else rail+overlay), Docked = always
+    // inline, Overlay = always rail+overlay. IsPaneOpen = labeled pane showing, in any mode.
+    public enum NavMode { Automatic, Docked, Overlay }
+
+    private const double ExpandedThreshold = 1600; // WinUI ExpandedModeThresholdWidth
+    private const double CompactThreshold = 800;    // WinUI CompactModeThresholdWidth
+
+    // Live window width, pushed by MainWindow's bounds observer.
     [ObservableProperty]
-    private bool isPaneOpen = !Settings.Get(Settings.K.CollapseNavMenuOnWideScreen);
+    private double _windowWidth = 1450;
+
+    [ObservableProperty]
+    private NavMode _mode = ParseMode(Settings.GetValue(Settings.K.NavMenuMode));
+
+    [ObservableProperty]
+    private bool _isPaneOpen;
+
+    public static NavMode ParseMode(string value) => value switch
+    {
+        "docked" => NavMode.Docked,
+        "overlay" => NavMode.Overlay,
+        _ => NavMode.Automatic,
+    };
+
+    // Whether the pane docks inline (vs. the rail + sliding overlay).
+    public bool Docked => Mode switch
+    {
+        NavMode.Docked => true,
+        NavMode.Overlay => false,
+        _ => WindowWidth >= ExpandedThreshold,
+    };
+
+    private bool RailAllowed => WindowWidth >= CompactThreshold;
+
+    // Icon rail vs docked labeled pane vs sliding overlay — mutually exclusive.
+    public bool NavDockVisible => Docked && IsPaneOpen;
+    public bool RailVisible => (Docked && !IsPaneOpen) || (!Docked && RailAllowed);
+    public bool OverlayActive => !Docked && IsPaneOpen;
+
+    private bool _wasDocked;
+
+    public SidebarViewModel()
+    {
+        _wasDocked = Docked;
+        _isPaneOpen = Docked && !Settings.Get(Settings.K.CollapseNavMenuOnWideScreen);
+    }
+
+    partial void OnWindowWidthChanged(double value) => ReconcileDock();
+
+    partial void OnModeChanged(NavMode value) => ReconcileDock();
+
+    // On a docked-state flip, open the pane by default (unless collapsed on a wide screen), or
+    // collapse when leaving docked mode. Mirrors WinUI's startup IsPaneOpen logic.
+    private void ReconcileDock()
+    {
+        bool docked = Docked;
+        if (docked != _wasDocked)
+        {
+            _wasDocked = docked;
+            IsPaneOpen = docked && !Settings.Get(Settings.K.CollapseNavMenuOnWideScreen);
+        }
+        RaiseLayoutChanged();
+    }
 
     partial void OnIsPaneOpenChanged(bool value)
     {
-        Settings.Set(Settings.K.CollapseNavMenuOnWideScreen, !value);
-        OnPropertyChanged(nameof(PaneWidth));
-        OnPropertyChanged(nameof(UpdatesBadgeExpandedVisible));
-        OnPropertyChanged(nameof(UpdatesBadgeCompactVisible));
-        OnPropertyChanged(nameof(BundlesBadgeExpandedVisible));
-        OnPropertyChanged(nameof(BundlesBadgeCompactVisible));
+        // Persist the collapse choice only while docked (WinUI persisted only at ≥1600px).
+        if (Docked)
+            Settings.Set(Settings.K.CollapseNavMenuOnWideScreen, !value);
+        RaiseLayoutChanged();
     }
 
-    public double PaneWidth => IsPaneOpen ? 250 : 64;
-
-    public bool UpdatesBadgeExpandedVisible => UpdatesBadgeVisible && IsPaneOpen;
-    public bool UpdatesBadgeCompactVisible => UpdatesBadgeVisible && !IsPaneOpen;
-    public bool BundlesBadgeExpandedVisible => BundlesBadgeVisible && IsPaneOpen;
-    public bool BundlesBadgeCompactVisible => BundlesBadgeVisible && !IsPaneOpen;
+    private void RaiseLayoutChanged()
+    {
+        OnPropertyChanged(nameof(NavDockVisible));
+        OnPropertyChanged(nameof(RailVisible));
+        OnPropertyChanged(nameof(OverlayActive));
+    }
 
     // ─── Selected page ────────────────────────────────────────────────────────
     [ObservableProperty]

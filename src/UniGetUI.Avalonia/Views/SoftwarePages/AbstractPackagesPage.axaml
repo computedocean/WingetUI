@@ -5,6 +5,7 @@
              xmlns:peers="clr-namespace:Avalonia.Automation.Peers;assembly=Avalonia.Controls"
              xmlns:vm="using:UniGetUI.Avalonia.ViewModels.Pages"
              xmlns:controls="using:UniGetUI.Avalonia.Views.Controls"
+             xmlns:conv="using:UniGetUI.Avalonia.Converters"
              xmlns:pkg="using:UniGetUI.PackageEngine.PackageClasses"
              xmlns:t="using:UniGetUI.Avalonia.MarkupExtensions"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -14,6 +15,9 @@
              Name="ABSTRACT_PAGE">
 
     <UserControl.Styles>
+      <Style Selector="Border#MegaQueryContainer">
+         <Setter Property="Background" Value="{DynamicResource SearchBoxInactiveBackground}"/>
+      </Style>
       <!-- Suppress per-cell focus highlight so the whole row appears selected -->
       <Style Selector="DataGridCell:current /template/ Grid#FocusVisual">
          <Setter Property="IsVisible" Value="False"/>
@@ -21,8 +25,26 @@
       <Style Selector="DataGridCell:current">
          <Setter Property="BorderBrush" Value="Transparent"/>
       </Style>
+      <!-- Remove the DataGrid's built-in line between the header and the rows -->
+      <Style Selector="DataGrid /template/ Rectangle#PART_ColumnHeadersAndRowsSeparator">
+         <Setter Property="IsVisible" Value="False"/>
+      </Style>
+      <!-- Header as one inset, rounded bar (WinUI-style): rounded + inset ends, no borders/separators -->
       <Style Selector="DataGridColumnHeader">
-         <Setter Property="Background" Value="{DynamicResource SettingsCardBackground}"/>
+         <Setter Property="Background" Value="{DynamicResource PackageListHeaderBackground}"/>
+         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+         <Setter Property="HorizontalContentAlignment" Value="Center"/>
+         <Setter Property="AreSeparatorsVisible" Value="False"/>
+         <Setter Property="SeparatorBrush" Value="Transparent"/>
+         <Setter Property="BorderThickness" Value="0"/>
+         <Setter Property="CornerRadius" Value="0"/>
+         <Setter Property="Margin" Value="0,6,0,6"/>
+      </Style>
+      <Style Selector="DataGridColumnHeader:nth-child(1)">
+         <Setter Property="CornerRadius" Value="4,0,0,4"/>
+      </Style>
+      <Style Selector="DataGridColumnHeader:nth-last-child(1)">
+         <Setter Property="CornerRadius" Value="0,4,4,0"/>
       </Style>
       <Style Selector="Expander /template/ ToggleButton#ExpanderHeader">
          <Setter Property="Background" Value="{DynamicResource SettingsCardBackground}"/>
@@ -51,9 +73,38 @@
          <Setter Property="Width" Value="10"/>
          <Setter Property="Height" Value="2"/>
       </Style>
+      <!-- Mega query box focus: WinUI-style accent underline across the whole box, instead of a
+           full-border accent or the field swapping to its focused (black) background. -->
+      <Style Selector="Border#MegaQueryUnderline">
+         <Setter Property="Opacity" Value="0"/>
+         <Setter Property="Background" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+         <Setter Property="Transitions">
+            <Transitions>
+               <DoubleTransition Property="Opacity" Duration="0:0:0.12"/>
+            </Transitions>
+         </Setter>
+      </Style>
+      <!-- Hover: subtle neutral underline (WinUI shows a lighter line on pointer-over). -->
+      <Style Selector="Border#MegaQueryContainer:pointerover Border#MegaQueryUnderline">
+         <Setter Property="Opacity" Value="1"/>
+         <Setter Property="Background" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+      </Style>
+      <!-- Focus: accent underline (declared after hover so it wins when both apply). -->
+      <Style Selector="Border#MegaQueryContainer:focus-within Border#MegaQueryUnderline">
+         <Setter Property="Opacity" Value="1"/>
+         <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}"/>
+      </Style>
+      <Style Selector="Border#MegaQueryContainer:focus-within">
+         <Setter Property="Background" Value="{DynamicResource SearchBoxFocusedBackground}"/>
+         <Setter Property="BorderBrush" Value="{DynamicResource SearchBoxFocusedBorderBrush}"/>
+      </Style>
    </UserControl.Styles>
 
-   <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="8,8,8,8">
+   <UserControl.Resources>
+      <conv:ScaleClampConverter x:Key="ScaleClampConverter"/>
+   </UserControl.Resources>
+
+   <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="8,6,8,8">
 
         <!-- ==================== HEADER ==================== -->
         <Grid Name="MainHeader"
@@ -76,8 +127,9 @@
                 <TextBlock x:Name="MainTitle"
                            MaxHeight="60"
                            HorizontalAlignment="Left"
-                           FontSize="24"
-                           FontWeight="Bold"
+                           FontSize="28"
+                           FontWeight="SemiBold"
+                           FontFamily="Segoe UI Variable Display"
                            TextWrapping="Wrap"
                            Text="{Binding PageTitle}"/>
                 <TextBlock x:Name="MainSubtitle"
@@ -103,6 +155,13 @@
                  with the package list when the pane is open, and collapse next to the Filters button when closed. -->
             <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,0"
                         MinWidth="{Binding FilterPaneColumnWidth}">
+                <!-- Animate the reserved width so opening/closing the filter pane slides the
+                     action buttons into place instead of snapping them sideways. -->
+                <StackPanel.Transitions>
+                    <Transitions>
+                        <DoubleTransition Property="MinWidth" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+                    </Transitions>
+                </StackPanel.Transitions>
                 <ToggleButton x:Name="ToggleFiltersButton"
                               Classes="filter-toggle"
                               Height="40"
@@ -111,7 +170,7 @@
                               automation:AutomationProperties.Name="{t:Translate Filters}"
                               IsChecked="{Binding IsFilterPaneOpen, Mode=TwoWay}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/Filter.svg" Width="20" Height="20" VerticalAlignment="Center"/>
+                        <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/Filter.svg" Width="20" Height="20" VerticalAlignment="Center"/>
                         <TextBlock Text="{t:Translate Filters}" FontSize="12" FontWeight="Medium" VerticalAlignment="Center"/>
                     </StackPanel>
                 </ToggleButton>
@@ -166,16 +225,15 @@
         <!-- ==================== MAIN CONTENT (filter pane + package list) ==================== -->
         <Grid x:Name="FilteringPanel"
               Grid.Row="2"
+              ClipToBounds="True"
               ColumnDefinitions="220,4,*">
 
-            <!-- ===== FILTER PANE =====
-                 SidePanel is the Border the code-behind positions (inline vs overlay mode). -->
-                <Border x:Name="SidePanel"
-                        Grid.Column="0"
-                        IsVisible="{Binding IsFilterPaneOpen}"
-                        CornerRadius="8"
-                        ClipToBounds="True">
-                <ScrollViewer x:Name="SidePanelScroller"
+            <!-- Both presentations use this single content definition. Their containers remain
+                 isolated so compact compositor state cannot leak into the inline pane. -->
+            <Grid.Resources>
+                <DataTemplate x:Key="FilterPaneContentTemplate"
+                              x:DataType="vm:PackagesPageViewModel">
+                    <ScrollViewer
                               HorizontalScrollBarVisibility="Disabled"
                               Padding="4,8,4,0"
                               automation:AutomationProperties.AccessibilityView="Control"
@@ -189,12 +247,12 @@
                                   HorizontalContentAlignment="Stretch"
                                   IsExpanded="True"
                                   CornerRadius="8"
-                                  Padding="4,4,4,8"
+                                  Padding="16,8,16,8"
                                   Background="{DynamicResource SettingsCardBackground}">
                             <Expander.Header>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/Sources.svg" Width="16" Height="16" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{t:Translate Sources}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/Sources.svg" Width="16" Height="16" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{t:Translate Sources}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Expander.Header>
                             <StackPanel Orientation="Vertical">
@@ -312,8 +370,8 @@
                                   Background="{DynamicResource SettingsCardBackground}">
                             <Expander.Header>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/Filter.svg" Width="16" Height="16" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{t:Translate Filters}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/Filter.svg" Width="16" Height="16" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{t:Translate Filters}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Expander.Header>
                             <StackPanel HorizontalAlignment="Stretch" Orientation="Vertical" Spacing="0">
@@ -344,8 +402,8 @@
                                   Background="{DynamicResource SettingsCardBackground}">
                             <Expander.Header>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/search_filled.svg" Width="16" Height="16" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{t:Translate Search mode}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/search_filled.svg" Width="16" Height="16" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{t:Translate Search mode}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Expander.Header>
                             <StackPanel HorizontalAlignment="Stretch" Orientation="Vertical" Spacing="0">
@@ -384,8 +442,21 @@
                         </Expander>
 
                     </StackPanel>
-                </ScrollViewer>
-                </Border>
+                    </ScrollViewer>
+                </DataTemplate>
+            </Grid.Resources>
+
+            <!-- ===== INLINE FILTER PANE ===== -->
+            <Border x:Name="InlineSidePanel"
+                    Grid.Column="0"
+                    CornerRadius="8"
+                    ClipToBounds="True">
+                <Border.CacheMode>
+                    <BitmapCache RenderAtScale="1"/>
+                </Border.CacheMode>
+                <ContentControl Content="{Binding}"
+                                ContentTemplate="{StaticResource FilterPaneContentTemplate}"/>
+            </Border>
             <!-- ===== DRAG SPLITTER ===== -->
             <GridSplitter x:Name="FilterSplitter"
                           Grid.Column="1"
@@ -403,12 +474,32 @@
                     IsVisible="False"
                     IsHitTestVisible="True"/>
 
+            <!-- ===== COMPACT OVERLAY FILTER PANE ===== -->
+            <Border x:Name="OverlaySidePanel"
+                    Grid.Column="0"
+                    Grid.ColumnSpan="3"
+                    ZIndex="10"
+                    Width="220"
+                    HorizontalAlignment="Left"
+                    CornerRadius="0,8,8,0"
+                    BorderThickness="0,1,1,1"
+                    BorderBrush="{DynamicResource SettingsCardBorderBrush}"
+                    Background="{DynamicResource AppWindowBackground}"
+                    ClipToBounds="True"
+                    IsVisible="False">
+                <Border.CacheMode>
+                    <BitmapCache RenderAtScale="1"/>
+                </Border.CacheMode>
+                <ContentControl Content="{Binding}"
+                                ContentTemplate="{StaticResource FilterPaneContentTemplate}"/>
+            </Border>
+
             <!-- ===== PACKAGE LIST ===== -->
             <Grid x:Name="PackagesListGrid" Grid.Column="2" Margin="0">
 
                 <!-- Loading indicator -->
                 <ProgressBar x:Name="LoadingProgressBar"
-                             IsIndeterminate="True"
+                             IsIndeterminate="{Binding IsLoading}"
                              IsVisible="{Binding IsLoading}"
                              automation:AutomationProperties.Name="{t:Translate Loading}"
                              Height="4"
@@ -416,12 +507,14 @@
                              HorizontalAlignment="Stretch"
                              Margin="1,0,1,0"/>
 
-                <!-- Package list container -->
+                <!-- Package list container. Hidden while the Discover hero search (MegaQuery) is
+                     shown: the list is empty then, and its column headers would otherwise collide
+                     with the centred search box when a banner + operations pane shrink the area (#5014). -->
                 <Border Margin="0,6,0,6"
+                        IsVisible="{Binding !MegaQueryVisible}"
                         CornerRadius="8"
-                        BorderThickness="1"
-                        BorderBrush="{DynamicResource AppBorderBrush}"
-                        Background="{DynamicResource SettingsCardBackground}">
+                        BorderThickness="0"
+                        Background="{DynamicResource PackageListBackground}">
                 <Grid RowDefinitions="Auto,*">
                     <!-- Header bar for grid/icons views (select-all) — hidden in list mode, which has its own DataGrid header -->
                     <Border Grid.Row="0"
@@ -436,11 +529,12 @@
                     </Border>
 
                     <!-- Package list (list/grid/icons views) -->
-                    <Panel Grid.Row="1">
+                    <Panel Grid.Row="1" x:Name="PackageListHost">
                         <DataGrid x:Name="PackageList"
                                   IsVisible="{Binding IsListViewMode}"
                                   HorizontalAlignment="Stretch"
                                   VerticalAlignment="Stretch"
+                                  Margin="8,0,8,0"
                                   ItemsSource="{Binding FilteredPackages}"
                                   automation:AutomationProperties.AccessibilityView="Control"
                                   automation:AutomationProperties.Name="{Binding PageTitle}"
@@ -471,13 +565,23 @@
                                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="4,0"
                                                         automation:AutomationProperties.Name="{Binding Package.AutomationName}"
                                                         automation:AutomationProperties.ItemType="{t:Translate Package}">
-                                                <Panel Width="24" Height="24" VerticalAlignment="Center">
+                                                <Panel Width="24" Height="24" VerticalAlignment="Center"
+                                                       controls:PackageIconLoader.Track="True">
                                                     <Image Source="{Binding IconBitmap}" Width="24" Height="24"
                                                            Stretch="Uniform" IsVisible="{Binding HasCustomIcon}"/>
-                                                    <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/package.svg"
+                                                    <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/package.svg"
                                                                       Width="24" Height="24" IsVisible="{Binding !HasCustomIcon}"/>
-                                                    <controls:SvgIcon Path="{Binding TagIconPath}"
-                                                                      Width="12" Height="12"
+                                                    <controls:SvgIcon Path="{Binding TagBackdropIconPath}"
+                                                                      Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                                                      Width="20" Height="20"
+                                                                      Margin="0,0,-3,-3"
+                                                                      IsVisible="{Binding TagIconVisible}"
+                                                                      HorizontalAlignment="Right"
+                                                                      VerticalAlignment="Bottom"/>
+                                                    <controls:SvgIcon Path="{Binding TagSymbolIconPath}"
+                                                                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                                      Width="20" Height="20"
+                                                                      Margin="0,0,-3,-3"
                                                                       IsVisible="{Binding TagIconVisible}"
                                                                       HorizontalAlignment="Right"
                                                                       VerticalAlignment="Bottom"/>
@@ -493,7 +597,7 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="pkg:PackageWrapper">
                                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="4,0">
-                                                <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/id.svg"
+                                                <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/id.svg"
                                                                   Width="24" Height="24" VerticalAlignment="Center"/>
                                                 <TextBlock Text="{Binding Package.Id}" VerticalAlignment="Center"/>
                                             </StackPanel>
@@ -506,7 +610,7 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="pkg:PackageWrapper">
                                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="4,0">
-                                                <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/version.svg"
+                                                <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/version.svg"
                                                                   Width="24" Height="24" VerticalAlignment="Center"/>
                                                 <TextBlock Text="{Binding VersionComboString}" VerticalAlignment="Center"/>
                                             </StackPanel>
@@ -520,10 +624,10 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="pkg:PackageWrapper">
                                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="4,0">
-                                                <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/download.svg"
+                                                <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/download.svg"
                                                                   Width="24" Height="24" VerticalAlignment="Center"
                                                                   IsVisible="{Binding !InstallerHostChanged}"/>
-                                                <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/warning_filled.svg"
+                                                <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/warning_filled.svg"
                                                                   Width="22" Height="22" VerticalAlignment="Center"
                                                                   Foreground="#F59E0B"
                                                                   IsVisible="{Binding InstallerHostChanged}"
@@ -554,7 +658,8 @@
                              origin with the checkbox centered + the same Margin as the rows, so
                              the boxes line up regardless of cell metrics. -->
                         <Border IsVisible="{Binding IsListViewMode}"
-                                Width="40" Height="32"
+                                Width="40" Height="44"
+                                Margin="8,0,0,0"
                                 HorizontalAlignment="Left" VerticalAlignment="Top"
                                 Background="Transparent" ZIndex="10">
                             <CheckBox IsChecked="{Binding AllPackagesChecked, Mode=TwoWay}"
@@ -584,17 +689,27 @@
                                                 BorderBrush="{DynamicResource SettingsCardBorderBrush}" BorderThickness="1" Padding="4">
                                             <Grid ColumnDefinitions="48,*,28" ColumnSpacing="4">
                                                 <Panel Grid.Column="0" Width="44" Height="44"
-                                                       VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                       VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                       controls:PackageIconLoader.Track="True">
                                                     <Image Source="{Binding IconBitmap}" Width="44" Height="44"
                                                            Stretch="Uniform" IsVisible="{Binding HasCustomIcon}"/>
-                                                    <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/package.svg"
+                                                    <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/package.svg"
                                                                       Width="44" Height="44" IsVisible="{Binding !HasCustomIcon}"/>
-                                                    <controls:SvgIcon Path="{Binding TagIconPath}"
-                                                                      Width="17" Height="17"
+                                                    <controls:SvgIcon Path="{Binding TagBackdropIconPath}"
+                                                                      Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                                                      Width="28" Height="28"
+                                                                      Margin="0,0,-4,-4"
                                                                       IsVisible="{Binding TagIconVisible}"
                                                                       HorizontalAlignment="Right"
                                                                       VerticalAlignment="Bottom"/>
-                                                    <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/warning_filled.svg"
+                                                    <controls:SvgIcon Path="{Binding TagSymbolIconPath}"
+                                                                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                                      Width="28" Height="28"
+                                                                      Margin="0,0,-4,-4"
+                                                                      IsVisible="{Binding TagIconVisible}"
+                                                                      HorizontalAlignment="Right"
+                                                                      VerticalAlignment="Bottom"/>
+                                                    <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/warning_filled.svg"
                                                                       Width="17" Height="17"
                                                                       Foreground="#F59E0B"
                                                                       IsVisible="{Binding InstallerHostChanged}"
@@ -604,7 +719,7 @@
                                                 </Panel>
                                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
                                                     <TextBlock Text="{Binding Package.Name}"
-                                                               FontWeight="SemiBold" FontSize="13"
+                                                               FontWeight="SemiBold" FontSize="14"
                                                                TextTrimming="CharacterEllipsis"/>
                                                     <TextBlock Text="{Binding Package.Id}"
                                                                FontSize="11" Opacity="0.7"
@@ -684,17 +799,27 @@
                                                 </Button>
                                                 <Panel Grid.Row="1" Width="64" Height="64"
                                                        Margin="0,-8,0,4"
-                                                       VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                       VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                       controls:PackageIconLoader.Track="True">
                                                     <Image Source="{Binding IconBitmap}" Width="64" Height="64"
                                                            Stretch="Uniform" IsVisible="{Binding HasCustomIcon}"/>
-                                                    <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/package.svg"
+                                                    <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/package.svg"
                                                                       Width="64" Height="64" IsVisible="{Binding !HasCustomIcon}"/>
-                                                    <controls:SvgIcon Path="{Binding TagIconPath}"
-                                                                      Width="24" Height="24"
+                                                    <controls:SvgIcon Path="{Binding TagBackdropIconPath}"
+                                                                      Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                                                      Width="38" Height="38"
+                                                                      Margin="0,0,-5,-5"
                                                                       IsVisible="{Binding TagIconVisible}"
                                                                       HorizontalAlignment="Right"
                                                                       VerticalAlignment="Bottom"/>
-                                                    <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/warning_filled.svg"
+                                                    <controls:SvgIcon Path="{Binding TagSymbolIconPath}"
+                                                                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                                      Width="38" Height="38"
+                                                                      Margin="0,0,-5,-5"
+                                                                      IsVisible="{Binding TagIconVisible}"
+                                                                      HorizontalAlignment="Right"
+                                                                      VerticalAlignment="Bottom"/>
+                                                    <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/warning_filled.svg"
                                                                       Width="24" Height="24"
                                                                       Foreground="#F59E0B"
                                                                       IsVisible="{Binding InstallerHostChanged}"
@@ -721,17 +846,32 @@
                             </ItemsControl>
                         </ScrollViewer>
 
-                        <!-- Background text (no packages / no matches) -->
-                        <TextBlock x:Name="BackgroundText"
-                                   VerticalAlignment="Center"
+                        <!-- Background text (no packages / no matches), with a loading illustration above it -->
+                        <StackPanel VerticalAlignment="Center"
+                                    HorizontalAlignment="Center"
+                                    Spacing="16">
+                            <Image Source="avares://UniGetUI/Assets/Images/launcher.png"
+                                   MaxWidth="{Binding #PackageListHost.Bounds.Width, Converter={StaticResource ScaleClampConverter}, ConverterParameter=0.4|180}"
+                                   MaxHeight="{Binding #PackageListHost.Bounds.Height, Converter={StaticResource ScaleClampConverter}, ConverterParameter=0.4|180}"
+                                   Stretch="Uniform"
                                    HorizontalAlignment="Center"
-                                   FontSize="30"
-                                   FontWeight="Bold"
-                                   Opacity="0.5"
-                                   TextAlignment="Center"
-                                   TextWrapping="Wrap"
-                                   Text="{Binding BackgroundText}"
-                                   IsVisible="{Binding BackgroundTextVisible}"/>
+                                   IsVisible="{Binding LoadingImageVisible}"/>
+                            <Image Source="{Binding NoPackagesImage}"
+                                   MaxWidth="{Binding #PackageListHost.Bounds.Width, Converter={StaticResource ScaleClampConverter}, ConverterParameter=0.4|180}"
+                                   MaxHeight="{Binding #PackageListHost.Bounds.Height, Converter={StaticResource ScaleClampConverter}, ConverterParameter=0.4|180}"
+                                   Stretch="Uniform"
+                                   HorizontalAlignment="Center"
+                                   IsVisible="{Binding NoPackagesImageVisible}"/>
+                            <TextBlock x:Name="BackgroundText"
+                                       HorizontalAlignment="Center"
+                                       FontSize="30"
+                                       FontWeight="Bold"
+                                       Opacity="0.5"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap"
+                                       Text="{Binding BackgroundText}"
+                                       IsVisible="{Binding BackgroundTextVisible}"/>
+                        </StackPanel>
                     </Panel>
                 </Grid>
                 </Border>
@@ -742,39 +882,59 @@
                       RowDefinitions="*,64,*"
                       ColumnDefinitions="*,8*,64,*">
                     <!-- Single outer border unifies the search field and search button so the seam between them is invisible. -->
-                    <Border Grid.Row="1"
+                    <Border x:Name="MegaQueryContainer"
+                            Grid.Row="1"
                             Grid.Column="1"
                             Grid.ColumnSpan="2"
                             CornerRadius="8"
-                            BorderBrush="{DynamicResource AppBorderBrush}"
                             BorderThickness="1"
-                            Background="{DynamicResource MicaPageBackground}"
                             ClipToBounds="True">
-                        <Grid ColumnDefinitions="*,64">
-                            <TextBox x:Name="MegaQueryBlock"
-                                     Grid.Column="0"
-                                     Padding="16,0,10,0"
-                                     VerticalContentAlignment="Center"
-                                     CornerRadius="7,0,0,7"
-                                     BorderThickness="0"
-                                     Background="Transparent"
-                                     FontSize="40"
-                                     PlaceholderText="{t:Translate Search for packages}"
-                                     automation:AutomationProperties.Name="{t:Translate Search for packages}"
-                                     Text="{Binding MegaQueryText, Mode=TwoWay}"
-                                     KeyDown="MegaQueryBlock_KeyDown"/>
-                            <Button x:Name="MegaFindButton"
-                                    Grid.Column="1"
-                                    HorizontalAlignment="Stretch"
-                                    VerticalAlignment="Stretch"
-                                    CornerRadius="0"
-                                    BorderThickness="0"
-                                    Background="Transparent"
-                                    automation:AutomationProperties.Name="{t:Translate Search for packages}"
-                                    Command="{Binding SubmitSearch}">
-                                <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/search.svg" Width="40" Height="40"/>
-                            </Button>
-                        </Grid>
+                        <Panel>
+                            <Grid ColumnDefinitions="*,64">
+                                <TextBox x:Name="MegaQueryBlock"
+                                         Grid.Column="0"
+                                         Padding="16,0,10,0"
+                                         VerticalContentAlignment="Center"
+                                         CornerRadius="0"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         FontSize="28"
+                                         FontWeight="Normal"
+                                         PlaceholderForeground="{DynamicResource MegaQueryPlaceholderForeground}"
+                                         PlaceholderText="{t:Translate Search for packages}"
+                                         automation:AutomationProperties.Name="{t:Translate Search for packages}"
+                                         Text="{Binding MegaQueryText, Mode=TwoWay}"
+                                         KeyDown="MegaQueryBlock_KeyDown">
+                                    <!-- Keep the field on the container fill (no focused/hover black swap)
+                                         and drop its own focus underline; the container owns both. -->
+                                    <TextBox.Resources>
+                                        <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+                                        <SolidColorBrush x:Key="TextControlBackground" Color="Transparent"/>
+                                        <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent"/>
+                                        <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent"/>
+                                        <!-- Fluent dims placeholders to 0.5; WinUI showed them at full secondary-text brightness. -->
+                                        <x:Double x:Key="TextControlPlaceholderOpacity">1</x:Double>
+                                    </TextBox.Resources>
+                                </TextBox>
+                                <Button x:Name="MegaFindButton"
+                                        Grid.Column="1"
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Stretch"
+                                        CornerRadius="0"
+                                        BorderThickness="0"
+                                        Background="Transparent"
+                                        automation:AutomationProperties.Name="{t:Translate Search for packages}"
+                                        Command="{Binding SubmitSearch}">
+                                    <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/search.svg" Width="40" Height="40"/>
+                                </Button>
+                            </Grid>
+                            <!-- WinUI focus underline: accent line across the bottom of the whole box -->
+                            <Border x:Name="MegaQueryUnderline"
+                                    VerticalAlignment="Bottom"
+                                    Height="2"
+                                    Margin="1,0,1,0"
+                                    IsHitTestVisible="False"/>
+                        </Panel>
                     </Border>
                 </Grid>
 
@@ -783,8 +943,7 @@
 
     <!-- ==================== FOOTER STATUS BAR ==================== -->
     <Border Grid.Row="3" Margin="0,-4,0,-8" VerticalAlignment="Center"
-            BorderThickness="0,1,0,0"
-            BorderBrush="{DynamicResource AppBorderBrush}"
+            BorderThickness="0"
             Padding="0,4,0,0">
         <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
 
@@ -795,15 +954,11 @@
                         VerticalAlignment="Center">
                 <TextBlock x:Name="OrderByLabel" Text="{t:Translate Order by:}" FontSize="13" VerticalAlignment="Center"/>
                 <Button x:Name="OrderByButton"
-                        Padding="8,3"
-                        CornerRadius="4"
-                        Background="Transparent"
-                        BorderThickness="1"
-                        BorderBrush="{DynamicResource AppBorderBrush}"
+                        Classes="dropdown-trigger"
                         automation:AutomationProperties.LabeledBy="{Binding #OrderByLabel}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="{Binding SortFieldName}" VerticalAlignment="Center" FontSize="13"/>
-                        <Path Data="M 0,0 L 4,4 L 8,0"
+                        <TextBlock Text="{Binding SortFieldName}" VerticalAlignment="Center" FontSize="14"/>
+                        <Path Data="M 0,0 L 5,5 L 10,0"
                               Stroke="{DynamicResource TextFillColorPrimaryBrush}"
                               StrokeThickness="1.5"
                               StrokeJoin="Miter"
@@ -845,45 +1000,48 @@
                             <StackPanel Orientation="Horizontal"/>
                         </ItemsPanelTemplate>
                     </ListBox.ItemsPanel>
-                    <ListBoxItem x:Name="Selector_List" Padding="8,3" ToolTip.Tip="List"
+                    <ListBoxItem x:Name="Selector_List" Classes="segment-item" Padding="8,4,8,8" ToolTip.Tip="List"
                                  automation:AutomationProperties.Name="List">
-                        <Grid Width="16" Height="16"
-                              automation:AutomationProperties.AccessibilityView="Raw">
-                            <!-- bullets -->
-                            <Path Data="M 3,3 m -1.2,0 a 1.2,1.2 0 1,0 2.4,0 a 1.2,1.2 0 1,0 -2.4,0
-                                        M 3,8 m -1.2,0 a 1.2,1.2 0 1,0 2.4,0 a 1.2,1.2 0 1,0 -2.4,0
-                                        M 3,13 m -1.2,0 a 1.2,1.2 0 1,0 2.4,0 a 1.2,1.2 0 1,0 -2.4,0"
-                                  Fill="{DynamicResource TextFillColorPrimaryBrush}"/>
-                            <!-- lines -->
-                            <Path Data="M 6,3 H 14 M 6,8 H 14 M 6,13 H 14"
-                                  Stroke="{DynamicResource TextFillColorPrimaryBrush}"
-                                  StrokeThickness="1.5"
-                                  StrokeLineCap="Round"
-                                  Fill="Transparent"/>
-                        </Grid>
+                        <Viewbox Width="18" Height="18" automation:AutomationProperties.AccessibilityView="Raw">
+                            <Grid Width="16" Height="16">
+                                <!-- bullets -->
+                                <Path Data="M 3,3 m -1.2,0 a 1.2,1.2 0 1,0 2.4,0 a 1.2,1.2 0 1,0 -2.4,0
+                                            M 3,8 m -1.2,0 a 1.2,1.2 0 1,0 2.4,0 a 1.2,1.2 0 1,0 -2.4,0
+                                            M 3,13 m -1.2,0 a 1.2,1.2 0 1,0 2.4,0 a 1.2,1.2 0 1,0 -2.4,0"
+                                      Fill="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                <!-- lines -->
+                                <Path Data="M 6,3 H 14 M 6,8 H 14 M 6,13 H 14"
+                                      Stroke="{DynamicResource TextFillColorPrimaryBrush}"
+                                      StrokeThickness="1.5"
+                                      StrokeLineCap="Round"
+                                      Fill="Transparent"/>
+                            </Grid>
+                        </Viewbox>
                     </ListBoxItem>
-                    <ListBoxItem x:Name="Selector_Grid" Padding="8,3" ToolTip.Tip="Grid"
+                    <ListBoxItem x:Name="Selector_Grid" Classes="segment-item" Padding="8,4,8,8" ToolTip.Tip="Grid"
                                  automation:AutomationProperties.Name="Grid">
                         <!-- Two rows: open "[" bracket on the left + two stacked lines on the right -->
-                        <Path Width="16" Height="16"
-                              Data="M 4,2 H 2 V 6 H 4   M 6,3 H 14   M 6,5 H 14
-                                    M 4,10 H 2 V 14 H 4 M 6,11 H 14  M 6,13 H 14"
-                              Stroke="{DynamicResource TextFillColorPrimaryBrush}"
-                              StrokeThickness="1"
-                              StrokeLineCap="Round"
-                              StrokeJoin="Miter"
-                              Fill="Transparent"
-                              automation:AutomationProperties.AccessibilityView="Raw"/>
+                        <Viewbox Width="18" Height="18" automation:AutomationProperties.AccessibilityView="Raw">
+                            <Path Width="16" Height="16"
+                                  Data="M 4,2 H 2 V 6 H 4   M 6,3 H 14   M 6,5 H 14
+                                        M 4,10 H 2 V 14 H 4 M 6,11 H 14  M 6,13 H 14"
+                                  Stroke="{DynamicResource TextFillColorPrimaryBrush}"
+                                  StrokeThickness="1"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Miter"
+                                  Fill="Transparent"/>
+                        </Viewbox>
                     </ListBoxItem>
-                    <ListBoxItem x:Name="Selector_Icons" Padding="8,3" ToolTip.Tip="Icons"
+                    <ListBoxItem x:Name="Selector_Icons" Classes="segment-item" Padding="8,4,8,8" ToolTip.Tip="Icons"
                                  automation:AutomationProperties.Name="Icons">
                         <!-- 2x2 hollow squares (WinUI IconView) with extra gap between -->
-                        <Path Width="16" Height="16"
-                              Data="M 2,2 H 6 V 6 H 2 Z M 10,2 H 14 V 6 H 10 Z M 2,10 H 6 V 14 H 2 Z M 10,10 H 14 V 14 H 10 Z"
-                              Stroke="{DynamicResource TextFillColorPrimaryBrush}"
-                              StrokeThickness="1.3"
-                              Fill="Transparent"
-                              automation:AutomationProperties.AccessibilityView="Raw"/>
+                        <Viewbox Width="18" Height="18" automation:AutomationProperties.AccessibilityView="Raw">
+                            <Path Width="16" Height="16"
+                                  Data="M 2,2 H 6 V 6 H 2 Z M 10,2 H 14 V 6 H 10 Z M 2,10 H 6 V 14 H 2 Z M 10,10 H 14 V 14 H 10 Z"
+                                  Stroke="{DynamicResource TextFillColorPrimaryBrush}"
+                                  StrokeThickness="1.3"
+                                  Fill="Transparent"/>
+                        </Viewbox>
                     </ListBoxItem>
                 </ListBox>
             </StackPanel>

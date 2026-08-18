@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Automation;
@@ -63,12 +64,28 @@ public partial class MainWindowViewModel : ViewModelBase
     public AvaloniaList<OperationViewModel> Operations => AvaloniaOperationRegistry.OperationViewModels;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowFailedOperationBadge))]
+    [NotifyPropertyChangedFor(nameof(OperationsSplitterVisible))]
     private bool _operationsPanelVisible;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowFailedOperationBadge))]
+    [NotifyPropertyChangedFor(nameof(OperationsSplitterVisible))]
     private bool _operationsPanelExpanded = true;
 
+    public bool OperationsSplitterVisible => OperationsPanelVisible && OperationsPanelExpanded;
+
     private readonly List<AbstractOperation> _operationBatch = new();
+    private bool _batchSummaryShown;
+
+    public bool HasFailedOperations => Operations.Any(o => o.Operation.Status is OperationStatus.Failed);
+
+    public OperationViewModel? FirstFailedOperation =>
+        Operations.FirstOrDefault(o => o.Operation.Status is OperationStatus.Failed);
+
+    // Red badge on the chevron when the panel is collapsed and an operation failed
+    // (failures no longer pop a toast; expanded, the failure is already visible).
+    public bool ShowFailedOperationBadge => OperationsPanelVisible && !OperationsPanelExpanded && HasFailedOperations;
 
     public string OperationsHeaderText
     {
@@ -91,6 +108,7 @@ public partial class MainWindowViewModel : ViewModelBase
             foreach (var old in _operationBatch)
                 old.StatusChanged -= OnOperationStatusChanged;
             _operationBatch.Clear();
+            _batchSummaryShown = false;
         }
 
         if (!_operationBatch.Contains(op))
@@ -101,7 +119,42 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     private void OnOperationStatusChanged(object? sender, OperationStatus e)
-        => Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(OperationsHeaderText)));
+        => Dispatcher.UIThread.Post(() =>
+        {
+            OnPropertyChanged(nameof(OperationsHeaderText));
+            OnPropertyChanged(nameof(HasFailedOperations));
+            OnPropertyChanged(nameof(ShowFailedOperationBadge));
+            MaybeShowBatchSummaryToast();
+        });
+
+    // Opt-in: one toast summarizing the batch once every operation in it has finished.
+    private void MaybeShowBatchSummaryToast()
+    {
+        if (_batchSummaryShown || _operationBatch.Count == 0) return;
+        if (!Settings.Get(Settings.K.ShowOperationSummaryNotifications)) return;
+        if (_operationBatch.Any(o => o.Status is OperationStatus.InQueue or OperationStatus.Running)) return;
+
+        _batchSummaryShown = true;
+
+        int total = _operationBatch.Count;
+        int failed = _operationBatch.Count(o => o.Status is OperationStatus.Failed);
+        int succeeded = _operationBatch.Count(o => o.Status is OperationStatus.Succeeded);
+
+        var toast = new InfoBarViewModel
+        {
+            Title = failed > 0
+                ? CoreTools.Translate("Operations finished with errors")
+                : CoreTools.Translate("Operations completed"),
+            Message = failed > 0
+                ? CoreTools.Translate("{0} of {1} succeeded, {2} failed", succeeded, total, failed)
+                : CoreTools.Translate("{0} of {1} operations completed", succeeded, total),
+            Severity = failed > 0 ? InfoBarSeverity.Error : InfoBarSeverity.Success,
+            IsClosable = true,
+            IsOpen = true,
+        };
+        toast.OnClosed = () => DismissToast(toast);
+        ShowToast(toast);
+    }
 
     [RelayCommand]
     private void ToggleOperationsPanel() => OperationsPanelExpanded = !OperationsPanelExpanded;
@@ -140,6 +193,67 @@ public partial class MainWindowViewModel : ViewModelBase
         if (_syncingSearch) return;
         if (CurrentPageContent is AbstractPackagesPage page)
             page.ViewModel.GlobalQueryText = value;
+        else if (CurrentPageContent is SettingsBasePage)
+            UpdateSettingsSuggestions(value);
+        else if (CurrentPageContent is Views.Pages.LogPages.OperationHistoryPage historyPage)
+            historyPage.ApplyQuery(value);
+    }
+
+    public void ClearAllSearchQueries()
+    {
+        DiscoverPage.ViewModel.ClearSearchQuery();
+        UpdatesPage.ViewModel.ClearSearchQuery();
+        InstalledPage.ViewModel.ClearSearchQuery();
+        GlobalSearchText = "";
+    }
+
+    // ─── Settings search suggestions ───────────────────────────────────────────
+    public ObservableCollection<SettingsSearchResult> SettingsSuggestions { get; } = new();
+
+    [ObservableProperty]
+    private bool _isSuggestionsOpen;
+
+    [ObservableProperty]
+    private int _selectedSuggestionIndex = -1;
+
+    private void UpdateSettingsSuggestions(string query)
+    {
+        SettingsSuggestions.Clear();
+        foreach (var r in SettingsSearchIndex.Search(query))
+            SettingsSuggestions.Add(r);
+
+        SelectedSuggestionIndex = SettingsSuggestions.Count > 0 ? 0 : -1;
+        IsSuggestionsOpen = SettingsSuggestions.Count > 0;
+    }
+
+    public void MoveSuggestionSelection(int delta)
+    {
+        if (SettingsSuggestions.Count == 0) return;
+        int next = SelectedSuggestionIndex + delta;
+        SelectedSuggestionIndex = Math.Clamp(next, 0, SettingsSuggestions.Count - 1);
+    }
+
+    public void CloseSuggestions()
+    {
+        IsSuggestionsOpen = false;
+        SelectedSuggestionIndex = -1;
+        SettingsSuggestions.Clear();
+    }
+
+    [RelayCommand]
+    public void SelectSuggestion(SettingsSearchResult? result)
+    {
+        if (result is null) return;
+
+        _syncingSearch = true;
+        GlobalSearchText = "";
+        _syncingSearch = false;
+        CloseSuggestions();
+
+        if (result.Manager is not null)
+            OpenManagerSettings(result.Manager);
+        else if (result.PageType is not null)
+            OpenSettingsPage(result.PageType, result.Anchor);
     }
 
     private void SubscribeToPageViewModel(AbstractPackagesPage? page)
@@ -169,11 +283,125 @@ public partial class MainWindowViewModel : ViewModelBase
         ? $"UniGetUI {CoreTools.Translate("version {0}", CoreData.VersionName)}"
         : "UniGetUI";
 
-    // ─── Banners ─────────────────────────────────────────────────────────────
+    // ─── Notifications (bottom-right toasts) ───────────────────────────────────
+    // Persistent banners kept as singletons; RegisterBannerToast mirrors their IsOpen into Toasts.
     public InfoBarViewModel UpdatesBanner { get; } = new() { Severity = InfoBarSeverity.Success };
-    public InfoBarViewModel ErrorBanner { get; } = new() { Severity = InfoBarSeverity.Error };
     public InfoBarViewModel WinGetWarningBanner { get; } = new() { Severity = InfoBarSeverity.Warning };
     public InfoBarViewModel TelemetryWarner { get; } = new() { Severity = InfoBarSeverity.Informational };
+
+    // Oldest first (rendered bottom-up so the newest sits nearest the corner).
+    public ObservableCollection<InfoBarViewModel> Toasts { get; } = new();
+    private readonly Dictionary<InfoBarViewModel, DispatcherTimer> _toastTimers = new();
+    private const int MaxVisibleToasts = 5;
+
+    // A toast with an action button stays until acted on; everything else auto-dismisses.
+    private static bool IsSticky(InfoBarViewModel t) => !string.IsNullOrEmpty(t.ActionButtonText);
+    private static TimeSpan ToastDuration(InfoBarViewModel t)
+        => t.Severity is InfoBarSeverity.Error or InfoBarSeverity.Warning
+            ? TimeSpan.FromSeconds(8)
+            : TimeSpan.FromSeconds(5);
+
+    public void ShowToast(InfoBarViewModel toast)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => ShowToast(toast));
+            return;
+        }
+        if (!Toasts.Contains(toast))
+        {
+            Toasts.Add(toast);
+            AnnounceToast(toast);
+        }
+        TrimToastStack(keep: toast);
+        ArmToastTimer(toast);
+    }
+
+    // Keep the stack from overflowing the screen: drop the oldest auto-dismissing toasts,
+    // but never a sticky (action-button) one or the toast just shown.
+    private void TrimToastStack(InfoBarViewModel keep)
+    {
+        while (Toasts.Count > MaxVisibleToasts)
+        {
+            var oldest = Toasts.FirstOrDefault(t => t != keep && !IsSticky(t));
+            if (oldest is null) break;
+            DismissToast(oldest);
+        }
+    }
+
+    // Surface the toast to screen readers via the live region (assertive for errors so it
+    // interrupts, polite otherwise) — the toast's own automation name isn't announced on its own.
+    private static void AnnounceToast(InfoBarViewModel toast)
+    {
+        string message = string.IsNullOrEmpty(toast.Message)
+            ? toast.Title
+            : $"{toast.Title}. {toast.Message}";
+        AccessibilityAnnouncementService.Announce(
+            message,
+            toast.Severity is InfoBarSeverity.Error
+                ? AutomationLiveSetting.Assertive
+                : AutomationLiveSetting.Polite);
+    }
+
+    public void DismissToast(InfoBarViewModel toast)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => DismissToast(toast));
+            return;
+        }
+        DisposeToastTimer(toast);
+        Toasts.Remove(toast);
+    }
+
+    // Pause the auto-dismiss countdown while the pointer hovers a toast; restart it on leave.
+    public void PauseToast(InfoBarViewModel toast)
+    {
+        if (_toastTimers.TryGetValue(toast, out var timer)) timer.Stop();
+    }
+
+    public void ResumeToast(InfoBarViewModel toast)
+    {
+        if (_toastTimers.TryGetValue(toast, out var timer)) { timer.Stop(); timer.Start(); }
+    }
+
+    private void ArmToastTimer(InfoBarViewModel toast)
+    {
+        DisposeToastTimer(toast);
+        if (IsSticky(toast))
+            return;
+
+        var timer = new DispatcherTimer { Interval = ToastDuration(toast) };
+        timer.Tick += (_, _) => toast.IsOpen = false;
+        _toastTimers[toast] = timer;
+        timer.Start();
+    }
+
+    private void DisposeToastTimer(InfoBarViewModel toast)
+    {
+        if (_toastTimers.Remove(toast, out var timer))
+            timer.Stop();
+    }
+
+    // Mirrors a persistent banner's IsOpen into Toasts so code that just flips IsOpen keeps working.
+    private void RegisterBannerToast(InfoBarViewModel banner)
+    {
+        banner.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(InfoBarViewModel.IsOpen))
+            {
+                if (banner.IsOpen) ShowToast(banner);
+                else DismissToast(banner);
+            }
+            // Content can change in place while the banner stays open (the updater cycles
+            // statuses on the same banner, finally adding the "Update now" action); re-arm so
+            // stickiness/countdown track the new content instead of a stale timer dismissing it.
+            else if (banner.IsOpen && Toasts.Contains(banner))
+            {
+                ArmToastTimer(banner);
+            }
+        };
+    }
 
     // ─── Constructor ─────────────────────────────────────────────────────────
     [RelayCommand]
@@ -182,6 +410,11 @@ public partial class MainWindowViewModel : ViewModelBase
     public MainWindowViewModel()
     {
         AccessibilityAnnouncementService.AnnouncementRequested += OnAnnouncementRequested;
+
+        // Wire before the blocks below flip the banners' IsOpen flags.
+        RegisterBannerToast(UpdatesBanner);
+        RegisterBannerToast(WinGetWarningBanner);
+        RegisterBannerToast(TelemetryWarner);
 
         DiscoverPage = new DiscoverSoftwarePage();
         UpdatesPage = new SoftwareUpdatesPage();
@@ -199,9 +432,16 @@ public partial class MainWindowViewModel : ViewModelBase
             if (loader is null) continue;
             var pt = pageType;
             loader.FinishedLoading += (_, _) =>
+            {
                 Dispatcher.UIThread.Post(() => Sidebar.SetNavItemLoading(pt, false));
+                // Return the load's memory to the OS once it settles.
+                Infrastructure.MemoryTrimmer.RequestTrimAfterIdle();
+            };
             loader.StartedLoading += (_, _) =>
+            {
                 Dispatcher.UIThread.Post(() => Sidebar.SetNavItemLoading(pt, true));
+                Infrastructure.MemoryTrimmer.CancelPending();
+            };
             Sidebar.SetNavItemLoading(pt, loader.IsLoading);
         }
 
@@ -264,6 +504,8 @@ public partial class MainWindowViewModel : ViewModelBase
                     AddToBatch(vm.Operation);
             OperationsPanelVisible = Operations.Count > 0;
             OnPropertyChanged(nameof(OperationsHeaderText));
+            OnPropertyChanged(nameof(HasFailedOperations));
+            OnPropertyChanged(nameof(ShowFailedOperationBadge));
         };
 
         if (OperatingSystem.IsWindows() && CoreTools.IsAdministrator() && !Settings.Get(Settings.K.AlreadyWarnedAboutAdmin))
@@ -341,6 +583,13 @@ public partial class MainWindowViewModel : ViewModelBase
         NavigateTo(type);
     }
 
+    private void ReleaseWebViewPage(Control? leftPage)
+    {
+        if (leftPage is null) return;
+        if (ReferenceEquals(leftPage, HelpPage)) { HelpPage?.Dispose(); HelpPage = null; }
+        else if (ReferenceEquals(leftPage, ReleaseNotesPage)) { ReleaseNotesPage?.Dispose(); ReleaseNotesPage = null; }
+    }
+
     private Control GetPageForType(PageType type) =>
         type switch
         {
@@ -408,6 +657,10 @@ public partial class MainWindowViewModel : ViewModelBase
         _oldPage = _currentPage;
         _currentPage = newPage_t;
 
+        // #5129: Help/ReleaseNotes each host a WebView2 that the control never releases on
+        // detach. Drop the page when leaving so its WebView2 process cluster gets freed.
+        ReleaseWebViewPage(oldPage);
+
         if (toHistory && _oldPage is not PageType.Null)
         {
             NavigationHistory.Add(_oldPage);
@@ -416,6 +669,8 @@ public partial class MainWindowViewModel : ViewModelBase
 
         (newPage as AbstractPackagesPage)?.FilterPackages();
         (newPage as IEnterLeaveListener)?.OnEnter();
+
+        CloseSuggestions();
 
         if (newPage is ISearchBoxPage newSPage)
         {
@@ -483,10 +738,10 @@ public partial class MainWindowViewModel : ViewModelBase
         if (manager is not null) ManagersPage?.NavigateTo(manager);
     }
 
-    public void OpenSettingsPage(Type page)
+    public void OpenSettingsPage(Type page, string? anchor = null)
     {
         NavigateTo(PageType.Settings);
-        SettingsPage?.NavigateTo(page);
+        SettingsPage?.NavigateTo(page, anchor);
     }
 
     public void ShowHelp(string uriAttachment = "")
@@ -536,6 +791,16 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     public void SubmitGlobalSearch()
     {
+        // On settings/managers the box drives the suggestion dropdown: jump to the highlighted
+        // result (falling back to the top one).
+        if (CurrentPageContent is SettingsBasePage)
+        {
+            if (SettingsSuggestions.Count == 0) return;
+            int i = SelectedSuggestionIndex >= 0 ? SelectedSuggestionIndex : 0;
+            SelectSuggestion(SettingsSuggestions[i]);
+            return;
+        }
+
         if (CurrentPageContent is ISearchBoxPage page)
             page.SearchBox_QuerySubmitted(this, EventArgs.Empty);
     }

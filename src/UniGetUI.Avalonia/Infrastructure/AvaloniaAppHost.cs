@@ -1,5 +1,9 @@
+using System.IO;
 using System.Runtime.InteropServices;
 using Avalonia;
+#if WINDOWS
+using Avalonia.Win32;
+#endif
 using Avalonia.Threading;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
@@ -11,6 +15,7 @@ namespace UniGetUI.Avalonia.Infrastructure;
 public static class AvaloniaAppHost
 {
     private static Mutex? _singleInstanceMutex;
+    private static FileStream? _singleInstanceLock;
 
     public static event Action<string[]>? SecondaryInstanceArgsReceived;
 
@@ -83,9 +88,22 @@ public static class AvaloniaAppHost
     }
 
     public static AppBuilder BuildAvaloniaApp()
-        => AppBuilder.Configure<App>()
-            .UsePlatformDetect()
-            .LogToTrace();
+    {
+        AppBuilder builder = AppBuilder.Configure<App>()
+            .UsePlatformDetect();
+
+#if WINDOWS
+        if (WindowsAvaloniaRenderingPolicy.ShouldUseSoftwareRendering)
+        {
+            builder = builder.With(new Win32PlatformOptions
+            {
+                RenderingMode = [Win32RenderingMode.Software],
+            });
+        }
+#endif
+
+        return builder.LogToTrace();
+    }
 
     private static bool ShouldPrepareCliConsole(IReadOnlyList<string> args)
     {
@@ -94,9 +112,19 @@ public static class AvaloniaAppHost
 
     private static bool TryRegisterSingleInstance(string[] args)
     {
-        if (!OperatingSystem.IsWindows())
-            return true;
+        // macOS uses a file lock instead of a Mutex: named Mutexes are not shared across processes
+        // under NativeAOT (what ships), so they can't detect the first instance.
+        if (OperatingSystem.IsWindows())
+            return TryRegisterWithMutex(args);
 
+        if (OperatingSystem.IsMacOS())
+            return TryRegisterWithFileLock(args);
+
+        return true;
+    }
+
+    private static bool TryRegisterWithMutex(string[] args)
+    {
         _singleInstanceMutex = new Mutex(
             initiallyOwned: true,
             name: CoreData.MainWindowIdentifier,
@@ -105,9 +133,7 @@ public static class AvaloniaAppHost
 
         if (createdNew)
         {
-            SingleInstanceRedirector.StartListener(args =>
-                SecondaryInstanceArgsReceived?.Invoke(args)
-            );
+            SingleInstanceRedirector.StartListener(a => SecondaryInstanceArgsReceived?.Invoke(a));
             return true;
         }
 
@@ -119,6 +145,29 @@ public static class AvaloniaAppHost
         }
 
         Logger.Warn("Could not redirect to the existing Avalonia instance; starting a new one");
+        return true;
+    }
+
+    private static bool TryRegisterWithFileLock(string[] args)
+    {
+        // FileShare.None is an flock() advisory lock the OS releases on exit (even on crash), so the
+        // lock file never goes stale. The static FileStream holds the lock for the process lifetime.
+        string lockPath = Path.Combine(Path.GetTempPath(), $"UniGetUI_{Environment.UserName}.lock");
+        try
+        {
+            _singleInstanceLock = new FileStream(
+                lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (IOException)
+        {
+            if (SingleInstanceRedirector.TryForwardToFirstInstance(args))
+                return false;
+
+            Logger.Warn("Could not redirect to the existing Avalonia instance; starting a new one");
+            return true;
+        }
+
+        SingleInstanceRedirector.StartListener(a => SecondaryInstanceArgsReceived?.Invoke(a));
         return true;
     }
 }

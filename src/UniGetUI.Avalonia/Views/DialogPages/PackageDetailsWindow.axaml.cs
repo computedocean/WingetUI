@@ -24,7 +24,7 @@ using UniGetUI.PackageOperations;
 
 namespace UniGetUI.Avalonia.Views;
 
-public partial class PackageDetailsWindow : Window
+public partial class PackageDetailsWindow : UniGetUI.Avalonia.Views.DialogPages.ImmersiveDialog
 {
     private const double WideThreshold = 950;
     private const string ContributeUrl = "https://github.com/Devolutions/UniGetUI";
@@ -44,7 +44,6 @@ public partial class PackageDetailsWindow : Window
         _vm = new PackageDetailsViewModel(package, operation);
         DataContext = _vm;
         InitializeComponent();
-        UniGetUI.Avalonia.Infrastructure.MicaWindowHelper.Apply(this);
 
         // Honor the OS "reduce motion" preference: drop the screenshot slide animation.
         if (MotionPreference.ReducedMotion)
@@ -96,6 +95,11 @@ public partial class PackageDetailsWindow : Window
     {
         _installOpts = await InstallOptionsFactory.LoadForPackageAsync(_vm.Package);
         _installVm = new InstallOptionsViewModel(_vm.Package, _vm.OperationRole, _installOpts);
+        _installVm.CloseRequested += (_, _) =>
+        {
+            _ = SaveInstallOptionsAsync();
+            Close();
+        };
         var embed = new InstallOptionsControl { DataContext = _installVm };
         InstallOptionsHolder.Content = embed;
     }
@@ -158,7 +162,6 @@ public partial class PackageDetailsWindow : Window
             MainGrid.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star);
 
             ScreenshotsBorder.Height = _vm.HasScreenshots ? 320 : 150;
-            InstallOptionsExpander.IsExpanded = true;
         }
         else
         {
@@ -169,7 +172,6 @@ public partial class PackageDetailsWindow : Window
             MainGrid.ColumnDefinitions[1].Width = new GridLength(0);
 
             ScreenshotsBorder.Height = _vm.HasScreenshots ? 225 : 130;
-            InstallOptionsExpander.IsExpanded = false;
         }
     }
 

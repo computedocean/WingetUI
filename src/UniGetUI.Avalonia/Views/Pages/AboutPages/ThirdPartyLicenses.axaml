@@ -13,18 +13,22 @@
         <StackPanel Orientation="Vertical" Spacing="4" Margin="16,8">
 
             <TextBlock Text="{t:Translate UniGetUI License}"
+                       FontFamily="Segoe UI Variable Display"
                        FontSize="24"
                        FontWeight="Bold"/>
 
             <TextBlock Text="{t:Translate Text='Using UniGetUI implies the acceptation of the MIT License'}"
+                       FontSize="14"
                        TextWrapping="Wrap"/>
 
             <TextBlock Text="{t:Translate Third-party licenses}"
+                       FontFamily="Segoe UI Variable Display"
                        FontSize="24"
                        FontWeight="Bold"
                        Margin="0,10,0,0"/>
 
             <TextBlock Text="{Binding LicensesIntro}"
+                       FontSize="14"
                        TextWrapping="Wrap"
                        Margin="0,0,0,8"/>
 
@@ -35,6 +39,7 @@
                               Margin="0,2">
                             <TextBlock Grid.Column="0"
                                        Text="{Binding Name}"
+                                       FontSize="14"
                                        VerticalAlignment="Center"/>
                             <Button Grid.Column="1"
                                     Tag="{Binding LicenseURL}"
@@ -45,6 +50,7 @@
                                     HorizontalAlignment="Center"
                                     automation:AutomationProperties.Name="{Binding License}">
                                 <TextBlock Classes="hyperlink"
+                                           FontSize="14"
                                            Text="{Binding License}"
                                            automation:AutomationProperties.AccessibilityView="Raw"/>
                             </Button>
@@ -57,6 +63,7 @@
                                     HorizontalAlignment="Right"
                                     automation:AutomationProperties.Name="{Binding HomepageText}">
                                 <TextBlock Classes="hyperlink"
+                                           FontSize="14"
                                            Text="{Binding HomepageText}"
                                            automation:AutomationProperties.AccessibilityView="Raw"/>
                             </Button>

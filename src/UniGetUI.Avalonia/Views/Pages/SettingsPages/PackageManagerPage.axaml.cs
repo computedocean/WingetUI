@@ -184,7 +184,7 @@ public sealed partial class PackageManagerPage : UserControl, ISettingsPage
         // ── Current path card
         var copyIcon = new SvgIcon
         {
-            Path = "avares://UniGetUI.Avalonia/Assets/Symbols/copy.svg",
+            Path = "avares://UniGetUI/Assets/Symbols/copy.svg",
             Width = 24,
             Height = 24,
         };
@@ -206,7 +206,7 @@ public sealed partial class PackageManagerPage : UserControl, ISettingsPage
         };
         var pathLabel = new TextBlock
         {
-            FontFamily = new FontFamily("Courier New"),
+            FontFamily = new FontFamily("Consolas,Cascadia Mono,Menlo,monospace"),
             FontSize = 14,
             TextWrapping = TextWrapping.Wrap,
         };
@@ -492,6 +492,17 @@ public sealed partial class PackageManagerPage : UserControl, ISettingsPage
                 {
                     Text = CoreTools.Translate("Download full package manifest alongside the installer"),
                     SettingName = CoreSettings.K.WinGetDownloadFullManifest,
+                    CornerRadius = new CornerRadius(0),
+                    BorderThickness = new Thickness(1, 0, 1, 1),
+                });
+
+                ExtraControls.Children.Add(new TextboxCard
+                {
+                    Text = CoreTools.Translate("Stop offering an update that never applies after this many attempts"),
+                    Description = CoreTools.Translate("When WinGet keeps offering an update that reports success without ever changing the installed version, stop offering it after this many attempts, until a newer version is available (default: 3)"),
+                    SettingName = CoreSettings.K.WinGetStuckUpgradeThreshold,
+                    IsNumericOnly = true,
+                    Placeholder = "3",
                     CornerRadius = new CornerRadius(0, 0, 8, 8),
                     BorderThickness = new Thickness(1, 0, 1, 1),
                 });
@@ -531,12 +542,22 @@ public sealed partial class PackageManagerPage : UserControl, ISettingsPage
                 scoopCleanup.Click += (_, _) => ViewModel.ScoopCleanupCommand.Execute(null);
                 ExtraControls.Children.Add(scoopCleanup);
 
+                // Clear download cache on launch
+                ExtraControls.Children.Add(new CheckboxCard
+                {
+                    CornerRadius = new CornerRadius(0),
+                    BorderThickness = new Thickness(1, 0, 1, 0),
+                    SettingName = CoreSettings.K.EnableScoopCleanupCache,
+                    Text = CoreTools.AutoTranslated("Clear Scoop download cache on launch"),
+                });
+
+                // Clean up older app versions on launch
                 ExtraControls.Children.Add(new CheckboxCard
                 {
                     CornerRadius = new CornerRadius(0, 0, 8, 8),
                     BorderThickness = new Thickness(1, 0, 1, 1),
-                    SettingName = CoreSettings.K.EnableScoopCleanup,
-                    Text = CoreTools.AutoTranslated("Enable Scoop cleanup on launch"),
+                    SettingName = CoreSettings.K.EnableScoopCleanupApps,
+                    Text = CoreTools.AutoTranslated("Clean up older Scoop app versions on launch"),
                 });
                 break;
 

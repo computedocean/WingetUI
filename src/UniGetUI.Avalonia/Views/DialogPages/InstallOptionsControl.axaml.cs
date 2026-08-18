@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Avalonia.ViewModels;
 
 namespace UniGetUI.Avalonia.Views.DialogPages;
@@ -31,5 +32,14 @@ public partial class InstallOptionsControl : UserControl
     {
         if (e.Key is Key.Return or Key.Enter or Key.OemComma)
             ViewModel.AddKillProcessCommand.Execute(null);
+    }
+
+    // Opens a terminal with the generated command pre-typed at the prompt, ready to run by hand.
+    private async void Manual_Click(object? sender, RoutedEventArgs e)
+    {
+        var command = await ViewModel.BuildCurrentCommandAsync();
+        if (string.IsNullOrWhiteSpace(command)) return;
+
+        await ManualInstallHelper.LaunchManualAsync(command);
     }
 }

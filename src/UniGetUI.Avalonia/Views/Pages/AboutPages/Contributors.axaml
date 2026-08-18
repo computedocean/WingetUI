@@ -13,10 +13,12 @@
         <StackPanel Orientation="Vertical" Spacing="4" Margin="16,8">
 
             <TextBlock Text="{t:Translate Contributors}"
+                       FontFamily="Segoe UI Variable Display"
                        FontSize="24"
                        FontWeight="Bold"/>
 
             <TextBlock Text="{Binding ThanksText}"
+                       FontSize="14"
                        TextWrapping="Wrap"
                        Margin="0,0,0,8"/>
 
@@ -41,6 +43,7 @@
 
                             <TextBlock Grid.Column="1"
                                        Text="{Binding Name}"
+                                       FontSize="14"
                                        VerticalAlignment="Center"/>
 
                             <Button Grid.Column="2"
@@ -52,6 +55,7 @@
                                     Padding="4,0"
                                     automation:AutomationProperties.Name="{Binding Name}">
                                 <TextBlock Classes="hyperlink"
+                                           FontSize="14"
                                            Text="{t:Translate View GitHub Profile}"
                                            automation:AutomationProperties.AccessibilityView="Raw"/>
                             </Button>

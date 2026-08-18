@@ -1,25 +1,33 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Avalonia.ViewModels;
 
 namespace UniGetUI.Avalonia.Views.Controls;
 
 public partial class InfoBar : UserControl
 {
-    // Icon path data for each severity
-    private const string InfoPath = "M12,2A10,10,0,1,0,22,12,10,10,0,0,0,12,2Zm1,15H11V11h2Zm0-8H11V7h2Z";
-    private const string WarningPath = "M12,2,1,21H23Zm1,14H11V14h2Zm0-4H11V9h2Z";
-    private const string ErrorPath = "M12,2A10,10,0,1,0,22,12,10,10,0,0,0,12,2Zm1,13H11V13h2Zm0-6H11V7h2Z";
-    private const string SuccessPath = "M12,2A10,10,0,1,0,22,12,10,10,0,0,0,12,2ZM10,17,5,12l1.41-1.41L10,14.17l7.59-7.59L19,8Z";
+    // Severity glyphs reuse the app's shared round symbols (same SvgIcon-by-path convention
+    // as the rest of the app), tinted with the severity colour.
+    private const string InfoIcon = "avares://UniGetUI/Assets/Symbols/info_round.svg";
+    private const string WarningIcon = "avares://UniGetUI/Assets/Symbols/warning_round.svg";
+    private const string ErrorIcon = "avares://UniGetUI/Assets/Symbols/close_round.svg";
+    private const string SuccessIcon = "avares://UniGetUI/Assets/Symbols/success_round.svg";
 
     public InfoBar()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+
+        // Play the slide-in entrance only when the OS isn't set to minimize motion.
+        if (!MotionPreference.ReducedMotion)
+            BodyBorder.Classes.Add("animate-in");
     }
 
     private InfoBarViewModel? _vm;
+    private IDisposable? _severityStripBinding;
+    private IDisposable? _severityIconBinding;
 
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
@@ -47,26 +55,43 @@ public partial class InfoBar : UserControl
         BodyBorder.Classes.Set("severity-warning", severity == InfoBarSeverity.Warning);
         BodyBorder.Classes.Set("severity-info", severity == InfoBarSeverity.Informational);
 
-        // Strip colour (solid, not theme-sensitive)
-        var stripColor = severity switch
+        _severityStripBinding?.Dispose();
+        _severityIconBinding?.Dispose();
+        _severityStripBinding = null;
+        _severityIconBinding = null;
+
+        Color? stripColor = severity switch
         {
             InfoBarSeverity.Warning => Color.Parse("#F7A800"),
             InfoBarSeverity.Error => Color.Parse("#C42B1C"),
             InfoBarSeverity.Success => Color.Parse("#107C10"),
-            _ => Color.Parse("#0078D4"),
+            _ => null,
         };
-        SeverityStrip.Background = new SolidColorBrush(stripColor);
 
-        // Icon shape
-        SeverityIcon.Data = Geometry.Parse(severity switch
+        SeverityIcon.Path = severity switch
         {
-            InfoBarSeverity.Warning => WarningPath,
-            InfoBarSeverity.Error => ErrorPath,
-            InfoBarSeverity.Success => SuccessPath,
-            _ => InfoPath,
-        });
+            InfoBarSeverity.Warning => WarningIcon,
+            InfoBarSeverity.Error => ErrorIcon,
+            InfoBarSeverity.Success => SuccessIcon,
+            _ => InfoIcon,
+        };
 
-        // Icon foreground (solid, not theme-sensitive)
-        SeverityIcon.Foreground = new SolidColorBrush(stripColor);
+        if (stripColor is { } color)
+        {
+            var brush = new SolidColorBrush(color);
+            SeverityStrip.Background = brush;
+            SeverityIcon.Foreground = brush;
+        }
+        else
+        {
+            SeverityStrip.ClearValue(Border.BackgroundProperty);
+            SeverityIcon.ClearValue(ForegroundProperty);
+            _severityStripBinding = SeverityStrip.Bind(
+                Border.BackgroundProperty,
+                this.GetResourceObservable("AccentFillColorDefaultBrush"));
+            _severityIconBinding = SeverityIcon.Bind(
+                ForegroundProperty,
+                this.GetResourceObservable("AccentFillColorDefaultBrush"));
+        }
     }
 }

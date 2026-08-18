@@ -21,8 +21,10 @@
 .PARAMETER Version
     Version string to stamp into the build (e.g. "3.3.7"). If not provided,
     the current version from SharedAssemblyInfo.cs is used.
-#>
 
+.PARAMETER MaxInstallerCompression
+    Use the strongest Inno Setup compression settings for the installer.
+#>
 [CmdletBinding()]
 param(
     [string] $Configuration = "Release",
@@ -30,6 +32,7 @@ param(
     [string] $OutputPath = (Join-Path $PSScriptRoot ".." "output"),
     [switch] $SkipTests,
     [switch] $SkipInstaller,
+    [switch] $MaxInstallerCompression,
     [string] $Version
 )
 
@@ -38,7 +41,7 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $SrcDir = Join-Path $RepoRoot "src"
 $WindowsSolution = Join-Path $SrcDir "UniGetUI.Windows.slnx"
-$PublishProject = Join-Path $SrcDir "UniGetUI" "UniGetUI.csproj"
+$PublishProject = Join-Path $SrcDir "UniGetUI.Avalonia" "UniGetUI.Avalonia.csproj"
 $BinDir = Join-Path $RepoRoot "unigetui_bin"
 $BuildPropsPath = Join-Path $SrcDir "Directory.Build.props"
 [xml] $BuildProps = Get-Content $BuildPropsPath
@@ -50,7 +53,7 @@ if ([string]::IsNullOrWhiteSpace($PortableTargetFramework) -or [string]::IsNullO
 }
 
 $TargetFramework = "$PortableTargetFramework-windows$WindowsTargetPlatformVersion"
-$PublishDir = Join-Path $SrcDir "UniGetUI" "bin" $Platform $Configuration $TargetFramework "win-$Platform" "publish"
+$PublishDir = Join-Path $SrcDir "UniGetUI.Avalonia" "bin" $Platform $Configuration $TargetFramework "win-$Platform" "publish"
 
 # --- Version stamping ---
 if ($Version) {
@@ -77,9 +80,9 @@ if (-not $SkipTests) {
 Write-Host "`n=== Publishing $Configuration|$Platform ===" -ForegroundColor Cyan
 dotnet clean $WindowsSolution -v m --nologo /p:Platform=$Platform
 
-dotnet publish $PublishProject /noLogo /p:Configuration=$Configuration /p:Platform=$Platform --ignore-failed-sources -v m
+dotnet publish $PublishProject /noLogo /p:Configuration=$Configuration /p:Platform=$Platform -p:RuntimeIdentifier=win-$Platform --ignore-failed-sources -v m
 if ($LASTEXITCODE -ne 0) {
-    throw "dotnet publish WinUI failed with exit code $LASTEXITCODE"
+    throw "dotnet publish Avalonia failed with exit code $LASTEXITCODE"
 }
 
 # --- Stage binaries ---
@@ -87,6 +90,11 @@ if (Test-Path $BinDir) { Remove-Item $BinDir -Recurse -Force }
 New-Item $BinDir -ItemType Directory | Out-Null
 # Move published output into unigetui_bin
 Get-ChildItem $PublishDir | Move-Item -Destination $BinDir -Force
+
+$WindowsAppHostPath = Join-Path $BinDir "UniGetUI.exe"
+if (-not (Test-Path $WindowsAppHostPath)) {
+    throw "Windows app host was not produced at $WindowsAppHostPath"
+}
 
 # Keep smaller symbols for useful local crash source information, and prune oversized ones.
 $MaxShippedPdbSizeBytes = 1MB
@@ -100,9 +108,6 @@ if ($PdbsToRemove.Count -gt 0) {
     $PdbsToRemove | Remove-Item -Force
     Write-Host ("Removed {0} oversized PDBs above {1:N2} MiB ({2:N2} MiB total)." -f $PdbsToRemove.Count, ($MaxShippedPdbSizeBytes / 1MB), ($RemovedPdbBytes / 1MB))
 }
-
-# WingetUI.exe alias for backward compat
-Copy-Item (Join-Path $BinDir "UniGetUI.exe") (Join-Path $BinDir "WingetUI.exe") -Force
 
 # --- Package output ---
 if (Test-Path $OutputPath) { Remove-Item $OutputPath -Recurse -Force }
@@ -141,7 +146,13 @@ if (-not $SkipInstaller) {
             $IssContentNoSign = $IssContentNoSign -Replace '(?m)^SignedUninstaller=yes', 'SignedUninstaller=no'
             Set-Content $IssPath $IssContentNoSign -NoNewline
 
-            & $IsccPath $IssPath /F"$InstallerBaseName" /O"$OutputPath"
+            $IsccArgs = @($IssPath, "/F$InstallerBaseName", "/O$OutputPath")
+            if ($MaxInstallerCompression) {
+                Write-Host "Using lzma/ultra64 installer compression."
+                $IsccArgs = @('/DInstallerCompression=lzma/ultra64') + $IsccArgs
+            }
+
+            & $IsccPath @IsccArgs
             if ($LASTEXITCODE -ne 0) {
                 throw "Inno Setup failed with exit code $LASTEXITCODE"
             }

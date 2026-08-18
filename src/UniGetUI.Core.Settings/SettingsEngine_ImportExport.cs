@@ -34,7 +34,9 @@ public partial class Settings
                 new[]
                 {
                     "OperationHistory",
+                    "OperationHistory.json",
                     "WinGetAlreadyUpgradedPackages.json",
+                    "WinGetUpgradeAttempts.json",
                     "TelemetryClientToken",
                     "CurrentSessionToken",
                 }.Contains(Path.GetFileName(entry))
@@ -57,7 +59,9 @@ public partial class Settings
                 new[]
                 {
                     "OperationHistory",
+                    "OperationHistory.json",
                     "WinGetAlreadyUpgradedPackages.json",
+                    "WinGetUpgradeAttempts.json",
                     "TelemetryClientToken",
                     "CurrentSessionToken",
                 }.Contains(entry.Key)

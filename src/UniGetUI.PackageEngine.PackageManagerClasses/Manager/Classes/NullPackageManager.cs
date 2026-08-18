@@ -1,3 +1,4 @@
+using System.Text;
 using UniGetUI.Core.IconEngine;
 using UniGetUI.Core.Tools;
 using UniGetUI.Interface.Enums;
@@ -19,6 +20,7 @@ namespace UniGetUI.PackageEngine.Classes.Manager
         public ManagerProperties Properties { get; }
         public ManagerCapabilities Capabilities { get; }
         public ManagerStatus Status { get; }
+        public Encoding OutputEncoding => Encoding.UTF8;
         public string Id
         {
             get => string.IsNullOrWhiteSpace(Properties.Id) ? Properties.Name : Properties.Id;
@@ -155,6 +157,12 @@ namespace UniGetUI.PackageEngine.Classes.Manager
             OperationType operation,
             IReadOnlyList<string> processOutput,
             int returnCode
+        ) => throw new NotImplementedException();
+
+        public void ApplyElevationRequirements(
+            IPackage package,
+            InstallOptions options,
+            OperationType operation
         ) => throw new NotImplementedException();
     }
 }

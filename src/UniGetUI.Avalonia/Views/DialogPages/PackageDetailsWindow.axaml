@@ -1,22 +1,36 @@
-<Window xmlns="https://github.com/avaloniaui"
+<dialogs:ImmersiveDialog xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:dialogs="using:UniGetUI.Avalonia.Views.DialogPages"
         xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
         xmlns:vm="using:UniGetUI.Avalonia.ViewModels"
         xmlns:controls="using:UniGetUI.Avalonia.Views.Controls"
         xmlns:t="using:UniGetUI.Avalonia.MarkupExtensions"
         x:Class="UniGetUI.Avalonia.Views.PackageDetailsWindow"
         x:DataType="vm:PackageDetailsViewModel"
-        Width="1000" MinWidth="640"
-        Height="720" MinHeight="420"
-        CanResize="True"
-        ShowInTaskbar="False"
+        MaxWidth="1200"
+        MinWidth="720"
+        MaxHeight="800"
+        MinHeight="480"
         Background="{DynamicResource AppDialogBackground}"
-        WindowStartupLocation="CenterOwner"
-        Title="{Binding PackageName}">
+        Title="{t:Translate Package details}">
 
-    <Window.Styles>
-        <Style Selector="Expander /template/ ToggleButton#ExpanderHeader">
-            <Setter Property="Background" Value="{DynamicResource SettingsCardBackground}"/>
+    <dialogs:ImmersiveDialog.Styles>
+        <Style Selector="Expander#InstallOptionsExpander /template/ ToggleButton#ExpanderHeader">
+            <Setter Property="Background" Value="{DynamicResource InstallOptionsSectionBackground}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <!-- Fluent's Expander template applies direction-specific content borders to its own
+             template borders.  Clear every border owned by this Expander template; borders in
+             the hosted installation-options control are outside this template scope. -->
+        <Style Selector="Expander#InstallOptionsExpander /template/ Border">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Expander#InstallOptionsExpander /template/ ToggleButton#ExpanderHeader:pointerover /template/ Border#ToggleButtonBackground">
+            <Setter Property="Background" Value="{DynamicResource InstallOptionsSectionBackground}"/>
+        </Style>
+        <Style Selector="Expander#InstallOptionsExpander /template/ ToggleButton#ExpanderHeader:pointerover /template/ Border#ExpandCollapseChevronBorder">
+            <Setter Property="Background" Value="{DynamicResource SettingsCardHoverBackground}"/>
         </Style>
 
         <!-- Tag pill -->
@@ -37,6 +51,7 @@
         <!-- Split action button: fused look -->
         <Style Selector="Button.action-main">
             <Setter Property="Height" Value="40"/>
+            <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="CornerRadius" Value="8,0,0,8"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
@@ -47,10 +62,17 @@
             <Setter Property="Width" Value="34"/>
             <Setter Property="Height" Value="40"/>
             <Setter Property="Padding" Value="0"/>
-            <Setter Property="Margin" Value="1,0,0,0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="CornerRadius" Value="0,8,8,0"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.action-main:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource PackageActionHoverBackground}"/>
+        </Style>
+        <Style Selector="Button.action-chevron:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource PackageActionHoverBackground}"/>
         </Style>
 
         <!-- Screenshot pip dots (Button hosting an Ellipse) -->
@@ -97,11 +119,11 @@
         <Style Selector="Border#ScreenshotsBorder:pointerover Button.carousel-nav">
             <Setter Property="Opacity" Value="0.9"/>
         </Style>
-    </Window.Styles>
+    </dialogs:ImmersiveDialog.Styles>
 
     <Grid>
         <!-- Loading indicator across the very top -->
-        <ProgressBar IsIndeterminate="True"
+        <ProgressBar IsIndeterminate="{Binding IsLoading}"
                      IsVisible="{Binding IsLoading}"
                      automation:AutomationProperties.Name="{Binding PackageName}"
                      VerticalAlignment="Top"
@@ -142,11 +164,11 @@
                                     VerticalAlignment="Center"
                                     Spacing="4">
                             <TextBlock Text="{Binding PackageName}"
-                                       FontSize="36" FontWeight="Bold"
+                                       FontSize="40" FontWeight="Bold"
+                                       FontFamily="Segoe UI Variable Display"
                                        TextWrapping="Wrap"
-                                       LineHeight="42"
                                        automation:AutomationProperties.HeadingLevel="1"/>
-                            <TextBlock Text="{Binding SourceDisplay}"
+                            <SelectableTextBlock Text="{Binding SourceDisplay}"
                                        FontSize="13" Opacity="0.65"/>
                         </StackPanel>
                     </Grid>
@@ -185,18 +207,21 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="10000*" MaxWidth="260"/>
                         </Grid.ColumnDefinitions>
-                        <Grid ColumnDefinitions="*,Auto">
+                        <Grid ColumnDefinitions="*,0.5,Auto">
                             <Button x:Name="MainActionButton"
                                     Grid.Column="0"
                                     Classes="accent action-main"
                                     Content="{Binding MainActionLabel}"
                                     automation:AutomationProperties.Name="{Binding MainActionLabel}"/>
+                            <Border Grid.Column="1"
+                                    Background="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                                    IsHitTestVisible="False"/>
                             <Button x:Name="ActionVariantsButton"
-                                    Grid.Column="1"
+                                    Grid.Column="2"
                                     Classes="accent action-chevron"
                                     automation:AutomationProperties.Name="{Binding MainActionLabel}">
                                 <Path Data="M 0,0 L 4,4 L 8,0"
-                                      Stroke="White"
+                                      Stroke="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
                                       StrokeThickness="1.5"
                                       StrokeJoin="Miter"
                                       Fill="Transparent"
@@ -207,23 +232,29 @@
                     </Grid>
 
                     <!-- ── Installation options (collapsible) ── -->
-                    <Border x:Name="InstallOptionsBorder" VerticalAlignment="Top">
+                    <Border x:Name="InstallOptionsBorder"
+                            VerticalAlignment="Top"
+                            Background="{DynamicResource InstallOptionsSectionBackground}"
+                            CornerRadius="8"
+                            BorderThickness="0">
                         <Expander x:Name="InstallOptionsExpander"
                                   HorizontalAlignment="Stretch"
                                   HorizontalContentAlignment="Stretch"
                                   VerticalAlignment="Top"
                                   IsExpanded="False"
                                   CornerRadius="8"
-                                  Padding="4">
+                                  Padding="0"
+                                  BorderThickness="0"
+                                  Background="Transparent">
                             <Expander.Header>
                                 <Grid ColumnDefinitions="Auto,*,Auto"
                                       ColumnSpacing="12">
-                                    <controls:SvgIcon Path="avares://UniGetUI.Avalonia/Assets/Symbols/options.svg"
+                                    <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/options.svg"
                                                       Width="18" Height="18"
                                                       VerticalAlignment="Center"/>
                                     <TextBlock Grid.Column="1"
                                                Text="{Binding LabelInstallationOptions}"
-                                               FontSize="15"
+                                               FontSize="16"
                                                FontWeight="SemiBold"
                                                VerticalAlignment="Center"/>
                                     <Button x:Name="InstallOptionsSaveButton"
@@ -239,7 +270,7 @@
                                 </Grid>
                             </Expander.Header>
                             <ContentControl x:Name="InstallOptionsHolder"
-                                            Margin="0,8,0,4"/>
+                                            Margin="16,12,16,16"/>
                         </Expander>
                     </Border>
                 </StackPanel>
@@ -255,9 +286,10 @@
                                 x:Name="ScreenshotsBorder"
                                 Height="320">
                             <Panel>
-                                <!-- Black letterbox only behind actual screenshots; the empty-state
+                                <!-- Neutral WinUI fallback only behind actual screenshots; the empty-state
                                      banner below composites over the themed window background instead. -->
-                                <Border Background="#000000" IsVisible="{Binding HasScreenshots}"/>
+                                <Border Background="{DynamicResource ScreenshotLetterboxBackground}"
+                                        IsVisible="{Binding HasScreenshots}"/>
                                 <Carousel x:Name="ScreenshotsCarousel"
                                           IsVisible="{Binding HasScreenshots}"
                                           ItemsSource="{Binding Screenshots}"
@@ -277,7 +309,7 @@
 
                                 <!-- Contributor banner shown when no screenshots -->
                                 <Grid IsVisible="{Binding !HasScreenshots}"
-                                      Background="{DynamicResource AppDialogSubtleBackground}"
+                                      Background="{DynamicResource AppDialogDarkBackground}"
                                       ColumnDefinitions="*,Auto"
                                       Margin="0"
                                       ColumnSpacing="12">
@@ -288,6 +320,7 @@
                                                Margin="18,12"/>
                                     <Button Grid.Column="1"
                                             x:Name="ContributeButton"
+                                            Classes="secondary-action"
                                             Content="{Binding LabelContribute}"
                                             VerticalAlignment="Center"
                                             Margin="0,12,18,12"/>
@@ -337,4 +370,4 @@
             </Grid>
         </ScrollViewer>
     </Grid>
-</Window>
+</dialogs:ImmersiveDialog>

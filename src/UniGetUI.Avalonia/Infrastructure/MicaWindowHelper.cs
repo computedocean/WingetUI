@@ -5,6 +5,8 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Media;
 using Avalonia.Platform;
+using Avalonia.VisualTree;
+using UniGetUI.Avalonia.Assets.Styles;
 
 namespace UniGetUI.Avalonia.Infrastructure;
 
@@ -24,6 +26,7 @@ internal static class MicaWindowHelper
     private const int DWMSBT_TRANSIENTWINDOW = 3; // Acrylic — for transient surfaces (menus/flyouts); Mica won't paint on these
 
     private static bool _acrylicPopupsHooked;
+    private static bool _micaConfirmedUnavailable;
 
     public static void Apply(Window window)
     {
@@ -46,22 +49,22 @@ internal static class MicaWindowHelper
         };
     }
 
-    // Gives flyouts / menus / combo dropdowns / tooltips a native Win11 acrylic backdrop:
-    // the popup window is made transparent and DWM paints the (blurred, theme-adaptive)
-    // acrylic material behind it. Registered once at startup when Mica is enabled.
+    // Applies the Windows 11 transient-surface treatment to popup hosts. Menus use an
+    // opaque WinUI surface; combo dropdowns, tooltips, and ordinary flyouts use acrylic.
+    // Registered once at startup when Mica is enabled.
     public static void EnableAcrylicPopups()
     {
         if (!IsMicaEnabled() || _acrylicPopupsHooked)
             return;
         _acrylicPopupsHooked = true;
 
-        // In-app flyouts/menus/tooltips/combo popups are hosted in a PopupRoot; style each as it loads.
+        // In-app menus, flyouts, tooltips, and combo popups are hosted in a PopupRoot.
         Control.LoadedEvent.AddClassHandler<PopupRoot>((root, _) => ApplyAcrylicToPopup(root));
 
         // The system-tray context menu is NOT a PopupRoot — Avalonia hosts it in its own Window
         // (Avalonia.Win32.TrayIconImpl.TrayPopupRoot), so it misses the handler above and would
-        // render with no backdrop (transparent over the desktop). Catch it by type name and apply
-        // the same acrylic treatment. The other Windows (MainWindow/dialogs) are handled via Apply().
+        // render with no surface over the desktop. Catch it by type name and apply the opaque
+        // menu treatment. The other Windows (MainWindow/dialogs) are handled via Apply().
         Control.LoadedEvent.AddClassHandler<Window>((win, _) =>
         {
             if (win.GetType().Name == "TrayPopupRoot")
@@ -71,10 +74,31 @@ internal static class MicaWindowHelper
 
     private static void ApplyAcrylicToPopup(TopLevel root)
     {
+        if (!IsMicaEnabled())
+            return;
+
+        // Menus use WinUI's opaque flyout surface. Other transient controls (combo boxes,
+        // tooltips and ordinary flyouts) retain acrylic.
+        bool isMenu = root.GetType().Name == "TrayPopupRoot"
+                      || root.GetVisualDescendants()
+                          .Any(control => control is MenuFlyoutPresenter or ContextMenu);
+        if (isMenu)
+        {
+            root.TransparencyLevelHint = new[] { WindowTransparencyLevel.None };
+            if (root.TryFindResource("MenuSurfaceBrush", root.ActualThemeVariant, out object? resource)
+                && resource is IBrush brush)
+            {
+                root.Background = brush;
+            }
+
+            ApplyRoundedCorners(root);
+            return;
+        }
+
         // Request acrylic (not Transparent): the Transparent level makes a layered window, and DWM
         // system backdrops never paint on those — so the popup ended up fully see-through with only
-        // the presenter tint, unreadable when shown over the desktop (e.g. the tray menu). AcrylicBlur
-        // gives a composited window DWM can actually fill. This path only runs when Mica is enabled
+        // the presenter tint and make its contents unreadable. AcrylicBlur gives a composited window
+        // DWM can actually fill. This path only runs when Mica is enabled
         // (Win11 + transparency effects), so acrylic is always available here.
         root.TransparencyLevelHint = new[] { WindowTransparencyLevel.AcrylicBlur, WindowTransparencyLevel.Blur };
         root.Background = Brushes.Transparent;
@@ -88,15 +112,46 @@ internal static class MicaWindowHelper
         NativeMethods.DwmSetWindowAttribute(handle, DWMWA_SYSTEMBACKDROP_TYPE, ref backdrop, sizeof(int));
     }
 
+    private static void ApplyRoundedCorners(TopLevel root)
+    {
+        if (root.TryGetPlatformHandle()?.Handle is not { } handle || handle == 0)
+            return;
+
+        int corner = DWMWCP_ROUND;
+        NativeMethods.DwmSetWindowAttribute(handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref corner, sizeof(int));
+    }
+
     /// <summary>
-    /// True when the native Mica look should be used: Windows 11+ AND the user has
-    /// "Transparency effects" enabled. When transparency is off we keep the solid look,
-    /// since the Mica backdrop otherwise lingers (DWM keeps painting it).
+    /// True when the native Mica look should be used: Windows 11+, "Transparency effects" on,
+    /// GPU-accelerated (software rendering can't be transparent, so Mica shows as black — #5111),
+    /// and no window has since found the backdrop didn't engage. Otherwise keep the solid look.
     /// </summary>
     public static bool IsMicaEnabled()
         => OperatingSystem.IsWindows()
            && Environment.OSVersion.Version.Build >= 22000
+           && !_micaConfirmedUnavailable
+           && !WindowsAvaloniaRenderingPolicy.ShouldUseSoftwareRendering
            && IsOsTransparencyEnabled();
+
+    /// <summary>
+    /// Latch Mica off for the session and drop the translucent surface overrides so every surface
+    /// falls back to the solid look, once a window confirms the backdrop never engaged (#5111).
+    /// </summary>
+    public static void NotifyMicaUnavailable()
+    {
+        if (_micaConfirmedUnavailable)
+            return;
+        _micaConfirmedUnavailable = true;
+
+        if (Application.Current is { } app)
+        {
+            for (int i = app.Resources.MergedDictionaries.Count - 1; i >= 0; i--)
+            {
+                if (app.Resources.MergedDictionaries[i] is WindowsMicaStyles)
+                    app.Resources.MergedDictionaries.RemoveAt(i);
+            }
+        }
+    }
 
     private static bool IsOsTransparencyEnabled()
     {

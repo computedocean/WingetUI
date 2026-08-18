@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
@@ -18,6 +19,9 @@ namespace UniGetUI.PackageEngine.Managers.ChocolateyManager
 {
     public class Chocolatey : BaseNuGet
     {
+        // Chocolatey emits its output in the system console code page, not UTF-8.
+        public override Encoding OutputEncoding => CoreData.ConsoleEncoding;
+
         public static readonly string[] FALSE_PACKAGE_IDS =
         [
             "Directory",
@@ -70,6 +74,9 @@ namespace UniGetUI.PackageEngine.Managers.ChocolateyManager
             ),
             Path.Join(CoreData.UniGetUIDataDirectory, "Chocolatey"),
         ];
+
+        // AttemptFastRepair is a no-op here, so retrying a timed-out choco listing just spawns another (#4974).
+        protected override bool RetryListingTasksOnTimeout => false;
 
         public Chocolatey()
         {
@@ -265,12 +272,14 @@ namespace UniGetUI.PackageEngine.Managers.ChocolateyManager
                     RedirectStandardInput = true,
                     UseShellExecute = false,
                     CreateNoWindow = true,
-                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardOutputEncoding = OutputEncoding,
+                    StandardErrorEncoding = OutputEncoding,
                 },
             };
 
             IProcessTaskLogger logger = TaskLogger.CreateNew(LoggableTaskType.ListUpdates, p);
             p.Start();
+            RegisterListingProcess(p);
 
             string? line;
             List<string> lines = [];
@@ -300,7 +309,8 @@ namespace UniGetUI.PackageEngine.Managers.ChocolateyManager
                     RedirectStandardInput = true,
                     UseShellExecute = false,
                     CreateNoWindow = true,
-                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardOutputEncoding = OutputEncoding,
+                    StandardErrorEncoding = OutputEncoding,
                 },
             };
 
@@ -309,6 +319,7 @@ namespace UniGetUI.PackageEngine.Managers.ChocolateyManager
                 p
             );
             p.Start();
+            RegisterListingProcess(p);
 
             string? line;
             List<string> lines = [];
@@ -358,7 +369,7 @@ namespace UniGetUI.PackageEngine.Managers.ChocolateyManager
 
         protected override void _loadManagerVersion(out string version)
         {
-            Process process = new()
+            using Process process = new()
             {
                 StartInfo = new ProcessStartInfo
                 {
@@ -368,7 +379,8 @@ namespace UniGetUI.PackageEngine.Managers.ChocolateyManager
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     CreateNoWindow = true,
-                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardOutputEncoding = OutputEncoding,
+                    StandardErrorEncoding = OutputEncoding,
                 },
             };
             process.Start();

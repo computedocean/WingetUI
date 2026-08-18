@@ -374,7 +374,7 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
             var (found, path) = CoreTools.Which("scoop-search.exe");
             if (!found)
             {
-                Process proc = new()
+                using Process proc = new()
                 {
                     StartInfo = new ProcessStartInfo
                     {
@@ -553,7 +553,7 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
 
         protected override void _loadManagerVersion(out string version)
         {
-            Process process = new()
+            using Process process = new()
             {
                 StartInfo = new ProcessStartInfo
                 {
@@ -572,7 +572,11 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
 
         protected override void _performExtraLoadingSteps()
         {
-            if (Settings.Get(Settings.K.EnableScoopCleanup))
+            // Backward compatibility: if old setting is on, enable both new ones
+            bool enableCacheCleanup = Settings.Get(Settings.K.EnableScoopCleanupCache) || Settings.Get(Settings.K.EnableScoopCleanup);
+            bool enableAppsCleanup = Settings.Get(Settings.K.EnableScoopCleanupApps) || Settings.Get(Settings.K.EnableScoopCleanup);
+
+            if (enableCacheCleanup || enableAppsCleanup)
             {
                 RunCleanup();
             }
@@ -583,14 +587,27 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
         private async Task _runCleanup()
         {
             Logger.Info("Starting scoop cleanup...");
-            foreach (
-                string command in new[]
-                {
-                    " cache rm *",
-                    " cleanup --all --cache",
-                    " cleanup --all --global --cache",
-                }
-            )
+            var commands = new List<string>();
+
+            // Backward compatibility: if old setting is on, enable both
+            bool enableCacheCleanup = Settings.Get(Settings.K.EnableScoopCleanupCache) || Settings.Get(Settings.K.EnableScoopCleanup);
+            bool enableAppsCleanup = Settings.Get(Settings.K.EnableScoopCleanupApps) || Settings.Get(Settings.K.EnableScoopCleanup);
+
+            // Clean old app versions (scoop cleanup --all)
+            if (enableAppsCleanup)
+            {
+                commands.Add(" cleanup --all");
+                commands.Add(" cleanup --all --global");
+            }
+
+            // Clear download cache (scoop cache rm --all)
+            if (enableCacheCleanup)
+            {
+                commands.Add(" cache rm --all");
+                commands.Add(" cache rm --all --global");
+            }
+
+            foreach (string command in commands)
             {
                 using Process p = new()
                 {

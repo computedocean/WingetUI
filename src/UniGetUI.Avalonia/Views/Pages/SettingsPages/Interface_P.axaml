@@ -14,6 +14,7 @@
         <StackPanel Orientation="Vertical">
 
             <settings:TranslatedTextBlock Text="Appearance"
+                                          FontSize="14"
                                           FontWeight="SemiBold"
                                           Margin="44,32,4,8"
                                           automation:AutomationProperties.HeadingLevel="2"/>
@@ -22,27 +23,41 @@
                                    CornerRadius="8,8,0,0"/>
 
              <settings:ComboboxCard x:Name="StartupPageSelector"
-                                    CornerRadius="0,0,8,8"
+                                    CornerRadius="0"
                                     BorderThickness="1,0,1,1"/>
+
+            <settings:ComboboxCard x:Name="NavMenuModeSelector"
+                                   CornerRadius="0,0,8,8"
+                                   BorderThickness="1,0,1,1"/>
 
             <Border Height="16"/>
 
-            <settings:CheckboxCard SettingName="UseClassicMode"
-                                   Text="{t:Translate Use classic mode}"
+            <settings:TranslatedTextBlock Text="Rendering"
+                                         FontSize="14"
+                                         FontWeight="SemiBold"
+                                         Margin="44,32,4,8"
+                                         automation:AutomationProperties.HeadingLevel="2"
+                                         IsVisible="{Binding IsWindows}"/>
+
+            <settings:CheckboxCard x:Name="InterfaceRenderingCard"
+                                   SettingName="DisableAutoSoftwareRenderingOnGpuLessHosts"
+                                   Text="{t:Translate Automatically switch to software rendering when Windows has no hardware GPU}"
                                    WarningText="{t:Translate Restart UniGetUI to apply this change}"
                                    StateChangedCommand="{Binding ShowRestartRequiredCommand}"
-                                   IsEnabled="{Binding !IsBetaTester}"
-                                   IsVisible="{Binding IsWindows}"
-                                   ToolTip.Tip="{t:Translate The classic UI is disabled for beta testers}"
-                                   CornerRadius="8"/>
+                                   CornerRadius="8"
+                                   IsVisible="{Binding IsWindows}"/>
+
+            <Border Height="16"/>
 
              <StackPanel x:Name="SystemTraySection" Orientation="Vertical">
                 <settings:TranslatedTextBlock Text="UniGetUI on the background and system tray"
+                                              FontSize="14"
                                               FontWeight="SemiBold"
                                               Margin="44,32,4,8"
                                           automation:AutomationProperties.HeadingLevel="2"/>
 
-                <settings:CheckboxCard SettingName="DisableSystemTray"
+                <settings:CheckboxCard x:Name="DisableSystemTrayCard"
+                                       SettingName="DisableSystemTray"
                                        Text="{t:Translate Close UniGetUI to the system tray}"
                                        StateChangedCommand="{Binding RefreshSystemTrayCommand}"
                                        CornerRadius="8,8,0,0"/>
@@ -57,14 +72,24 @@
             </StackPanel>
 
             <settings:TranslatedTextBlock Text="Package lists"
+                                          FontSize="14"
                                           FontWeight="SemiBold"
                                           Margin="44,32,4,8"
                                           automation:AutomationProperties.HeadingLevel="2"/>
 
-            <settings:CheckboxCard SettingName="DisableIconsOnPackageLists"
+            <settings:CheckboxCard x:Name="InterfacePackageListsCard"
+                                   SettingName="DisableIconsOnPackageLists"
                                    Text="{t:Translate Show package icons on package lists}"
                                    StateChangedCommand="{Binding ShowRestartRequiredCommand}"
                                    CornerRadius="8,8,0,0"/>
+
+            <settings:CheckboxCard x:Name="PackageIllustrationsCard"
+                                   SettingName="DisablePackageIllustrations"
+                                   Text="{t:Translate Show illustrations on package lists}"
+                                   WarningText="{t:Translate Restart UniGetUI to apply this change}"
+                                   StateChangedCommand="{Binding ShowRestartRequiredCommand}"
+                                   CornerRadius="0"
+                                   BorderThickness="1,0,1,1"/>
 
             <settings:ButtonCard x:Name="ResetIconCache"
                                  CornerRadius="0,0,8,8"
@@ -76,7 +101,8 @@
 
             <Border Height="16"/>
 
-            <settings:CheckboxCard SettingName="DisableSelectingUpdatesByDefault"
+            <settings:CheckboxCard x:Name="SelectUpgradableCard"
+                                   SettingName="DisableSelectingUpdatesByDefault"
                                    Text="{t:Translate Select upgradable packages by default}"
                                    StateChangedCommand="{Binding ShowRestartRequiredCommand}"
                                    CornerRadius="8"/>

@@ -13,6 +13,9 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager;
 
 internal sealed class WinGetCliHelper : IWinGetManagerHelper
 {
+    // "winget search a" returns ~12k results; cap to the most relevant to avoid the freeze/RAM spike.
+    private const int MAX_SEARCH_RESULTS = 100;
+
     private readonly WinGet Manager;
     private readonly string _cliExecutablePath;
     private readonly IPingetPackageDetailsProvider _packageDetailsProvider;
@@ -152,8 +155,14 @@ internal sealed class WinGetCliHelper : IWinGetManagerHelper
                     source = Manager.SourcesHelper.Factory.GetSourceOrDefault(sourceName);
                 }
 
+                // Restore the version we last upgraded to when WinGet reports it as unknown (#5158).
+                bool versionUnknown = WinGetPkgOperationHelper.IsUnknownVersion(version);
+                if (versionUnknown)
+                    version = WinGetPkgOperationHelper.GetLastInstalledVersion(id);
+
                 var package = new Package(name, id, version, newVersion, source, Manager);
-                if (!WinGetPkgOperationHelper.UpdateAlreadyInstalled(package))
+                // Skip one-shot suppression for unknown versions so the restored mark isn't cleared.
+                if (versionUnknown || !WinGetPkgOperationHelper.ConsumeAlreadyUpgradedSuppression(package))
                 {
                     Packages.Add(package);
                 }
@@ -290,6 +299,7 @@ internal sealed class WinGetCliHelper : IWinGetManagerHelper
                             .Trim();
                         source = Manager.SourcesHelper.Factory.GetSourceOrDefault(sourceName);
                     }
+                    version = WinGetPkgOperationHelper.ResolveReportedInstalledVersion(id, version);
                     Packages.Add(new Package(name, id, version, source, Manager));
                 }
                 OldLine = line;
@@ -320,7 +330,9 @@ internal sealed class WinGetCliHelper : IWinGetManagerHelper
                     Manager.Status.ExecutableCallArgs
                     + " search \""
                     + query
-                    + "\"  --accept-source-agreements "
+                    + "\" --count "
+                    + MAX_SEARCH_RESULTS
+                    + " --accept-source-agreements "
                     + WinGet.GetProxyArgument(),
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,

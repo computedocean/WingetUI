@@ -17,33 +17,37 @@
         <TargetFrameworks />
         <OutputType>WinExe</OutputType>
         <RootNamespace>UniGetUI.Avalonia</RootNamespace>
-        <AssemblyName>UniGetUI.Avalonia</AssemblyName>
-        <ApplicationIcon>..\UniGetUI\icon.ico</ApplicationIcon>
+        <AssemblyName>UniGetUI</AssemblyName>
+        <ApplicationIcon>..\SharedAssets\icon.ico</ApplicationIcon>
         <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
         <ApplicationManifest Condition="$([MSBuild]::IsOSPlatform('Windows'))">app.manifest</ApplicationManifest>
         <PublishTrimmed>true</PublishTrimmed>
-        <TrimMode>partial</TrimMode>
+        <TrimMode>full</TrimMode>
         <PublishSingleFile>false</PublishSingleFile>
         <IncludeAvaloniaPublishSymbols>false</IncludeAvaloniaPublishSymbols>
-        <AppxGeneratePriEnabled>false</AppxGeneratePriEnabled>
-        <AppxGeneratePrisForPortableLibrariesEnabled>false</AppxGeneratePrisForPortableLibrariesEnabled>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
+    <!-- NativeAOT is the default for release packages on all platforms. -->
+    <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+        <PublishAot>true</PublishAot>
+        <!-- NativeAOT and ReadyToRun are mutually exclusive. -->
+        <PublishReadyToRun>false</PublishReadyToRun>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- Let the GC decommit unused heap back to the OS; the app is idle most of the time. -->
+        <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" Trim="false" />
+    </ItemGroup>
+
     <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
-        <WindowsPackageType>None</WindowsPackageType>
-        <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-        <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
-        <EnableCoreMrtTooling>false</EnableCoreMrtTooling>
-        <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
+        <!-- Parameterized windows/base views are directly constructed in code, not through the runtime XAML loader. -->
+        <NoWarn>$(NoWarn);MVVMTK0045;AVLN3001</NoWarn>
         <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
         <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'arm64'">win-arm64</RuntimeIdentifier>
         <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and ('$(Platform)' == 'x64' or '$(Platform)' == 'x86')">win-$(Platform)</RuntimeIdentifier>
         <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
     </PropertyGroup>
-
-    <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
-        <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
-    </ItemGroup>
 
     <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
         <PingetCliRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</PingetCliRuntimeIdentifier>
@@ -51,6 +55,14 @@
         <PingetCliRuntimeIdentifier Condition="'$(PingetCliRuntimeIdentifier)' == ''">win-x64</PingetCliRuntimeIdentifier>
         <PingetCliPackageNativePath>$(PkgDevolutions_Pinget_Cli_Rust)\runtimes\$(PingetCliRuntimeIdentifier)\native</PingetCliPackageNativePath>
         <PingetCliExecutablePath>$(PingetCliPackageNativePath)\pinget.exe</PingetCliExecutablePath>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+        <ElevatorPackageArchitecture Condition="'$(Platform)' == 'arm64'">arm64</ElevatorPackageArchitecture>
+        <ElevatorPackageArchitecture Condition="'$(ElevatorPackageArchitecture)' == ''">x64</ElevatorPackageArchitecture>
+        <ElevatorPackageNativePath>$(PkgDevolutions_UniGetUI_Elevator)\runtimes\win-$(ElevatorPackageArchitecture)\native</ElevatorPackageNativePath>
+        <ElevatorPackageExePath>$(ElevatorPackageNativePath)\UniGetUI Elevator.exe</ElevatorPackageExePath>
+        <ElevatorPackageDllPath>$(ElevatorPackageNativePath)\getfilesiginforedist.dll</ElevatorPackageDllPath>
     </PropertyGroup>
 
     <!-- macOS Debug: build straight into a .app bundle so the Dock icon (and its Default/Dark/
@@ -78,6 +90,40 @@
              actool; if it is unavailable the build still succeeds (the icon is just absent). -->
         <Exec Command="xcrun actool '$(_MacScriptsDir)/AppIcon.icon' --compile '$(_MacBundleContents)/Resources' --app-icon AppIcon --output-partial-info-plist '$(IntermediateOutputPath)appicon-partial.plist' --platform macosx --minimum-deployment-target 12.0 --notices --warnings"
               ContinueOnError="true" />
+    </Target>
+
+    <Target Name="BuildMacNotificationBridgeForDebug" AfterTargets="Build"
+            Condition="$([MSBuild]::IsOSPlatform('OSX')) And '$(Configuration)' == 'Debug'">
+        <PropertyGroup>
+            <_MacNotificationBridgeSource>$(MSBuildProjectDirectory)/../../scripts/macos/UniGetUIMacNotificationBridge.m</_MacNotificationBridgeSource>
+            <_MacNotificationBridgeOutput>$(TargetDir)UniGetUIMacNotificationBridge.dylib</_MacNotificationBridgeOutput>
+        </PropertyGroup>
+        <Exec Command="xcrun clang -dynamiclib -fobjc-arc -mmacosx-version-min=12.0 -framework Foundation -framework UserNotifications -install_name @executable_path/UniGetUIMacNotificationBridge.dylib -o '$(_MacNotificationBridgeOutput)' '$(_MacNotificationBridgeSource)'" />
+    </Target>
+
+    <!-- Ad-hoc codesign the debug .app so macOS binds it to CFBundleIdentifier and seals Info.plist;
+         without a signature UNUserNotificationCenter has no bundle identity and notifications fail.
+         "deep" also signs the dylib; entitlements disable library validation so it can be loaded. -->
+    <Target Name="CodesignMacDebugAppBundle"
+            AfterTargets="AssembleMacDebugAppBundle;BuildMacNotificationBridgeForDebug"
+            Condition="$([MSBuild]::IsOSPlatform('OSX')) And '$(Configuration)' == 'Debug'">
+        <PropertyGroup>
+            <_MacScriptsDir>$(MSBuildProjectDirectory)/../../scripts/macos</_MacScriptsDir>
+        </PropertyGroup>
+        <Exec Command="codesign --force --deep --entitlements '$(_MacScriptsDir)/Entitlements.plist' --sign - '$(MacAppBundleDir)'" />
+    </Target>
+
+    <Target Name="BuildMacNotificationBridgeForPublish" AfterTargets="Publish"
+            Condition="$([MSBuild]::IsOSPlatform('OSX')) And '$(Configuration)' != 'Debug'">
+        <PropertyGroup>
+            <_MacNotificationBridgeSource>$(MSBuildProjectDirectory)/../../scripts/macos/UniGetUIMacNotificationBridge.m</_MacNotificationBridgeSource>
+            <_MacNotificationBridgeOutput>$(PublishDir)UniGetUIMacNotificationBridge.dylib</_MacNotificationBridgeOutput>
+            <_MacNotificationBridgeArchitecture Condition="'$(RuntimeIdentifier)' == 'osx-arm64'">arm64</_MacNotificationBridgeArchitecture>
+            <_MacNotificationBridgeArchitecture Condition="'$(RuntimeIdentifier)' == 'osx-x64'">x86_64</_MacNotificationBridgeArchitecture>
+        </PropertyGroup>
+        <Error Condition="'$(_MacNotificationBridgeArchitecture)' == ''"
+               Text="A macOS RuntimeIdentifier is required to build the notification bridge." />
+        <Exec Command="xcrun clang -dynamiclib -fobjc-arc -arch $(_MacNotificationBridgeArchitecture) -mmacosx-version-min=12.0 -framework Foundation -framework UserNotifications -install_name @executable_path/UniGetUIMacNotificationBridge.dylib -o '$(_MacNotificationBridgeOutput)' '$(_MacNotificationBridgeSource)'" />
     </Target>
 
     <PropertyGroup Condition="'$(EnableAvaloniaDiagnostics)' == 'true'">
@@ -112,6 +158,21 @@
     </Target>
 
     <Target
+        Name="EnsureBundledElevatorFromNuGet"
+        BeforeTargets="PrepareForBuild"
+        Condition="'$(DesignTimeBuild)' != 'true' and $([MSBuild]::IsOSPlatform('Windows')) and '$(Configuration)' != 'Debug'"
+    >
+        <Error
+            Condition="!Exists('$(ElevatorPackageExePath)')"
+            Text="NuGet elevator executable not found at '$(ElevatorPackageExePath)'. Ensure package restore has completed for Devolutions.UniGetUI.Elevator."
+        />
+        <Error
+            Condition="!Exists('$(ElevatorPackageDllPath)')"
+            Text="NuGet elevator dependency DLL not found at '$(ElevatorPackageDllPath)'. Ensure package restore has completed for Devolutions.UniGetUI.Elevator."
+        />
+    </Target>
+
+    <Target
         Name="RemoveAvaloniaPublishSymbols"
         AfterTargets="ComputeFilesToPublish"
         Condition="'$(IncludeAvaloniaPublishSymbols)' != 'true'"
@@ -130,15 +191,14 @@
         <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.0" />
         <PackageReference Include="Avalonia.Desktop" Version="12.0.4" />
         <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.4" />
-        <PackageReference Include="Devolutions.AvaloniaTheme.DevExpress" Version="2026.3.13" />
-        <PackageReference Include="Devolutions.AvaloniaTheme.MacOS" Version="2026.3.13" />
-        <PackageReference Include="Devolutions.AvaloniaTheme.Linux" Version="2026.3.11" />
+        <PackageReference Include="Devolutions.AvaloniaTheme.MacOS" Version="2026.3.13" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
+        <PackageReference Include="Devolutions.AvaloniaTheme.Linux" Version="2026.3.11" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
         <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.0-beta3" Condition="'$(EnableAvaloniaDiagnostics)' == 'true'" />
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.*" />
-        <PackageReference Include="Octokit" Version="14.0.0" />
         <PackageReference Include="Avalonia.Controls.WebView" Version="12.0.0" />
         <PackageReference Include="Tmds.DBus.Protocol" Version="0.92.0" />
-        <PackageReference Include="Devolutions.Pinget.Cli.Rust" Version="0.9.0" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive;native" />
+        <PackageReference Include="Devolutions.UniGetUI.Elevator" Version="2.6.1.3" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive;native" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
+        <PackageReference Include="Devolutions.Pinget.Cli.Rust" Version="0.10.0" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive;native" />
     </ItemGroup>
 
     <ItemGroup>
@@ -160,27 +220,37 @@
     </ItemGroup>
 
     <ItemGroup>
-        <!-- SVG symbol icons (shared with WinUI project) -->
-        <AvaloniaResource Include="..\UniGetUI\Assets\Symbols\*.svg" Link="Assets\Symbols\%(Filename)%(Extension)" />
+        <AvaloniaResource Include="..\SharedAssets\Assets\Symbols\*.svg" Link="Assets\Symbols\%(Filename)%(Extension)" />
 
-        <AvaloniaResource Include="..\UniGetUI\icon.ico" Link="Assets\icon.ico" />
-        <AvaloniaResource Include="..\UniGetUI\Assets\Images\icon.png" Link="Assets\icon.png" />
-        <AvaloniaResource Include="..\UniGetUI\Assets\Images\icon_unsquare.png" Link="Assets\icon_unsquare.png" />
-        <AvaloniaResource Include="..\UniGetUI\Assets\Images\package_color.png" Link="Assets\package_color.png" />
-        <AvaloniaResource Include="..\UniGetUI\Assets\SplashScreen.png" Link="Assets\SplashScreen.png" />
-        <AvaloniaResource Include="..\UniGetUI\Assets\SplashScreen.theme-dark.png" Link="Assets\SplashScreen.theme-dark.png" />
+        <AvaloniaResource Include="..\SharedAssets\icon.ico" Link="Assets\icon.ico" />
+        <AvaloniaResource Include="..\SharedAssets\Assets\Images\icon.png" Link="Assets\icon.png" />
+        <AvaloniaResource Include="..\SharedAssets\Assets\Images\icon_unsquare.png" Link="Assets\icon_unsquare.png" />
+        <AvaloniaResource Include="..\SharedAssets\Assets\Images\package_color.png" Link="Assets\package_color.png" />
+        <AvaloniaResource Include="Assets\Images\maurice_penseur.png" />
+        <AvaloniaResource Include="Assets\Images\launcher.png" />
+        <AvaloniaResource Include="Assets\Images\Trophee.png" />
+        <AvaloniaResource Include="Assets\Images\Empty_inbox.png" />
+        <AvaloniaResource Include="..\SharedAssets\Assets\SplashScreen.png" Link="Assets\SplashScreen.png" />
+        <AvaloniaResource Include="..\SharedAssets\Assets\SplashScreen.theme-dark.png" Link="Assets\SplashScreen.theme-dark.png" />
         <!-- Tray status icon variants: status colour encoded by the corner dot; light/dark tone per taskbar theme. -->
-        <AvaloniaResource Include="..\UniGetUI\Assets\Images\tray_empty_black_legacy.ico" Link="Assets\tray_empty_black_legacy.ico" />
-        <AvaloniaResource Include="..\UniGetUI\Assets\Images\tray_empty_white_legacy.ico" Link="Assets\tray_empty_white_legacy.ico" />
-        <AvaloniaResource Include="..\UniGetUI\Assets\Images\tray_blue_black_legacy.ico" Link="Assets\tray_blue_black_legacy.ico" />
-        <AvaloniaResource Include="..\UniGetUI\Assets\Images\tray_blue_white_legacy.ico" Link="Assets\tray_blue_white_legacy.ico" />
-        <AvaloniaResource Include="..\UniGetUI\Assets\Images\tray_green_black_legacy.ico" Link="Assets\tray_green_black_legacy.ico" />
-        <AvaloniaResource Include="..\UniGetUI\Assets\Images\tray_green_white_legacy.ico" Link="Assets\tray_green_white_legacy.ico" />
-        <AvaloniaResource Include="..\UniGetUI\Assets\Images\tray_orange_black_legacy.ico" Link="Assets\tray_orange_black_legacy.ico" />
-        <AvaloniaResource Include="..\UniGetUI\Assets\Images\tray_orange_white_legacy.ico" Link="Assets\tray_orange_white_legacy.ico" />
-        <AvaloniaResource Include="..\UniGetUI\Assets\Images\tray_turquoise_black_legacy.ico" Link="Assets\tray_turquoise_black_legacy.ico" />
-        <AvaloniaResource Include="..\UniGetUI\Assets\Images\tray_turquoise_white_legacy.ico" Link="Assets\tray_turquoise_white_legacy.ico" />
+        <AvaloniaResource Include="..\SharedAssets\Assets\Images\tray_empty_black_legacy.ico" Link="Assets\tray_empty_black_legacy.ico" />
+        <AvaloniaResource Include="..\SharedAssets\Assets\Images\tray_empty_white_legacy.ico" Link="Assets\tray_empty_white_legacy.ico" />
+        <AvaloniaResource Include="..\SharedAssets\Assets\Images\tray_blue_black_legacy.ico" Link="Assets\tray_blue_black_legacy.ico" />
+        <AvaloniaResource Include="..\SharedAssets\Assets\Images\tray_blue_white_legacy.ico" Link="Assets\tray_blue_white_legacy.ico" />
+        <AvaloniaResource Include="..\SharedAssets\Assets\Images\tray_green_black_legacy.ico" Link="Assets\tray_green_black_legacy.ico" />
+        <AvaloniaResource Include="..\SharedAssets\Assets\Images\tray_green_white_legacy.ico" Link="Assets\tray_green_white_legacy.ico" />
+        <AvaloniaResource Include="..\SharedAssets\Assets\Images\tray_orange_black_legacy.ico" Link="Assets\tray_orange_black_legacy.ico" />
+        <AvaloniaResource Include="..\SharedAssets\Assets\Images\tray_orange_white_legacy.ico" Link="Assets\tray_orange_white_legacy.ico" />
+        <AvaloniaResource Include="..\SharedAssets\Assets\Images\tray_turquoise_black_legacy.ico" Link="Assets\tray_turquoise_black_legacy.ico" />
+        <AvaloniaResource Include="..\SharedAssets\Assets\Images\tray_turquoise_white_legacy.ico" Link="Assets\tray_turquoise_white_legacy.ico" />
         <AvaloniaResource Remove="Infrastructure\**" />
+    </ItemGroup>
+
+    <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+        <Content Include="..\SharedAssets\Assets\Utilities\*.cmd" Link="Assets\Utilities\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="..\SharedAssets\Assets\Utilities\*.ps1" Link="Assets\Utilities\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="$(ElevatorPackageExePath)" Link="Assets\Utilities\UniGetUI Elevator.exe" Condition="Exists('$(ElevatorPackageExePath)')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" Pack="false" />
+        <Content Include="$(ElevatorPackageDllPath)" Link="Assets\Utilities\getfilesiginforedist.dll" Condition="Exists('$(ElevatorPackageDllPath)')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" Pack="false" />
     </ItemGroup>
 
     <ItemGroup>
@@ -195,8 +265,10 @@
       <Compile Include="Infrastructure\AvaloniaOperationRegistry.cs" />
       <Compile Include="Infrastructure\AppRestartHelper.cs" />
       <Compile Include="Infrastructure\WindowsAppNotificationBridge.cs" />
+      <Compile Include="Infrastructure\Win32ToastNotifier.cs" />
       <Compile Include="Infrastructure\TrayService.cs" />
       <Compile Include="Infrastructure\MicaWindowHelper.cs" />
+      <Compile Include="Infrastructure\MemoryTrimmer.cs" />
       <Compile Include="Infrastructure\EntrancePageTransition.cs" />
       <Compile Include="Infrastructure\DirectionalSlideTransition.cs" />
       <Compile Include="Infrastructure\MacOsNotificationBridge.cs" />
@@ -215,6 +287,7 @@
        <Compile Include="Infrastructure\RelayCommand.cs" />
        <Compile Include="Infrastructure\SingleInstanceRedirector.cs" />
        <Compile Include="Infrastructure\UninstallConfirmationDialog.cs" />
+       <Compile Include="Infrastructure\WindowsAvaloniaRenderingPolicy.cs" />
        <Compile Update="App.axaml.cs">
          <DependentUpon>App.axaml</DependentUpon>
        </Compile>
@@ -334,4 +407,4 @@
     <ItemGroup>
       <Folder Include="Models\" />
     </ItemGroup>
- </Project>
+</Project>

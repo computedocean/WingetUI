@@ -7,7 +7,7 @@ using UniGetUI.PackageEngine.Serializable;
 
 namespace UniGetUI.Avalonia.Views;
 
-public partial class InstallOptionsWindow : Window
+public partial class InstallOptionsWindow : UniGetUI.Avalonia.Views.DialogPages.ImmersiveDialog
 {
     public bool ShouldProceedWithOperation =>
         ((InstallOptionsViewModel)DataContext!).ShouldProceedWithOperation;
@@ -17,7 +17,7 @@ public partial class InstallOptionsWindow : Window
         var vm = new InstallOptionsViewModel(package, operation, options);
         DataContext = vm;
         InitializeComponent();
-        UniGetUI.Avalonia.Infrastructure.MicaWindowHelper.Apply(this);
+
         vm.CloseRequested += (_, _) => Close();
     }
 
@@ -26,4 +26,5 @@ public partial class InstallOptionsWindow : Window
         base.OnOpened(e);
         Dispatcher.UIThread.Post(OptionsControl.FocusProfileSelector, DispatcherPriority.Background);
     }
+
 }

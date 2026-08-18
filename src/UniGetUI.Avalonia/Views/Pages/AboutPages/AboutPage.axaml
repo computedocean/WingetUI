@@ -13,6 +13,7 @@
         <StackPanel Orientation="Vertical" Spacing="4" Margin="16,8">
 
             <TextBlock Text="{t:Translate About UniGetUI}"
+                       FontFamily="Segoe UI Variable Display"
                        FontSize="24"
                        FontWeight="Bold"/>
 
@@ -23,9 +24,10 @@
                        Margin="0,-4,0,4"/>
 
             <TextBlock Text="{t:Translate Text='UniGetUI is an application that makes managing your software easier, by providing an all-in-one graphical interface for your command-line package managers.'}"
+                       FontSize="14"
                        TextWrapping="Wrap"/>
 
-            <TextBlock Text="{Binding VersionText}"
+            <SelectableTextBlock Text="{Binding VersionText}"
                        FontSize="15"
                        FontWeight="SemiBold"
                        Margin="0,10"/>
@@ -52,14 +54,17 @@
                     <!-- Text -->
                     <StackPanel Grid.Column="1" Spacing="4">
                         <TextBlock Text="{Binding DisclaimerTitle}"
+                                   FontSize="14"
                                    FontWeight="SemiBold"/>
                         <TextBlock Text="{Binding DisclaimerMessage}"
+                                   FontSize="14"
                                    TextWrapping="Wrap"/>
                     </StackPanel>
                 </Grid>
             </Border>
 
             <TextBlock Text="{t:Translate Useful links}"
+                       FontFamily="Segoe UI Variable Display"
                        FontSize="24"
                        FontWeight="Bold"
                        Margin="0,10,0,4"/>
@@ -71,6 +76,7 @@
                     HorizontalAlignment="Center"
                     automation:AutomationProperties.Name="{t:Translate UniGetUI Homepage}">
                 <TextBlock Classes="hyperlink"
+                           FontSize="14"
                            Text="{t:Translate UniGetUI Homepage}"
                            automation:AutomationProperties.AccessibilityView="Raw"/>
             </Button>
@@ -82,6 +88,7 @@
                     HorizontalAlignment="Center"
                     automation:AutomationProperties.Name="{t:Translate Report an issue or submit a feature request}">
                 <TextBlock Classes="hyperlink"
+                           FontSize="14"
                            Text="{t:Translate Report an issue or submit a feature request}"
                            automation:AutomationProperties.AccessibilityView="Raw"/>
             </Button>
@@ -93,6 +100,7 @@
                     HorizontalAlignment="Center"
                     automation:AutomationProperties.Name="{t:Translate UniGetUI Repository}">
                 <TextBlock Classes="hyperlink"
+                           FontSize="14"
                            Text="{t:Translate UniGetUI Repository}"
                            automation:AutomationProperties.AccessibilityView="Raw"/>
             </Button>

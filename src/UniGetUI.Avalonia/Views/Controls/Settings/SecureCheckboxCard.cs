@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using UniGetUI.Avalonia.Extensions;
 using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine.SecureSettings;
@@ -59,22 +60,9 @@ public partial class SecureCheckboxCard : SettingsCard
     {
         set
         {
-            _warningBlock.Text = FormatTwoLine(value);
+            _warningBlock.Text = CoreTools.FormatAsTwoLines(value);
             _warningBlock.IsVisible = value.Any();
         }
-    }
-
-    // Splits translated warning text at the first sentence boundary so it renders
-    // on two readable lines. Handles both Latin (". ") and CJK ("。") separators.
-    private static string FormatTwoLine(string text)
-    {
-        var idx = text.IndexOf(". ", StringComparison.Ordinal);
-        if (idx >= 0)
-            return text[..(idx + 1)] + "\n" + text[(idx + 2)..];
-        idx = text.IndexOf('。');
-        if (idx >= 0)
-            return text[..(idx + 1)] + "\n" + text[(idx + 1)..];
-        return text;
     }
 
     public SecureCheckboxCard()
@@ -95,16 +83,19 @@ public partial class SecureCheckboxCard : SettingsCard
         };
         _loading = new ProgressBar
         {
-            IsIndeterminate = true,
+            IsIndeterminate = false,
             IsVisible = false,
             Width = 20,
             Height = 20,
             Margin = new Thickness(0, 0, 4, 0),
         };
+        // Keep the indeterminate clock off while hidden so it doesn't pin the render loop.
+        _loading.Bind(ProgressBar.IsIndeterminateProperty, _loading.GetObservable(Visual.IsVisibleProperty));
         _textblock = new TextBlock
         {
             VerticalAlignment = VerticalAlignment.Center,
             TextWrapping = TextWrapping.Wrap,
+            FontSize = 14,
         };
         _warningBlock = new TextBlock
         {
@@ -133,7 +124,7 @@ public partial class SecureCheckboxCard : SettingsCard
         _checkbox.IsCheckedChanged += (s, e) => _ = _checkbox_Toggled();
 
         this.GetObservable(IsEnabledProperty)
-            .Subscribe(enabled => _warningBlock.Opacity = enabled ? 1 : 0.2);
+            .SubscribeValue(enabled => _warningBlock.Opacity = enabled ? 1 : 0.2);
 
         // The Devolutions SettingsCard measures the Header with infinite width, so
         // TextWrapping alone won't constrain the warning block. We fix it by updating

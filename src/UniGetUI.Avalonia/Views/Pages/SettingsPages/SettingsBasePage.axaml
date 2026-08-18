@@ -26,11 +26,11 @@
                     BorderThickness="0"
                     automation:AutomationProperties.Name="{t:Translate Go back}">
                 <controls:SvgIcon Width="24" Height="24"
-                                  Path="avares://UniGetUI.Avalonia/Assets/Symbols/backward.svg"/>
+                                  Path="avares://UniGetUI/Assets/Symbols/backward.svg"/>
             </Button>
             <TextBlock Text="{Binding Title}"
-                       FontSize="26"
-                       FontWeight="SemiBold"
+                       FontSize="24"
+                       FontWeight="Bold"
                        VerticalAlignment="Center"
                        Margin="40,0,0,0"
                        automation:AutomationProperties.HeadingLevel="1"/>
@@ -47,6 +47,7 @@
             <StackPanel Orientation="Horizontal"
                         Margin="8,6">
                 <TextBlock Text="{Binding RestartBannerText}"
+                           FontSize="14"
                            VerticalAlignment="Center"
                            Margin="0,0,16,0"/>
                 <Button Content="{Binding RestartButtonText}"

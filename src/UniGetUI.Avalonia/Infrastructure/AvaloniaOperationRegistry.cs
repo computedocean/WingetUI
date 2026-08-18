@@ -13,6 +13,7 @@ using UniGetUI.Core.Tools;
 using UniGetUI.Interface;
 using UniGetUI.PackageEngine.Classes.Packages.Classes;
 using UniGetUI.PackageEngine.Enums;
+using UniGetUI.PackageEngine.Operations.History;
 using UniGetUI.PackageOperations;
 
 namespace UniGetUI.Avalonia.Infrastructure;
@@ -34,6 +35,8 @@ public static class AvaloniaOperationRegistry
     private static int _errorsOccurred;
     public static int ErrorsOccurred => _errorsOccurred;
     public static bool RestartRequired { get; set; }
+
+    private static bool _shortcutDialogOpen;
 
     /// <summary>
     /// Register an operation and create its UI view-model.
@@ -66,8 +69,6 @@ public static class AvaloniaOperationRegistry
             if (!Settings.Get(Settings.K.MaintainSuccessfulInstalls))
                 _ = RemoveAfterDelayAsync(op, milliseconds: 4000);
 
-            _ = Task.Run(() => AppendOperationHistory(op));
-
             Dispatcher.UIThread.Post(() => ShowOperationSuccessNotification(op));
 
             _ = RunPostOperationChecksAsync();
@@ -79,19 +80,32 @@ public static class AvaloniaOperationRegistry
             _errorCounts.AddOrUpdate(op, 1, (_, n) => n + 1);
             Interlocked.Increment(ref _errorsOccurred);
 
-            _ = Task.Run(() => AppendOperationHistory(op));
             Dispatcher.UIThread.Post(() => ShowOperationFailureNotification(op));
             Dispatcher.UIThread.Post(UpdateTrayStatus);
         };
 
+        // Cancellation drives Status = Canceled from several code paths, so StatusChanged(Canceled)
+        // can fire more than once for a single operation. Handle the terminal cancel exactly once.
+        int cancelHandled = 0;
         op.StatusChanged += (_, status) =>
         {
-            if (status is OperationStatus.Canceled)
+            if (status is OperationStatus.Canceled && Interlocked.Exchange(ref cancelHandled, 1) == 0)
             {
                 WindowsAppNotificationBridge.RemoveProgress(op);
                 _ = RemoveAfterDelayAsync(op, milliseconds: 2500);
             }
             Dispatcher.UIThread.Post(UpdateTrayStatus);
+        };
+
+        // Record history only once the run task has fully completed. The terminal success/failure/cancel
+        // line is appended AFTER the OperationSucceeded/Failed/Finished events fire, so recording during
+        // those events would persist truncated output and a wrong failure summary (and read the log
+        // concurrently with the writer). MainThread() returns the still-running run task here.
+        op.OperationFinished += (_, _) =>
+        {
+            op.MainThread().ContinueWith(
+                _ => RecordOperationHistory(op, StatusStringFor(op.Status)),
+                TaskScheduler.Default);
         };
     }
 
@@ -196,19 +210,8 @@ public static class AvaloniaOperationRegistry
             $"{title}. {message}",
             AutomationLiveSetting.Polite);
 
-        if (OperatingSystem.IsWindows() && WindowsAppNotificationBridge.ShowProgress(op))
-            return;
-
-        if (OperatingSystem.IsMacOS() && MacOsNotificationBridge.ShowProgress(op))
-            return;
-
-        if (TryGetMainWindow() is not { } mainWindow)
-            return;
-
-        mainWindow.ShowRuntimeNotification(
-            title,
-            message,
-            UniGetUI.Avalonia.Views.MainWindow.RuntimeNotificationLevel.Progress);
+        if (OperatingSystem.IsWindows()) WindowsAppNotificationBridge.ShowProgress(op);
+        else if (OperatingSystem.IsMacOS()) MacOsNotificationBridge.ShowProgress(op);
     }
 
     private static void ShowOperationSuccessNotification(AbstractOperation op)
@@ -230,19 +233,8 @@ public static class AvaloniaOperationRegistry
 
         WindowsAppNotificationBridge.RemoveProgress(op);
 
-        if (OperatingSystem.IsWindows() && WindowsAppNotificationBridge.ShowSuccess(op))
-            return;
-
-        if (OperatingSystem.IsMacOS() && MacOsNotificationBridge.ShowSuccess(op))
-            return;
-
-        if (TryGetMainWindow() is not { } mainWindow)
-            return;
-
-        mainWindow.ShowRuntimeNotification(
-            title,
-            message,
-            UniGetUI.Avalonia.Views.MainWindow.RuntimeNotificationLevel.Success);
+        if (OperatingSystem.IsWindows()) WindowsAppNotificationBridge.ShowSuccess(op);
+        else if (OperatingSystem.IsMacOS()) MacOsNotificationBridge.ShowSuccess(op);
     }
 
     private static void ShowOperationFailureNotification(AbstractOperation op)
@@ -264,48 +256,23 @@ public static class AvaloniaOperationRegistry
 
         WindowsAppNotificationBridge.RemoveProgress(op);
 
-        if (OperatingSystem.IsWindows() && WindowsAppNotificationBridge.ShowError(op))
-            return;
-
-        if (OperatingSystem.IsMacOS() && MacOsNotificationBridge.ShowError(op))
-            return;
-
-        if (TryGetMainWindow() is not { } mainWindow)
-            return;
-
-        mainWindow.ShowRuntimeNotification(
-            title,
-            message,
-            UniGetUI.Avalonia.Views.MainWindow.RuntimeNotificationLevel.Error);
+        if (OperatingSystem.IsWindows()) WindowsAppNotificationBridge.ShowError(op);
+        else if (OperatingSystem.IsMacOS()) MacOsNotificationBridge.ShowError(op);
     }
 
-    private static UniGetUI.Avalonia.Views.MainWindow? TryGetMainWindow()
+    private static string StatusStringFor(OperationStatus status) => status switch
     {
-        return Application.Current?.ApplicationLifetime
-            is IClassicDesktopStyleApplicationLifetime { MainWindow: UniGetUI.Avalonia.Views.MainWindow mw }
-            ? mw
-            : null;
-    }
+        OperationStatus.Succeeded => OperationHistoryRecord.StatusSucceeded,
+        OperationStatus.Failed => OperationHistoryRecord.StatusFailed,
+        OperationStatus.Canceled => OperationHistoryRecord.StatusCanceled,
+        _ => status.ToString().ToLowerInvariant(),
+    };
 
-    private static void AppendOperationHistory(AbstractOperation op)
+    private static void RecordOperationHistory(AbstractOperation op, string status)
     {
         try
         {
-            var rawOutput = new List<string>
-            {
-                "                           ",
-                "▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄",
-            };
-            foreach (var (text, _) in op.GetOutput())
-                rawOutput.Add(text);
-
-            var oldLines = Settings.GetValue(Settings.K.OperationHistory).Split('\n');
-            if (oldLines.Length > 300)
-                oldLines = oldLines.Take(300).ToArray();
-
-            Settings.SetValue(
-                Settings.K.OperationHistory,
-                string.Join('\n', rawOutput.Concat(oldLines)));
+            OperationHistoryStore.Add(OperationHistoryRecord.FromOperation(op, status));
         }
         catch (Exception ex)
         {
@@ -329,17 +296,50 @@ public static class AvaloniaOperationRegistry
             await CoreTools.ResetUACForCurrentProcess();
         }
 
-        if (OperatingSystem.IsWindows())
+        if (!anyStillRunning && Settings.Get(Settings.K.AskToDeleteNewDesktopShortcuts))
         {
-            var unknownShortcuts = UniGetUI.PackageEngine.Classes.Packages.Classes.DesktopShortcutsDatabase.GetUnknownShortcuts();
+            var unknownShortcuts = DesktopShortcutsDatabase.GetUnknownShortcuts();
             if (unknownShortcuts.Count > 0)
-                WindowsAppNotificationBridge.ShowNewShortcutsNotification(unknownShortcuts);
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    if (Views.MainWindow.IsWindowOnScreen)
+                        Dispatcher.UIThread.Post(() => _ = AutoOpenShortcutsDialogAsync(unknownShortcuts));
+                }
+                else if (OperatingSystem.IsMacOS())
+                {
+                    MacOsNotificationBridge.ShowNewShortcutsNotification(unknownShortcuts);
+                }
+            }
         }
-        else if (OperatingSystem.IsMacOS())
+    }
+
+    public static void PromptPendingShortcutsIfAny()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        if (!Settings.Get(Settings.K.AskToDeleteNewDesktopShortcuts)) return;
+        var unknownShortcuts = DesktopShortcutsDatabase.GetUnknownShortcuts();
+        if (unknownShortcuts.Count == 0) return;
+        Dispatcher.UIThread.Post(() => _ = AutoOpenShortcutsDialogAsync(unknownShortcuts));
+    }
+
+    private static async Task AutoOpenShortcutsDialogAsync(IReadOnlyList<string> shortcuts)
+    {
+        if (_shortcutDialogOpen) return;
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+            return;
+
+        var pending = shortcuts.ToList();
+        _shortcutDialogOpen = true;
+        try
         {
-            var unknownShortcuts = UniGetUI.PackageEngine.Classes.Packages.Classes.DesktopShortcutsDatabase.GetUnknownShortcuts();
-            if (unknownShortcuts.Count > 0)
-                MacOsNotificationBridge.ShowNewShortcutsNotification(unknownShortcuts);
+            await new Views.ManageDesktopShortcutsWindow(pending).ShowDialog(owner);
+        }
+        finally
+        {
+            _shortcutDialogOpen = false;
+            foreach (var shortcut in pending)
+                DesktopShortcutsDatabase.RemoveFromUnknownShortcuts(shortcut);
         }
     }
 }

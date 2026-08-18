@@ -1,31 +1,39 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using UniGetUI.Avalonia.ViewModels;
 
 namespace UniGetUI.Avalonia.Views;
 
-public partial class ManageIgnoredUpdatesWindow : Window
+public partial class ManageIgnoredUpdatesWindow : UniGetUI.Avalonia.Views.DialogPages.ImmersiveDialog
 {
     public ManageIgnoredUpdatesWindow()
     {
         var vm = new ManageIgnoredUpdatesViewModel();
         DataContext = vm;
         InitializeComponent();
-        UniGetUI.Avalonia.Infrastructure.MicaWindowHelper.Apply(this);
-        vm.CloseRequested += (_, _) => Close();
+
+        KeyDown += OnDialogKeyDown;
+        AttachedToVisualTree += (_, _) => Dispatcher.UIThread.Post(FocusInitialControl,
+            DispatcherPriority.Background);
     }
 
-    protected override void OnOpened(EventArgs e)
+    private void FocusInitialControl()
     {
-        base.OnOpened(e);
-        Dispatcher.UIThread.Post(() =>
+        if (((ManageIgnoredUpdatesViewModel)DataContext!).HasEntries)
+            IgnoredUpdatesGrid.Focus();
+        else
+            ResetButton.Focus();
+    }
+
+    private void OnDialogKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
         {
-            if (IgnoredUpdatesGrid.IsVisible)
-                IgnoredUpdatesGrid.Focus();
-            else
-                ResetButton.Focus();
-        }, DispatcherPriority.Background);
+            Close();
+            e.Handled = true;
+        }
     }
 
     private void ResetYes_Click(object? sender, RoutedEventArgs e)

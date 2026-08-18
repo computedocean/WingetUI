@@ -21,10 +21,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows (WinUI 3)
+          - name: Windows (Avalonia)
             os: windows-latest
             solution: UniGetUI.Windows.slnx
-            daemon_project: UniGetUI/UniGetUI.csproj
+            daemon_project: UniGetUI.Avalonia/UniGetUI.Avalonia.csproj
+            daemon_build_args: '-p:Platform=x64'
+            manifest: testing/automation/cli-e2e.manifest.windows.json
+          - name: Windows (NativeAOT)
+            os: windows-latest
+            solution: UniGetUI.Windows.slnx
+            daemon_project: UniGetUI.Avalonia/UniGetUI.Avalonia.csproj
+            daemon_publish_profile: Win-x64-NativeAot
             daemon_build_args: '-p:Platform=x64'
             manifest: testing/automation/cli-e2e.manifest.windows.json
           - name: Linux (Avalonia)
@@ -33,6 +40,13 @@ jobs:
             daemon_project: UniGetUI.Avalonia/UniGetUI.Avalonia.csproj
             daemon_build_args: ''
             manifest: testing/automation/cli-e2e.manifest.linux.json
+          - name: Linux (NativeAOT)
+            os: ubuntu-latest
+            solution: UniGetUI.Avalonia.slnx
+            daemon_project: UniGetUI.Avalonia/UniGetUI.Avalonia.csproj
+            daemon_publish_profile: linux-x64-NativeAot
+            daemon_build_args: ''
+            manifest: testing/automation/cli-e2e.manifest.linux-nativeaot.json
 
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -42,25 +56,25 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '24'
 
       - name: Cache NuGet packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ env.NUGET_PACKAGES }}
           key: ${{ runner.os }}-nuget-e2e-${{ hashFiles('global.json', 'src/**/*.csproj', 'src/**/*.props', 'src/**/*.targets', 'src/**/*.sln', 'src/**/*.slnx') }}
@@ -76,19 +90,66 @@ jobs:
         working-directory: src
         shell: pwsh
         run: |
-          $args = @(
-            'build',
-            '${{ matrix.daemon_project }}',
-            '--no-restore',
-            '--configuration',
-            '${{ env.CONFIGURATION }}',
-            '--verbosity',
-            'minimal'
-          )
-          if ('${{ matrix.daemon_build_args }}') {
-            $args += '${{ matrix.daemon_build_args }}'
+          $PublishProfile = '${{ matrix.daemon_publish_profile }}'
+          $BuildArgs = '${{ matrix.daemon_build_args }}'
+
+          dotnet build-server shutdown
+
+          if ($PublishProfile) {
+            $RuntimeIdentifier = $PublishProfile -replace '-NativeAot$', '' -replace '^Win-', 'win-' -replace '^linux-', 'linux-' -replace '^osx-', 'osx-'
+            $OutputPath = Join-Path (Resolve-Path '..') "artifacts/e2e-nativeaot/$RuntimeIdentifier"
+            New-Item -ItemType Directory -Force -Path $OutputPath | Out-Null
+
+            $args = @(
+              'publish',
+              '${{ matrix.daemon_project }}',
+              '--no-restore',
+              '--configuration',
+              '${{ env.CONFIGURATION }}',
+              '--runtime',
+              $RuntimeIdentifier,
+              '--self-contained',
+              'true',
+              '--output',
+              $OutputPath,
+              '--verbosity',
+              'minimal',
+              '/p:UseSharedCompilation=false',
+              '/m:1',
+              "/p:PublishProfile=$PublishProfile"
+            )
+            if ($BuildArgs) {
+              $args += $BuildArgs
+            }
+            dotnet @args
+
+            $exeName = if ('${{ runner.os }}' -eq 'Windows') { 'UniGetUI.exe' } else { 'UniGetUI' }
+            $daemonExe = Join-Path $OutputPath $exeName
+            if (-not (Test-Path $daemonExe)) {
+              throw "NativeAOT daemon executable was not produced at $daemonExe"
+            }
+            if ('${{ runner.os }}' -ne 'Windows') {
+              chmod +x $daemonExe
+            }
+            echo "UNIGETUI_DAEMON_EXE=$daemonExe" >> $Env:GITHUB_ENV
           }
-          dotnet @args
+          else {
+            $args = @(
+              'build',
+              '${{ matrix.daemon_project }}',
+              '--no-restore',
+              '--configuration',
+              '${{ env.CONFIGURATION }}',
+              '--verbosity',
+              'minimal',
+              '/p:UseSharedCompilation=false',
+              '/m:1'
+            )
+            if ($BuildArgs) {
+              $args += $BuildArgs
+            }
+            dotnet @args
+          }
 
       - name: Upgrade pip tooling
         shell: pwsh

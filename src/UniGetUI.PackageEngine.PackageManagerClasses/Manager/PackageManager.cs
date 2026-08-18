@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.SettingsEngine.SecureSettings;
@@ -41,6 +43,7 @@ namespace UniGetUI.PackageEngine.ManagerClasses.Manager
         public IMultiSourceHelper SourcesHelper { get; protected set; } = new NullSourceHelper();
         public IPackageDetailsHelper DetailsHelper { get; protected set; } = null!;
         public IPackageOperationHelper OperationHelper { get; protected set; } = null!;
+        public virtual Encoding OutputEncoding => Encoding.UTF8;
 
         private readonly bool _baseConstructorCalled;
         private bool _ready;
@@ -261,6 +264,67 @@ namespace UniGetUI.PackageEngine.ManagerClasses.Manager
             return _ready && IsEnabled() && Status.Found;
         }
 
+        // Opt out (override => false) when AttemptFastRepair can't recover a timed-out query (issue #4974).
+        protected virtual bool RetryListingTasksOnTimeout => true;
+
+        // Processes started by the current listing task, so a timeout can kill them instead of orphaning them.
+        private readonly AsyncLocal<List<Process>?> _listingProcesses = new();
+
+        // Lets a listing task register a process for kill-on-timeout. No-op when outside a listing task.
+        protected void RegisterListingProcess(Process process)
+        {
+            List<Process>? processes = _listingProcesses.Value;
+            if (processes is null)
+                return;
+            lock (processes)
+                processes.Add(process);
+        }
+
+        private static void KillListingProcesses(List<Process> processes)
+        {
+            lock (processes)
+                foreach (Process p in processes)
+                {
+                    try
+                    {
+                        if (!p.HasExited)
+                            p.Kill(entireProcessTree: true);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"Could not kill a timed-out process tree: {ex.Message}");
+                    }
+                }
+        }
+
+        private T RunListingTaskWithTimeout<T>(Func<T> method, string taskName)
+        {
+            List<Process> processes = [];
+            var task = Task.Run(() =>
+            {
+                _listingProcesses.Value = processes;
+                return method();
+            });
+
+            if (!task.Wait(TimeSpan.FromSeconds(PackageListingTaskTimeout)))
+            {
+                if (!Settings.Get(Settings.K.DisableTimeoutOnPackageListingTasks))
+                {
+                    KillListingProcesses(processes);
+                    CoreTools.FinalizeDangerousTask(task);
+                    throw new TimeoutException(
+                        $"Task {taskName} for manager {Name} did not finish after "
+                            + $"{PackageListingTaskTimeout} seconds, aborting.  You may disable "
+                            + $"timeouts from UniGetUI Advanced Settings"
+                    );
+                }
+
+                task.Wait();
+            }
+
+            return task.GetAwaiter().GetResult();
+        }
+
         /// <summary>
         /// Returns an array of Package objects that the manager lists for the given query. Depending on the manager, the list may
         /// also include similar results. This method is fail-safe and will return an empty array if an error occurs.
@@ -276,23 +340,10 @@ namespace UniGetUI.PackageEngine.ManagerClasses.Manager
             }
             try
             {
-                var task = Task.Run(() => FindPackages_UnSafe(query));
-                if (!task.Wait(TimeSpan.FromSeconds(PackageListingTaskTimeout)))
-                {
-                    if (!Settings.Get(Settings.K.DisableTimeoutOnPackageListingTasks))
-                    {
-                        CoreTools.FinalizeDangerousTask(task);
-                        throw new TimeoutException(
-                            $"Task _getInstalledPackages for manager {Name} did not finish after "
-                                + $"{PackageListingTaskTimeout} seconds, aborting.  You may disable "
-                                + $"timeouts from UniGetUI Advanced Settings"
-                        );
-                    }
-
-                    task.Wait();
-                }
-
-                var packages = task.GetAwaiter().GetResult();
+                var packages = RunListingTaskWithTimeout(
+                    () => FindPackages_UnSafe(query),
+                    "_findPackages"
+                );
                 Logger.Info(
                     $"Found {packages.Count} available packages from {Name} with the query {query}"
                 );
@@ -300,12 +351,11 @@ namespace UniGetUI.PackageEngine.ManagerClasses.Manager
             }
             catch (Exception e)
             {
-                if (!SecondAttempt)
+                while (e is AggregateException)
+                    e = e.InnerException ?? new InvalidOperationException("How did we get here?");
+
+                if (!SecondAttempt && (RetryListingTasksOnTimeout || e is not TimeoutException))
                 {
-                    while (e is AggregateException)
-                        e =
-                            e.InnerException
-                            ?? new InvalidOperationException("How did we get here?");
                     Logger.Warn(
                         $"Manager {DisplayName} failed to find packages with exception {e.GetType().Name}: {e.Message}"
                     );
@@ -340,34 +390,20 @@ namespace UniGetUI.PackageEngine.ManagerClasses.Manager
                 Task.Run(RefreshPackageIndexes)
                     .Wait(TimeSpan.FromSeconds(PackageListingTaskTimeout));
 
-                var task = Task.Run(GetAvailableUpdates_UnSafe);
-                if (!task.Wait(TimeSpan.FromSeconds(PackageListingTaskTimeout)))
-                {
-                    if (!Settings.Get(Settings.K.DisableTimeoutOnPackageListingTasks))
-                    {
-                        CoreTools.FinalizeDangerousTask(task);
-                        throw new TimeoutException(
-                            $"Task _getInstalledPackages for manager {Name} did not finish after "
-                                + $"{PackageListingTaskTimeout} seconds, aborting.  You may disable "
-                                + $"timeouts from UniGetUI Advanced Settings"
-                        );
-                    }
-
-                    task.Wait();
-                }
-
-                var packages = task.GetAwaiter().GetResult();
+                var packages = RunListingTaskWithTimeout(
+                    GetAvailableUpdates_UnSafe,
+                    "_getAvailableUpdates"
+                );
                 Logger.Info($"Found {packages.Count} available updates from {Name}");
                 return packages;
             }
             catch (Exception e)
             {
-                if (!SecondAttempt)
+                while (e is AggregateException)
+                    e = e.InnerException ?? new InvalidOperationException("How did we get here?");
+
+                if (!SecondAttempt && (RetryListingTasksOnTimeout || e is not TimeoutException))
                 {
-                    while (e is AggregateException)
-                        e =
-                            e.InnerException
-                            ?? new InvalidOperationException("How did we get here?");
                     Logger.Warn(
                         $"Manager {DisplayName} failed to list available updates with exception {e.GetType().Name}: {e.Message}"
                     );
@@ -399,34 +435,20 @@ namespace UniGetUI.PackageEngine.ManagerClasses.Manager
             }
             try
             {
-                var task = Task.Run(GetInstalledPackages_UnSafe);
-                if (!task.Wait(TimeSpan.FromSeconds(PackageListingTaskTimeout)))
-                {
-                    if (!Settings.Get(Settings.K.DisableTimeoutOnPackageListingTasks))
-                    {
-                        CoreTools.FinalizeDangerousTask(task);
-                        throw new TimeoutException(
-                            $"Task _getInstalledPackages for manager {Name} did not finish after "
-                                + $"{PackageListingTaskTimeout} seconds, aborting.  You may disable "
-                                + $"timeouts from UniGetUI Advanced Settings"
-                        );
-                    }
-
-                    task.Wait();
-                }
-
-                var packages = task.GetAwaiter().GetResult();
+                var packages = RunListingTaskWithTimeout(
+                    GetInstalledPackages_UnSafe,
+                    "_getInstalledPackages"
+                );
                 Logger.Info($"Found {packages.Count} installed packages from {Name}");
                 return packages;
             }
             catch (Exception e)
             {
-                if (!SecondAttempt)
+                while (e is AggregateException)
+                    e = e.InnerException ?? new InvalidOperationException("How did we get here?");
+
+                if (!SecondAttempt && (RetryListingTasksOnTimeout || e is not TimeoutException))
                 {
-                    while (e is AggregateException)
-                        e =
-                            e.InnerException
-                            ?? new InvalidOperationException("How did we get here?");
                     Logger.Warn(
                         $"Manager {DisplayName} failed to list installed packages with exception {e.GetType().Name}: {e.Message}"
                     );

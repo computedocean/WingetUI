@@ -23,6 +23,14 @@ public abstract partial class AbstractOperation : IDisposable
     protected bool QUEUE_ENABLED;
     protected bool FORCE_HOLD_QUEUE;
     private bool IsInnerOperation;
+    private readonly object CancellationLock = new();
+    private CancellationTokenSource? RunCancellationSource;
+    private AbstractOperation? ActiveInnerOperation;
+    private Task? ActiveRunTask;
+    private TaskCompletionSource? ScheduledRetryCompletionSource;
+    private bool ActiveRunIsStarting;
+    private volatile bool IsExecutingOperation;
+    private bool Disposed;
 
     private readonly List<(string, LineType)> LogList = [];
     private OperationStatus _status = OperationStatus.InQueue;
@@ -73,28 +81,95 @@ public abstract partial class AbstractOperation : IDisposable
 
     public void Cancel()
     {
-        switch (_status)
+        AbstractOperation? activeInnerOperation;
+        bool wasRunning;
+        bool hasActiveWork;
+        lock (CancellationLock)
         {
-            case OperationStatus.Canceled:
-                break;
-            case OperationStatus.Failed:
-                break;
-            case OperationStatus.Running:
-                Status = OperationStatus.Canceled;
-                while (OperationQueue.Remove(this))
-                    ;
-                CancelRequested?.Invoke(this, EventArgs.Empty);
-                Status = OperationStatus.Canceled;
-                break;
-            case OperationStatus.InQueue:
-                Status = OperationStatus.Canceled;
-                while (OperationQueue.Remove(this))
-                    ;
-                Status = OperationStatus.Canceled;
-                break;
-            case OperationStatus.Succeeded:
-                break;
+            if (
+                _status
+                    is OperationStatus.Canceled
+                        or OperationStatus.Failed
+                        or OperationStatus.Succeeded
+                && !ActiveRunIsStarting
+            )
+                return;
+
+            wasRunning = _status is OperationStatus.Running;
+            hasActiveWork = IsExecutingOperation;
+            RunCancellationSource?.Cancel();
+            activeInnerOperation = ActiveInnerOperation;
         }
+
+        Status = OperationStatus.Canceled;
+        activeInnerOperation?.Cancel();
+
+        if (wasRunning)
+            CancelRequested?.Invoke(this, EventArgs.Empty);
+
+        // A queued operation has no active work to clean up. A running operation stays on the
+        // queue until MainThread has awaited its task and completed its cleanup.
+        if (!hasActiveWork)
+        {
+            while (OperationQueue.Remove(this))
+                ;
+        }
+    }
+
+    protected CancellationToken CancellationToken
+    {
+        get
+        {
+            lock (CancellationLock)
+                return RunCancellationSource?.Token ?? global::System.Threading.CancellationToken.None;
+        }
+    }
+
+    /// <summary>
+    /// Test hook: installs the cancellation source that MainThread() would normally create,
+    /// so tests invoking PerformOperation() directly can exercise Cancel().
+    /// </summary>
+    internal void SetRunCancellationSourceForTests(CancellationTokenSource source)
+    {
+        lock (CancellationLock)
+            RunCancellationSource = source;
+    }
+
+    private bool TrySetActiveInnerOperation(AbstractOperation operation)
+    {
+        bool cancellationRequested;
+        lock (CancellationLock)
+        {
+            cancellationRequested =
+                RunCancellationSource?.IsCancellationRequested is true
+                || Status is OperationStatus.Canceled;
+            if (!cancellationRequested)
+                ActiveInnerOperation = operation;
+        }
+
+        if (cancellationRequested)
+            operation.Cancel();
+
+        return !cancellationRequested;
+    }
+
+    private void ClearActiveInnerOperation(AbstractOperation operation)
+    {
+        lock (CancellationLock)
+            if (ReferenceEquals(ActiveInnerOperation, operation))
+                ActiveInnerOperation = null;
+    }
+
+    private void EndRunCancellation(CancellationTokenSource cancellationSource)
+    {
+        lock (CancellationLock)
+        {
+            if (!ReferenceEquals(RunCancellationSource, cancellationSource))
+                return;
+            RunCancellationSource = null;
+            ActiveRunIsStarting = false;
+        }
+        cancellationSource.Dispose();
     }
 
     protected void Line(string line, LineType type)
@@ -114,7 +189,48 @@ public abstract partial class AbstractOperation : IDisposable
         return LogList.Select(l => (Logger.Redact(l.Item1), l.Item2)).ToList();
     }
 
-    public async Task MainThread()
+    public Task MainThread()
+    {
+        TaskCompletionSource completionSource;
+        CancellationTokenSource cancellationSource;
+        lock (CancellationLock)
+        {
+            ObjectDisposedException.ThrowIf(Disposed, this);
+
+            if (ActiveRunTask is { IsCompleted: false })
+                return ActiveRunTask;
+
+            if (ScheduledRetryCompletionSource is not null)
+                return ScheduledRetryCompletionSource.Task;
+
+            completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            cancellationSource = new();
+            ActiveRunTask = completionSource.Task;
+            RunCancellationSource = cancellationSource;
+            ActiveRunIsStarting = true;
+        }
+
+        _ = ExecuteRunAsync(completionSource, cancellationSource);
+        return completionSource.Task;
+    }
+
+    private async Task ExecuteRunAsync(
+        TaskCompletionSource completionSource,
+        CancellationTokenSource cancellationSource
+    )
+    {
+        try
+        {
+            await MainThreadCore(cancellationSource).ConfigureAwait(false);
+            completionSource.SetResult();
+        }
+        catch (Exception ex)
+        {
+            completionSource.SetException(ex);
+        }
+    }
+
+    private async Task MainThreadCore(CancellationTokenSource runCancellation)
     {
         try
         {
@@ -138,17 +254,44 @@ public abstract partial class AbstractOperation : IDisposable
             if (OperationQueue.Contains(this))
                 throw new InvalidOperationException("This operation was already on the queue");
 
+            if (runCancellation.IsCancellationRequested)
+            {
+                MarkRunAsStarted(runCancellation);
+                CompleteCanceledRun();
+                return;
+            }
+
             Status = OperationStatus.InQueue;
+            MarkRunAsStarted(runCancellation);
+            if (runCancellation.IsCancellationRequested)
+            {
+                CompleteCanceledRun();
+                return;
+            }
+
             Line(Metadata.OperationInformation, LineType.VerboseDetails);
             Line(Metadata.Status, LineType.ProgressIndicator);
 
             Enqueued?.Invoke(this, EventArgs.Empty);
+            if (runCancellation.IsCancellationRequested)
+            {
+                CompleteCanceledRun();
+                return;
+            }
 
             if (QUEUE_ENABLED && !IsInnerOperation)
             {
                 // QUEUE HANDLER
                 SKIP_QUEUE = false;
                 OperationQueue.Add(this);
+                if (runCancellation.IsCancellationRequested)
+                {
+                    while (OperationQueue.Remove(this))
+                        ;
+                    CompleteCanceledRun();
+                    return;
+                }
+
                 int lastPos = -2;
 
                 while (
@@ -176,7 +319,16 @@ public abstract partial class AbstractOperation : IDisposable
             }
             // END QUEUE HANDLER
 
-            var result = await _runOperation();
+            IsExecutingOperation = true;
+            OperationVeredict result;
+            try
+            {
+                result = await _runOperation();
+            }
+            finally
+            {
+                IsExecutingOperation = false;
+            }
             while (OperationQueue.Remove(this))
                 ;
 
@@ -222,6 +374,7 @@ public abstract partial class AbstractOperation : IDisposable
             while (OperationQueue.Remove(this))
                 ;
 
+            MarkRunAsStarted(runCancellation);
             Status = OperationStatus.Failed;
             try
             {
@@ -250,8 +403,32 @@ public abstract partial class AbstractOperation : IDisposable
         }
         finally
         {
-            if (OperationQueue.Count == 0)
-                QueueDrained?.Invoke(null, EventArgs.Empty);
+            try
+            {
+                OnRunCompleted();
+            }
+            finally
+            {
+                EndRunCancellation(runCancellation);
+                if (OperationQueue.Count == 0)
+                    QueueDrained?.Invoke(null, EventArgs.Empty);
+            }
+        }
+    }
+
+    private void CompleteCanceledRun()
+    {
+        Status = OperationStatus.Canceled;
+        OperationFinished?.Invoke(this, EventArgs.Empty);
+        Line(CoreTools.Translate("Operation canceled by user"), LineType.Error);
+    }
+
+    private void MarkRunAsStarted(CancellationTokenSource cancellationSource)
+    {
+        lock (CancellationLock)
+        {
+            if (ReferenceEquals(RunCancellationSource, cancellationSource))
+                ActiveRunIsStarting = false;
         }
     }
 
@@ -266,13 +443,27 @@ public abstract partial class AbstractOperation : IDisposable
             Line("", LineType.VerboseDetails);
         foreach (var preReq in PreOperations)
         {
+            if (Status is OperationStatus.Canceled || CancellationToken.IsCancellationRequested)
+                return OperationVeredict.Canceled;
+
             i++;
             Line(
                     CoreTools.Translate("Running PreOperation ({0}/{1})...", i, count),
                 LineType.Information
             );
             preReq.Operation.LogLineAdded += (_, line) => Line(line.Item1, line.Item2);
-            await preReq.Operation.MainThread();
+            if (!TrySetActiveInnerOperation(preReq.Operation))
+                return OperationVeredict.Canceled;
+            try
+            {
+                await preReq.Operation.MainThread();
+            }
+            finally
+            {
+                ClearActiveInnerOperation(preReq.Operation);
+            }
+            if (Status is OperationStatus.Canceled || CancellationToken.IsCancellationRequested)
+                return OperationVeredict.Canceled;
             if (preReq.Operation.Status is not OperationStatus.Succeeded && preReq.MustSucceed)
             {
                 Line(
@@ -305,29 +496,26 @@ public abstract partial class AbstractOperation : IDisposable
 
         do
         {
+            if (Status is OperationStatus.Canceled || CancellationToken.IsCancellationRequested)
+            {
+                result = OperationVeredict.Canceled;
+                break;
+            }
+
             OperationStarting?.Invoke(this, EventArgs.Empty);
 
             try
             {
-                // Check if the operation was canceled
-                if (Status is OperationStatus.Canceled)
-                {
-                    result = OperationVeredict.Canceled;
-                    break;
-                }
-
                 Task<OperationVeredict> op = PerformOperation();
-                while (Status != OperationStatus.Canceled && !op.IsCompleted)
-                    await Task.Delay(100);
-
-                if (Status is OperationStatus.Canceled)
+                result = await op.ConfigureAwait(false);
+                if (Status is OperationStatus.Canceled || CancellationToken.IsCancellationRequested)
                     result = OperationVeredict.Canceled;
-                else
-                    result = op.GetAwaiter().GetResult();
             }
             catch (Exception e)
             {
-                result = OperationVeredict.Failure;
+                result = CancellationToken.IsCancellationRequested
+                    ? OperationVeredict.Canceled
+                    : OperationVeredict.Failure;
                 Logger.Error(e);
                 foreach (string l in e.ToString().Split("\n"))
                 {
@@ -351,8 +539,22 @@ public abstract partial class AbstractOperation : IDisposable
                 CoreTools.Translate("Running PostOperation ({0}/{1})...", i, count),
                 LineType.Information
             );
+            if (Status is OperationStatus.Canceled || CancellationToken.IsCancellationRequested)
+                return OperationVeredict.Canceled;
+
             postReq.Operation.LogLineAdded += (_, line) => Line(line.Item1, line.Item2);
-            await postReq.Operation.MainThread();
+            if (!TrySetActiveInnerOperation(postReq.Operation))
+                return OperationVeredict.Canceled;
+            try
+            {
+                await postReq.Operation.MainThread();
+            }
+            finally
+            {
+                ClearActiveInnerOperation(postReq.Operation);
+            }
+            if (Status is OperationStatus.Canceled || CancellationToken.IsCancellationRequested)
+                return OperationVeredict.Canceled;
             if (postReq.Operation.Status is not OperationStatus.Succeeded && postReq.MustSucceed)
             {
                 Line(
@@ -423,23 +625,134 @@ public abstract partial class AbstractOperation : IDisposable
         if (retryMode is RetryMode.NoRetry)
             throw new InvalidOperationException("We weren't supposed to reach this, weren't we?");
 
+        Task? previousRun = null;
+        TaskCompletionSource? scheduledRetry = null;
+        bool applyImmediately = false;
+        lock (CancellationLock)
+        {
+            if (Disposed)
+                return;
+
+            if (Status is OperationStatus.Running)
+                return;
+
+            if (Status is OperationStatus.InQueue)
+            {
+                applyImmediately = true;
+            }
+            else
+            {
+                if (ScheduledRetryCompletionSource is not null)
+                    return;
+
+                scheduledRetry = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                ScheduledRetryCompletionSource = scheduledRetry;
+                previousRun = ActiveRunTask ?? Task.CompletedTask;
+            }
+        }
+
+        if (applyImmediately)
+        {
+            ApplyRetryActionAndLog(retryMode);
+            return;
+        }
+
+        _ = RetryAfterRunAsync(previousRun!, scheduledRetry!, retryMode);
+    }
+
+    private async Task RetryAfterRunAsync(
+        Task previousRun,
+        TaskCompletionSource scheduledRetry,
+        string retryMode
+    )
+    {
+        CancellationTokenSource? cancellationSource = null;
+        try
+        {
+            await previousRun.ConfigureAwait(false);
+
+            lock (CancellationLock)
+            {
+                if (!ReferenceEquals(ScheduledRetryCompletionSource, scheduledRetry))
+                    return;
+
+                if (Disposed)
+                {
+                    ScheduledRetryCompletionSource = null;
+                    scheduledRetry.TrySetCanceled();
+                    return;
+                }
+
+                cancellationSource = new();
+                RunCancellationSource = cancellationSource;
+                ActiveRunTask = scheduledRetry.Task;
+                ScheduledRetryCompletionSource = null;
+                ActiveRunIsStarting = true;
+            }
+
+            ApplyRetryActionAndLog(retryMode);
+            await ExecuteRunAsync(scheduledRetry, cancellationSource).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            if (cancellationSource is not null)
+                EndRunCancellation(cancellationSource);
+
+            lock (CancellationLock)
+            {
+                if (ReferenceEquals(ScheduledRetryCompletionSource, scheduledRetry))
+                    ScheduledRetryCompletionSource = null;
+                if (ReferenceEquals(ActiveRunTask, scheduledRetry.Task))
+                    ActiveRunTask = null;
+            }
+            scheduledRetry.TrySetException(ex);
+            Logger.Error(ex);
+        }
+    }
+
+    private void ApplyRetryActionAndLog(string retryMode)
+    {
         ApplyRetryAction(retryMode);
         Line($"", LineType.VerboseDetails);
         Line($"-----------------------", LineType.VerboseDetails);
         Line($"Retrying operation with RetryMode={retryMode}", LineType.VerboseDetails);
         Line($"", LineType.VerboseDetails);
-        if (Status is OperationStatus.Running or OperationStatus.InQueue)
-            return;
-        _ = MainThread();
     }
 
     protected abstract void ApplyRetryAction(string retryMode);
     protected abstract Task<OperationVeredict> PerformOperation();
     public abstract Task<Uri> GetOperationIcon();
 
+    protected virtual void OnRunCompleted() { }
+
     public void Dispose()
     {
-        while (OperationQueue.Remove(this))
-            ;
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!disposing)
+            return;
+
+        TaskCompletionSource? scheduledRetry;
+        lock (CancellationLock)
+        {
+            if (Disposed)
+                return;
+
+            Disposed = true;
+            scheduledRetry = ScheduledRetryCompletionSource;
+            ScheduledRetryCompletionSource = null;
+        }
+
+        scheduledRetry?.TrySetCanceled();
+        Cancel();
+        if (!IsExecutingOperation)
+        {
+            while (OperationQueue.Remove(this))
+                ;
+        }
     }
 }

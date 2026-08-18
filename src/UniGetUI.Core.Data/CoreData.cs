@@ -9,7 +9,7 @@ namespace UniGetUI.Core.Data
         private const string GitHubReleasePageBaseUrl = "https://github.com/Devolutions/UniGetUI/releases/tag/";
         private const string GitHubReleaseApiBaseUrl = "https://api.github.com/repos/Devolutions/UniGetUI/releases/tags/";
         private const string BundledModernAppDirectoryName = "Avalonia";
-        private const string ClassicExecutableName = "UniGetUI.exe";
+        private const string WindowsExecutableName = "UniGetUI.exe";
         private const string BundledPingetExecutableName = "pinget.exe";
         public const string ReleaseNotesUrl = "https://devolutions.net/unigetui/release-notes/";
 
@@ -17,6 +17,29 @@ namespace UniGetUI.Core.Data
         public static int CODE_PAGE
         {
             get => __code_page ??= GetCodePage();
+        }
+
+        private static Encoding? __console_encoding;
+        // The encoding CLIs that don't force UTF-8 (e.g. Chocolatey) actually emit their console output in.
+        public static Encoding ConsoleEncoding
+        {
+            get
+            {
+                if (__console_encoding is not null)
+                    return __console_encoding;
+                try
+                {
+                    Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                    __console_encoding = Encoding.GetEncoding(CODE_PAGE);
+                }
+                catch (Exception e)
+                {
+                    Logger.Warn($"Could not resolve console code page {CODE_PAGE}, falling back to UTF-8");
+                    Logger.Warn(e);
+                    __console_encoding = Encoding.UTF8;
+                }
+                return __console_encoding;
+            }
         }
         public const string VersionName = "2026.1.0"; // Do not modify this line, use file scripts/set-version.ps1
         public const int BuildNumber = 106; // Do not modify this line, use file scripts/set-version.ps1
@@ -405,6 +428,14 @@ namespace UniGetUI.Core.Data
         public static string ElevatorArgs = "";
 
         /// <summary>
+        /// Set by the UI layer to bring the main window to the foreground and wait until it is.
+        /// Called right before a UAC prompt is triggered so the app owns the foreground and can
+        /// delegate it to the consent UI (fixes prompts hiding behind the window with secure desktop off).
+        /// Null in headless mode, where no window exists to activate.
+        /// </summary>
+        public static Func<Task>? BringMainWindowToForegroundAsync;
+
+        /// <summary>
         /// This method will return the most appropriate data directory.
         /// If the new directory exists, it will be used.
         /// If the new directory does not exist, but the old directory does, it will be moved to the new location, and the new location will be used.
@@ -654,7 +685,7 @@ namespace UniGetUI.Core.Data
             Func<string, bool> directoryExists
         )
         {
-            return fileExists(Path.Join(directory, ClassicExecutableName))
+            return fileExists(Path.Join(directory, WindowsExecutableName))
                    || fileExists(Path.Join(directory, BundledPingetExecutableName))
                    || fileExists(Path.Join(directory, "IntegrityTree.json"))
                    || directoryExists(Path.Join(directory, "Assets", "Utilities"))

@@ -43,6 +43,7 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         DisableFilterOnQueryChange = false,
         DisableReload = false,
         NoPackages_BackgroundText = CoreTools.Translate("Hooray! No updates were found."),
+        NoPackages_ImagePath = "avares://UniGetUI/Assets/Images/Trophee.png",
         NoPackages_SourcesText = CoreTools.Translate("Everything is up to date"),
         NoPackages_SubtitleText_Base = CoreTools.Translate("Everything is up to date"),
         MainSubtitle_StillLoading = CoreTools.Translate("Loading packages"),
@@ -88,6 +89,9 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         ViewModel.AddToolbarButton("options", CoreTools.Translate("Update options"),
             () => _ = ShowInstallationOptionsForPackage(SelectedItem), showLabel: false);
         ViewModel.AddToolbarSeparator();
+        ViewModel.AddToolbarButton("console", CoreTools.Translate("Manual update"),
+            () => _ = ManualInstallHelper.LaunchManualAsync(SelectedItem, OperationType.Update));
+        ViewModel.AddToolbarSeparator();
         ViewModel.AddToolbarButton("info_round", CoreTools.Translate("Package details"),
             () => _ = ShowDetailsForPackage(SelectedItem), showLabel: false);
         ViewModel.AddToolbarSeparator();
@@ -102,6 +106,9 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         });
         ViewModel.AddToolbarButton("clipboard_list", CoreTools.Translate("Manage ignored updates"),
             () => vm.RequestManageIgnoredCommand.Execute(null));
+        ViewModel.AddToolbarSeparator();
+        ViewModel.AddToolbarButton("save_as", CoreTools.Translate("Export to CSV"),
+            () => _ = ExportPackagesToCsvAsync());
     }
 
     // ─── Context menu ─────────────────────────────────────────────────────────
@@ -120,6 +127,9 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
             Icon = LoadMenuIcon("options"),
         };
         menuUpdateOptions.Click += (_, _) => _ = ShowInstallationOptionsForPackage(SelectedItem);
+
+        var menuManual = new MenuItem { Header = CoreTools.Translate("Manual update"), Icon = LoadMenuIcon("console") };
+        menuManual.Click += (_, _) => _ = ManualInstallHelper.LaunchManualAsync(SelectedItem, OperationType.Update);
 
         _menuOpenInstallLocation = new MenuItem
         {
@@ -242,6 +252,7 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         menu.Items.Add(menuUpdate);
         menu.Items.Add(new Separator());
         menu.Items.Add(menuUpdateOptions);
+        menu.Items.Add(menuManual);
         menu.Items.Add(_menuOpenInstallLocation);
         menu.Items.Add(new Separator());
         menu.Items.Add(_menuAsAdmin);
@@ -362,12 +373,13 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         var uninstallOp = new UninstallPackageOperation(package, uninstallOpts);
         uninstallOp.OperationSucceeded += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.SUCCESS);
         uninstallOp.OperationFailed += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.FAILED);
-        var updateOp = new UpdatePackageOperation(package, updateOpts, req: uninstallOp);
+        // Once uninstalled the package is gone, so the second step must install the new version fresh; a plain update would fail with "no installed package found".
+        var updateOp = new InstallPackageOperation(package, updateOpts, req: uninstallOp);
         updateOp.OperationSucceeded += (_, _) => TelemetryHandler.UpdatePackage(package, TEL_OP_RESULT.SUCCESS);
         updateOp.OperationFailed += (_, _) => TelemetryHandler.UpdatePackage(package, TEL_OP_RESULT.FAILED);
         AvaloniaOperationRegistry.Add(uninstallOp);
         AvaloniaOperationRegistry.Add(updateOp);
-        _ = uninstallOp.MainThread();
+        // uninstallOp runs as updateOp's prerequisite; launching it directly too would execute it twice concurrently
         _ = updateOp.MainThread();
     }
 

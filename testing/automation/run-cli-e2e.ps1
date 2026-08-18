@@ -210,7 +210,7 @@ function Get-DaemonCommand {
     }
 
     switch ([string]$manifest.daemon.kind) {
-        'winui-exe' {
+        'windows-exe' {
             $daemonExe = if ($env:UNIGETUI_DAEMON_EXE) {
                 $env:UNIGETUI_DAEMON_EXE
             }
@@ -218,7 +218,7 @@ function Get-DaemonCommand {
                 Find-BuiltArtifact -ProjectDirectory (Split-Path $daemonProject -Parent) -FileName "$($manifest.daemon.assemblyName).exe"
             }
             if ([string]::IsNullOrWhiteSpace($daemonExe) -or -not (Test-Path $daemonExe)) {
-                throw "WinUI headless executable was not found. Expected $($manifest.daemon.assemblyName).exe under $(Split-Path $daemonProject -Parent)\bin\$configuration"
+                throw "Windows headless executable was not found. Expected $($manifest.daemon.assemblyName).exe under $(Split-Path $daemonProject -Parent)\bin\$configuration"
             }
 
             return @{
@@ -244,6 +244,23 @@ function Get-DaemonCommand {
                 PrefixArguments = @($resolvedDll)
             }
         }
+        'avalonia-native' {
+            $fileName = if ($runningOnWindows) { "$($manifest.daemon.assemblyName).exe" } else { $manifest.daemon.assemblyName }
+            $daemonNative = if ($env:UNIGETUI_DAEMON_EXE) {
+                $env:UNIGETUI_DAEMON_EXE
+            }
+            else {
+                Find-BuiltArtifact -ProjectDirectory (Split-Path $daemonProject -Parent) -FileName $fileName
+            }
+            if ([string]::IsNullOrWhiteSpace($daemonNative) -or -not (Test-Path $daemonNative)) {
+                throw "NativeAOT headless executable was not found. Expected $fileName under $(Split-Path $daemonProject -Parent)\bin\$configuration"
+            }
+
+            return @{
+                FilePath = (Resolve-Path $daemonNative).Path
+                WorkingDirectory = Split-Path (Resolve-Path $daemonNative).Path -Parent
+            }
+        }
         default {
             throw "Unsupported daemon kind $($manifest.daemon.kind)"
         }
@@ -253,6 +270,7 @@ function Get-DaemonCommand {
 $pipeName = "UniGetUI.CI.$([Guid]::NewGuid().ToString('N'))"
 $transportArgs = @('--transport', 'named-pipe', '--pipe-name', $pipeName)
 $daemonExtraArgs = @('--headless', '--ipc-api-transport', 'named-pipe', '--ipc-api-pipe-name', $pipeName)
+$daemonStartupTimeoutSeconds = if ($runningOnWindows) { 300 } else { 120 }
 $daemonCommand = Get-DaemonCommand
 $cliCommand = $daemonCommand
 $process = $null
@@ -534,7 +552,7 @@ try {
         -Arguments @('status') `
         -Condition { param($response) $response.running -and $response.transport -eq 'named-pipe' } `
         -FailureMessage 'Headless daemon never became ready over named-pipe IPC.' `
-        -TimeoutSeconds 120 `
+        -TimeoutSeconds $daemonStartupTimeoutSeconds `
         -DelaySeconds 2
 
     Write-Stage 'Status and headless transport'

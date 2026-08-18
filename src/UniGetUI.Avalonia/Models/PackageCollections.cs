@@ -1,7 +1,8 @@
-using System.Collections.Concurrent;
+using System.Collections;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Net.Http;
+using Avalonia;
 using Avalonia.Collections;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
@@ -27,8 +28,66 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable
     {
         Timeout = TimeSpan.FromSeconds(8),
     };
-    private static readonly ConcurrentDictionary<long, Bitmap?> _iconCache = new();
-    private static readonly SemaphoreSlim _iconLoadSemaphore = new(4, 4);
+    private static readonly SemaphoreSlim _iconLoadSemaphore = new(8, 8);
+
+    // Cap decoded icon size; the list shows icons at ≤64px (128 covers 2x DPI).
+    private const int MaxIconSide = 128;
+
+    // Bounded LRU by package hash. Evicted entries aren't disposed: a visible row may still
+    // reference the bitmap, so dropping it here only makes it GC-eligible.
+    private const int MaxIconCacheEntries = 512;
+    private static readonly object _iconCacheLock = new();
+    private static readonly Dictionary<long, LinkedListNode<(long Hash, Bitmap? Bitmap)>> _iconCache = new();
+    private static readonly LinkedList<(long Hash, Bitmap? Bitmap)> _iconCacheOrder = new();
+
+    private static bool TryGetCachedIcon(long hash, out Bitmap? bitmap)
+    {
+        lock (_iconCacheLock)
+        {
+            if (_iconCache.TryGetValue(hash, out var node))
+            {
+                _iconCacheOrder.Remove(node);
+                _iconCacheOrder.AddFirst(node);
+                bitmap = node.Value.Bitmap;
+                return true;
+            }
+        }
+        bitmap = null;
+        return false;
+    }
+
+    private static void CacheIcon(long hash, Bitmap? bitmap)
+    {
+        lock (_iconCacheLock)
+        {
+            if (_iconCache.TryGetValue(hash, out var existing))
+            {
+                existing.Value = (hash, bitmap);
+                _iconCacheOrder.Remove(existing);
+                _iconCacheOrder.AddFirst(existing);
+                return;
+            }
+
+            var node = new LinkedListNode<(long, Bitmap?)>((hash, bitmap));
+            _iconCache[hash] = node;
+            _iconCacheOrder.AddFirst(node);
+
+            while (_iconCache.Count > MaxIconCacheEntries && _iconCacheOrder.Last is { } last)
+            {
+                _iconCacheOrder.RemoveLast();
+                _iconCache.Remove(last.Value.Hash);
+            }
+        }
+    }
+
+    public static void ClearIconCache()
+    {
+        lock (_iconCacheLock)
+        {
+            _iconCache.Clear();
+            _iconCacheOrder.Clear();
+        }
+    }
 
     public IPackage Package { get; }
     public PackageWrapper Self => this;
@@ -65,13 +124,16 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable
     public string VersionComboString { get; }
     public string ListedNameTooltip { get; private set; } = "";
     public float ListedOpacity { get; private set; } = 1.0f;
-    public string TagIconPath { get; private set; } = "";
+    public string TagBackdropIconPath { get; private set; } = "";
+    public string TagSymbolIconPath { get; private set; } = "";
     public bool TagIconVisible { get; private set; }
 
     public bool InstallerHostChanged { get; private set; }
     public string InstallerHostChangeTooltip { get; private set; } = "";
 
     private CancellationTokenSource? _installerHostCheckCts;
+    // Cancels this row's queued/in-flight icon load on disposal so it stops rooting the wrapper.
+    private readonly CancellationTokenSource _lifetimeCts = new();
 
     public string SourceIconPath => IconTypeToSvgPath(Package.Source.IconId);
 
@@ -89,7 +151,7 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable
             IconType.AddTo => "add_to",
             _ => icon.ToString().ToLowerInvariant(),
         };
-        return $"avares://UniGetUI.Avalonia/Assets/Symbols/{name}.svg";
+        return $"avares://UniGetUI/Assets/Symbols/{name}.svg";
     }
 
     public PackageWrapper(IPackage package, PackagesPageViewModel page)
@@ -101,10 +163,18 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable
         Package.PropertyChanged += Package_PropertyChanged;
         UpdateDisplayState();
 
-        if (!Settings.Get(Settings.K.DisableIconsOnPackageLists))
-            _ = LoadIconAsync();
-
+        // Icons load lazily per visible row (see EnsureIconLoaded), not eagerly for every result.
         MaybeStartInstallerHostCheck();
+    }
+
+    private int _iconLoadStarted;
+
+    /// <summary>Loads this row's icon at most once; called when the row becomes visible.</summary>
+    public void EnsureIconLoaded()
+    {
+        if (Settings.Get(Settings.K.DisableIconsOnPackageLists)) return;
+        if (Interlocked.Exchange(ref _iconLoadStarted, 1) != 0) return;
+        _ = LoadIconAsync();
     }
 
     /// <summary>
@@ -182,8 +252,9 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable
 
     private async Task LoadIconAsync()
     {
+        CancellationToken token = _lifetimeCts.Token;
         long hash = Package.GetHash();
-        if (_iconCache.TryGetValue(hash, out Bitmap? cached))
+        if (TryGetCachedIcon(hash, out Bitmap? cached))
         {
             if (cached is not null)
                 IconBitmap = cached;
@@ -192,42 +263,90 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable
 
         try
         {
-            await _iconLoadSemaphore.WaitAsync().ConfigureAwait(false);
+            await _iconLoadSemaphore.WaitAsync(token).ConfigureAwait(false);
             Bitmap bitmap;
             try
             {
-                var uri = await Task.Run(Package.GetIconUrlIfAny).ConfigureAwait(false);
-                if (uri is null) { _iconCache[hash] = null; return; }
+                var uri = await Task.Run(Package.GetIconUrlIfAny, token).ConfigureAwait(false);
+                if (uri is null) { CacheIcon(hash, null); return; }
 
+                Bitmap? decoded;
                 if (uri.IsFile)
                 {
                     if (!IsSkiaDecodableExtension(uri.LocalPath))
                     {
                         // Avalonia's Bitmap (Skia) can't decode SVG/AVIF/ICO/TIFF — the
                         // icon cache may produce those. Reject upfront so we don't throw.
-                        _iconCache[hash] = null;
+                        CacheIcon(hash, null);
                         return;
                     }
-                    bitmap = await Task.Run(() => new Bitmap(uri.LocalPath)).ConfigureAwait(false);
+                    decoded = await Task.Run(() => TryDecodeIcon(uri.LocalPath), token).ConfigureAwait(false);
                 }
                 else if (uri.Scheme is "http" or "https")
                 {
-                    var bytes = await _iconHttpClient.GetByteArrayAsync(uri).ConfigureAwait(false);
-                    using var ms = new MemoryStream(bytes);
-                    bitmap = new Bitmap(ms);
+                    var bytes = await _iconHttpClient.GetByteArrayAsync(uri, token).ConfigureAwait(false);
+                    decoded = TryDecodeIcon(bytes, uri.Host);
                 }
-                else { _iconCache[hash] = null; return; }
+                else { CacheIcon(hash, null); return; }
 
-                _iconCache[hash] = bitmap;
+                if (decoded is null) { CacheIcon(hash, null); return; }
+                bitmap = decoded;
+                CacheIcon(hash, bitmap);
             }
             finally
             {
                 _iconLoadSemaphore.Release();
             }
 
-            await Dispatcher.UIThread.InvokeAsync(() => IconBitmap = bitmap);
+            if (token.IsCancellationRequested) return;
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (!token.IsCancellationRequested) IconBitmap = bitmap;
+            });
         }
-        catch { _iconCache[hash] = null; }
+        catch (OperationCanceledException) { /* row discarded before its icon finished loading */ }
+        catch { CacheIcon(hash, null); }
+    }
+
+    // Icons come from a shared on-disk cache that can hold empty or partial entries after an
+    // interrupted download; decoding those throws. Skip them quietly instead of surfacing an error.
+    private static Bitmap? TryDecodeIcon(string filePath)
+    {
+        var info = new FileInfo(filePath);
+        if (!info.Exists || info.Length == 0) return null;
+        return TryDecodeIcon(() => { using var fs = File.OpenRead(filePath); return DecodeDownscaled(fs); }, filePath);
+    }
+
+    private static Bitmap? TryDecodeIcon(byte[] bytes, string source)
+        => bytes.Length == 0 ? null : TryDecodeIcon(() => { using var ms = new MemoryStream(bytes); return DecodeDownscaled(ms); }, source);
+
+    private static Bitmap? TryDecodeIcon(Func<Bitmap> decode, string source)
+    {
+        try { return decode(); }
+        catch (Exception ex) { Logger.Debug($"Discarding undecodable icon '{source}': {ex.Message}"); return null; }
+    }
+
+    // Downscales oversized icons to MaxIconSide; small icons pass through (never upscaled).
+    private static Bitmap DecodeDownscaled(Stream stream)
+    {
+        var bitmap = new Bitmap(stream);
+        PixelSize size = bitmap.PixelSize;
+        if (size.Width <= MaxIconSide && size.Height <= MaxIconSide)
+            return bitmap;
+
+        double scale = (double)MaxIconSide / Math.Max(size.Width, size.Height);
+        var target = new PixelSize(
+            Math.Max(1, (int)Math.Round(size.Width * scale)),
+            Math.Max(1, (int)Math.Round(size.Height * scale)));
+
+        try
+        {
+            return bitmap.CreateScaledBitmap(target, BitmapInterpolationMode.HighQuality);
+        }
+        finally
+        {
+            bitmap.Dispose();
+        }
     }
 
     private static bool IsSkiaDecodableExtension(string path)
@@ -248,7 +367,8 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable
             UpdateDisplayState();
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ListedOpacity)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ListedNameTooltip)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TagIconPath)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TagBackdropIconPath)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TagSymbolIconPath)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TagIconVisible)));
         }
         else if (e.PropertyName == nameof(Package.IsChecked))
@@ -270,20 +390,20 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable
         };
         ListedNameTooltip = Package.Name;
 
-        string tagName = Package.Tag switch
+        // Match WinUI: an accent-coloured filled disc with the symbol punched out, then the
+        // symbol drawn on top in the default foreground. OnQueue/Unavailable show no badge.
+        (string symbol, string backdrop) = Package.Tag switch
         {
-            PackageTag.AlreadyInstalled => "installed_filled",
-            PackageTag.IsUpgradable => "upgradable_filled",
-            PackageTag.Pinned => "pin_filled",
-            PackageTag.OnQueue => "sandclock",
-            PackageTag.BeingProcessed => "loading_filled",
-            PackageTag.Failed => "warning_filled",
-            _ => "",
+            PackageTag.AlreadyInstalled => ("installed", "installed_filled"),
+            PackageTag.IsUpgradable => ("upgradable", "upgradable_filled"),
+            PackageTag.Pinned => ("pin", "pin_filled"),
+            PackageTag.BeingProcessed => ("loading", "loading_filled"),
+            PackageTag.Failed => ("warning", "warning_filled"),
+            _ => ("", ""),
         };
-        TagIconVisible = tagName.Length > 0;
-        TagIconPath = TagIconVisible
-            ? $"avares://UniGetUI.Avalonia/Assets/Symbols/{tagName}.svg"
-            : "";
+        TagIconVisible = symbol.Length > 0;
+        TagSymbolIconPath = TagIconVisible ? $"avares://UniGetUI/Assets/Symbols/{symbol}.svg" : "";
+        TagBackdropIconPath = TagIconVisible ? $"avares://UniGetUI/Assets/Symbols/{backdrop}.svg" : "";
     }
 
     public void Dispose()
@@ -292,6 +412,7 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable
         _installerHostCheckCts?.Cancel();
         _installerHostCheckCts?.Dispose();
         _installerHostCheckCts = null;
+        _lifetimeCts.Cancel(); // not disposed: a background load may still hold the token
     }
 }
 
@@ -369,19 +490,34 @@ public sealed class ObservablePackageCollection : AvaloniaList<PackageWrapper>
     public void SetSortDirection(bool ascending) => _ascending = ascending;
 
     /// <summary>Returns <paramref name="items"/> in the current sort order.</summary>
-    public IEnumerable<PackageWrapper> ApplyToList(IEnumerable<PackageWrapper> items) =>
-        _ascending
-            ? items.OrderBy(GetSortKey, StringComparer.OrdinalIgnoreCase)
-            : items.OrderByDescending(GetSortKey, StringComparer.OrdinalIgnoreCase);
+    public IEnumerable<PackageWrapper> ApplyToList(IEnumerable<PackageWrapper> items)
+    {
+        var comparer = Comparer<PackageWrapper>.Create((a, b) => Compare(a, b, CurrentSorter));
+        return _ascending ? items.OrderBy(w => w, comparer) : items.OrderByDescending(w => w, comparer);
+    }
 
-    private string GetSortKey(PackageWrapper w) => CurrentSorter switch
+    // Shared by the "Order by" menu (ApplyToList) and the DataGrid's native column sorting
+    // (GetColumnComparer) so both order identically. Versions compare semantically via
+    // CoreTools.Version; a string key can't be used there because that struct has no ToString
+    // override, so its key would be a constant type name that never sorts.
+    private static int Compare(PackageWrapper a, PackageWrapper b, Sorter sorter) => sorter switch
+    {
+        Sorter.Version => a.Package.NormalizedVersion.CompareTo(b.Package.NormalizedVersion),
+        Sorter.NewVersion => a.Package.NormalizedNewVersion.CompareTo(b.Package.NormalizedNewVersion),
+        _ => string.Compare(GetSortKey(a, sorter), GetSortKey(b, sorter), StringComparison.OrdinalIgnoreCase),
+    };
+
+    private static string GetSortKey(PackageWrapper w, Sorter sorter) => sorter switch
     {
         Sorter.Checked => w.IsChecked ? "0" : "1",
         Sorter.Name => w.Package.Name,
         Sorter.Id => w.Package.Id,
-        Sorter.Version => w.Package.NormalizedVersion.ToString() ?? string.Empty,
-        Sorter.NewVersion => w.Package.NormalizedNewVersion.ToString() ?? string.Empty,
         Sorter.Source => w.Package.Source.AsString_DisplayName,
         _ => w.Package.Name,
     };
+
+    // Comparer for the DataGrid's native column sorting. Reflection-free (unlike SortMemberPath),
+    // so it keeps working under full-trim NativeAOT release builds — see issue #5103.
+    public static IComparer GetColumnComparer(Sorter sorter) =>
+        Comparer<PackageWrapper>.Create((a, b) => Compare(a, b, sorter));
 }

@@ -14,24 +14,49 @@ public partial class OperationOutputViewModel : ObservableObject
     [ObservableProperty] private string _title = "";
     public ObservableCollection<LogLineItem> OutputLines { get; } = new();
 
-    private readonly IBrush _errorBrush;
-    private readonly IBrush _debugBrush;
-    private readonly IBrush _normalBrush;
+    private IBrush _errorBrush = Brushes.Transparent;
+    private IBrush _debugBrush = Brushes.Transparent;
+    private IBrush _normalBrush = Brushes.Transparent;
+
+    private readonly AbstractOperation _operation;
+    private ProgressLineCollapser _collapser = new();
 
     public OperationOutputViewModel(AbstractOperation operation)
     {
-        var theme = Application.Current?.ActualThemeVariant ?? ThemeVariant.Default;
+        _operation = operation;
+        Title = operation.Metadata.Title;
+
+        Rebuild();
+
+        operation.LogLineAdded += (_, ev) =>
+            Dispatcher.UIThread.Post(() => AddOrCollapseLine(ev.Item1, ev.Item2));
+    }
+
+    // Rebuilds every line with brushes for the current theme; called on construction and whenever
+    // the theme changes, so already-rendered output follows a live light/dark switch.
+    public void Rebuild()
+    {
+        var theme = Infrastructure.ThemeHelper.Variant;
         _errorBrush = LookupBrush("StatusErrorForeground", theme, new SolidColorBrush(Color.Parse("#c62828")));
         _debugBrush = LookupBrush("LogOutputVerboseForeground", theme, new SolidColorBrush(Color.Parse("#767676")));
         _normalBrush = LookupBrush("SystemControlForegroundBaseHighBrush", theme, Brushes.White);
 
-        Title = operation.Metadata.Title;
+        OutputLines.Clear();
+        _collapser = new();
+        foreach (var (text, type) in _operation.GetOutput())
+            AddOrCollapseLine(text, type);
+    }
 
-        foreach (var (text, type) in operation.GetOutput())
-            OutputLines.Add(MakeLine(text, type));
-
-        operation.LogLineAdded += (_, ev) =>
-            Dispatcher.UIThread.Post(() => OutputLines.Add(MakeLine(ev.Item1, ev.Item2)));
+    // Progress indicators (carriage-return redraws like installer spinners) overwrite the previous
+    // line instead of stacking up, mirroring how a terminal repaints in place. The first
+    // non-progress line that follows settles into that same line.
+    private void AddOrCollapseLine(string text, AbstractOperation.LineType type)
+    {
+        LogLineItem item = MakeLine(text, type);
+        if (_collapser.Next(type) is ProgressLineCollapser.Fold.ReplaceLast && OutputLines.Count > 0)
+            OutputLines[^1] = item;
+        else
+            OutputLines.Add(item);
     }
 
     private static IBrush LookupBrush(string key, ThemeVariant theme, IBrush fallback)

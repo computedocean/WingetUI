@@ -14,6 +14,7 @@
         <StackPanel Orientation="Vertical">
 
             <settings:TranslatedTextBlock Text="Concurrency and execution"
+                                          FontSize="14"
                                           FontWeight="SemiBold"
                                           Margin="44,32,4,8"
                                           automation:AutomationProperties.HeadingLevel="2"/>
@@ -24,7 +25,8 @@
                                    ValueChangedCommand="{Binding UpdateMaxOperationsCommand}"
                                    CornerRadius="8,8,0,0"/>
 
-            <settings:CheckboxCard SettingName="MaintainSuccessfulInstalls"
+            <settings:CheckboxCard x:Name="ClearSuccessfulOpsCard"
+                                   SettingName="MaintainSuccessfulInstalls"
                                    ForceInversion="True"
                                    Text="{t:Translate Clear successful operations from the operation list after a 5 second delay}"
                                    WarningText="{t:Translate Download operations are not affected by this setting}"
@@ -33,12 +35,26 @@
 
             <UserControl Height="16"/>
 
-            <settings:CheckboxCard SettingName="KillProcessesThatRefuseToDie"
+            <settings:CheckboxCard x:Name="KillProcessesCard"
+                                   SettingName="KillProcessesThatRefuseToDie"
                                    Text="{t:Translate Try to kill the processes that refuse to close when requested to}"
                                    WarningText="{t:Translate You may lose unsaved data}"
                                    CornerRadius="8"/>
 
+            <settings:TranslatedTextBlock Text="Environment variables in custom install options"
+                                          FontSize="14"
+                                          FontWeight="SemiBold"
+                                          Margin="44,32,4,8"
+                                          automation:AutomationProperties.HeadingLevel="2"/>
+
+            <settings:CheckboxCard x:Name="PercentEnvVarSyntaxCard"
+                                   SettingName="ExpandEnvVarsWithPercentSyntax"
+                                   Text="{t:Translate Use %VARIABLE% syntax for environment variables in custom install arguments and locations}"
+                                   WarningText="{t:Translate Text='By default UniGetUI expands &lt;VARIABLE&gt; tokens, which cannot appear in a real path. Enabling this uses the Windows %VARIABLE% syntax instead, which may unexpectedly expand folder names that contain a variable name such as %TEMP%.'}"
+                                   CornerRadius="8"/>
+
             <settings:TranslatedTextBlock Text="Automatic desktop shortcut remover"
+                                          FontSize="14"
                                           FontWeight="SemiBold"
                                           Margin="44,32,4,8"
                                           automation:AutomationProperties.HeadingLevel="2"/>
@@ -50,6 +66,7 @@
                                          CornerRadius="8"/>
 
             <settings:TranslatedTextBlock Text="Related settings"
+                                          FontSize="14"
                                           FontWeight="SemiBold"
                                           Margin="44,32,4,8"
                                           automation:AutomationProperties.HeadingLevel="2"/>

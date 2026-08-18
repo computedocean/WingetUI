@@ -1,5 +1,6 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    x:Class="UniGetUI.Avalonia.Assets.Styles.WindowsMicaStyles">
     <!--
         Windows 11 Mica overrides. Merged into Application.Resources ONLY when Mica is
         actually active (Windows 11 + "Transparency effects" on) — see App.Initialize().
@@ -15,8 +16,10 @@
             <!-- Window/page surface goes transparent so Mica shows behind chrome + page -->
             <SolidColorBrush x:Key="MicaPageBackground"          Color="Transparent"/>
             <!-- Cards / panels: translucent white layers over the (light) Mica -->
-            <SolidColorBrush x:Key="SettingsCardBackground"      Color="#80FFFFFF"/>
+            <SolidColorBrush x:Key="SettingsCardBackground"      Color="#B3FFFFFF"/>
             <SolidColorBrush x:Key="SettingsCardBorderBrush"     Color="#14000000"/>
+            <!-- Package list: near-transparent so Mica shows through, matching WinUI's SystemFillColorNeutralBackground -->
+            <SolidColorBrush x:Key="PackageListBackground"       Color="#06000000"/>
             <SolidColorBrush x:Key="SettingsCardHoverBackground" Color="#99FFFFFF"/>
             <SolidColorBrush x:Key="AppSplitterBackground"       Color="#18000000"/>
             <SolidColorBrush x:Key="AppOperationsPanelBackground" Color="#80FFFFFF"/>
@@ -25,11 +28,14 @@
             <SolidColorBrush x:Key="AppDialogPanelBackground"    Color="#80FFFFFF"/>
             <SolidColorBrush x:Key="AppDialogSubtleBackground"   Color="#80FFFFFF"/>
             <SolidColorBrush x:Key="AppDialogDarkBackground"     Color="#80FFFFFF"/>
+            <SolidColorBrush x:Key="IgnoredUpdatesListBackground" Color="#F3F3F3"/>
             <!-- Flyouts / menus / dropdowns / tooltips: DWM acrylic backdrop with the card tint over it -->
             <SolidColorBrush x:Key="FlyoutPresenterBackground"     Color="#80FFFFFF"/>
-            <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="#80FFFFFF"/>
-            <SolidColorBrush x:Key="ComboBoxDropDownBackground"    Color="#80FFFFFF"/>
-            <SolidColorBrush x:Key="ToolTipBackground"             Color="#80FFFFFF"/>
+            <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="#FFFFFFFF"/>
+            <!-- Keep light ComboBox flyouts opaque. A translucent white popup composites
+                 against the dimmed owner window and reads as a disabled grey surface. -->
+            <SolidColorBrush x:Key="ComboBoxDropDownBackground"    Color="#FFFFFFFF"/>
+            <SolidColorBrush x:Key="ToolTipBackground"             Color="#FFFFFFFF"/>
             <!-- Expander chrome -->
             <SolidColorBrush x:Key="ExpanderHeaderBackground"            Color="#80FFFFFF"/>
             <SolidColorBrush x:Key="ExpanderHeaderBackgroundPointerOver" Color="#99FFFFFF"/>
@@ -50,10 +56,12 @@
 
         <ResourceDictionary x:Key="Dark">
             <SolidColorBrush x:Key="MicaPageBackground"          Color="Transparent"/>
-            <!-- Cards / panels: translucent dark layers; ~40% so the wallpaper-tinted Mica bleeds through -->
-            <SolidColorBrush x:Key="SettingsCardBackground"      Color="#662D2D2D"/>
+            <!-- Cards / panels: WinUI's translucent card layer over the Mica backdrop -->
+            <SolidColorBrush x:Key="SettingsCardBackground"      Color="#0DFFFFFF"/>
             <SolidColorBrush x:Key="SettingsCardBorderBrush"     Color="#26FFFFFF"/>
-            <SolidColorBrush x:Key="SettingsCardHoverBackground" Color="#66383838"/>
+            <!-- Package list: near-transparent so Mica shows through, matching WinUI's SystemFillColorNeutralBackground -->
+            <SolidColorBrush x:Key="PackageListBackground"       Color="#08FFFFFF"/>
+            <SolidColorBrush x:Key="SettingsCardHoverBackground" Color="#15FFFFFF"/>
             <SolidColorBrush x:Key="AppSplitterBackground"       Color="#66000000"/>
             <SolidColorBrush x:Key="AppOperationsPanelBackground" Color="#66202020"/>
             <SolidColorBrush x:Key="AppBorderBrush"              Color="#33FFFFFF"/>
@@ -61,12 +69,15 @@
             <SolidColorBrush x:Key="AppDialogPanelBackground"    Color="#662C2C2C"/>
             <SolidColorBrush x:Key="AppDialogSubtleBackground"   Color="#66393939"/>
             <SolidColorBrush x:Key="AppDialogDarkBackground"     Color="#66181818"/>
+            <SolidColorBrush x:Key="IgnoredUpdatesListBackground" Color="#66181818"/>
             <!-- Flyouts / menus / dropdowns / tooltips: MicaWindowHelper gives the popup window a DWM
-                 acrylic backdrop (transient surfaces can't use Mica); this tint matches the cards -->
-            <SolidColorBrush x:Key="FlyoutPresenterBackground"     Color="#662D2D2D"/>
-            <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="#662D2D2D"/>
-            <SolidColorBrush x:Key="ComboBoxDropDownBackground"    Color="#662D2D2D"/>
-            <SolidColorBrush x:Key="ToolTipBackground"             Color="#662D2D2D"/>
+                 acrylic backdrop (transient surfaces can't use Mica). Kept mostly opaque so the surface
+                 stays readably dark even when the popup floats over bright content (e.g. the release-notes
+                 WebView) — a lighter tint let the white page wash the menu out (#5007) -->
+            <SolidColorBrush x:Key="FlyoutPresenterBackground"     Color="#BF2D2D2D"/>
+            <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="#FF2C2C2C"/>
+            <SolidColorBrush x:Key="ComboBoxDropDownBackground"    Color="#BF2D2D2D"/>
+            <SolidColorBrush x:Key="ToolTipBackground"             Color="#BF2D2D2D"/>
             <!-- Expander chrome -->
             <SolidColorBrush x:Key="ExpanderHeaderBackground"            Color="#662D2D2D"/>
             <SolidColorBrush x:Key="ExpanderHeaderBackgroundPointerOver" Color="#802D2D2D"/>

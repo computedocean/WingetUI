@@ -13,10 +13,12 @@
         <StackPanel Orientation="Vertical" Spacing="4" Margin="16,8">
 
             <TextBlock Text="{t:Translate Translators}"
+                       FontFamily="Segoe UI Variable Display"
                        FontSize="24"
                        FontWeight="Bold"/>
 
             <TextBlock Text="{Binding ThanksText}"
+                       FontSize="14"
                        TextWrapping="Wrap"/>
 
             <Button Click="BecomeTranslatorButton_Click"
@@ -27,6 +29,7 @@
                     Margin="0,4,0,8"
                     automation:AutomationProperties.Name="{t:Translate Become a translator}">
                 <TextBlock Classes="hyperlink"
+                           FontSize="14"
                            Text="{t:Translate Become a translator}"
                            automation:AutomationProperties.AccessibilityView="Raw"/>
             </Button>
@@ -40,6 +43,7 @@
 
                             <TextBlock Grid.Column="0"
                                        Text="{Binding Language}"
+                                       FontSize="14"
                                        VerticalAlignment="Center"/>
 
                             <!-- Avatar -->
@@ -56,6 +60,7 @@
 
                             <TextBlock Grid.Column="2"
                                        Text="{Binding Name}"
+                                       FontSize="14"
                                        VerticalAlignment="Center"/>
 
                             <Button Grid.Column="3"
@@ -67,6 +72,7 @@
                                     Padding="4,0"
                                     automation:AutomationProperties.Name="{Binding Name}">
                                 <TextBlock Classes="hyperlink"
+                                           FontSize="14"
                                            Text="GitHub"
                                            automation:AutomationProperties.AccessibilityView="Raw"/>
                             </Button>
