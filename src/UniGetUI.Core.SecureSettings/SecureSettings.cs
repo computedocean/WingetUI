@@ -59,6 +59,18 @@ public static class SecureSettings
 
     public static bool GetForUser(string username, string setting)
     {
+        if (
+            !TryResolveSecureSettingPath(
+                username,
+                setting,
+                out string settingsLocation,
+                out string settingFile
+            )
+        )
+        {
+            return false;
+        }
+
         string purifiedSetting = CoreTools.MakeValidFileName(setting);
         string purifiedUser = CoreTools.MakeValidFileName(username);
         string cacheKey = $"{purifiedUser}|{purifiedSetting}";
@@ -66,9 +78,6 @@ public static class SecureSettings
         {
             return value;
         }
-
-        var settingsLocation = Path.Join(GetSecureSettingsRoot(), purifiedUser);
-        var settingFile = Path.Join(settingsLocation, purifiedSetting);
 
         if (!Directory.Exists(settingsLocation))
         {
@@ -120,8 +129,21 @@ public static class SecureSettings
             string purifiedUser = CoreTools.MakeValidFileName(username);
             _cache.TryRemove($"{purifiedUser}|{purifiedSetting}", out _);
 
-            var settingsLocation = Path.Join(GetSecureSettingsRoot(), purifiedUser);
-            var settingFile = Path.Join(settingsLocation, purifiedSetting);
+            if (
+                !TryResolveSecureSettingPath(
+                    username,
+                    setting,
+                    out string settingsLocation,
+                    out string settingFile
+                )
+            )
+            {
+                Console.WriteLine(
+                    $"Refused a secure setting path outside the secure settings root: "
+                        + $"user='{username}', setting='{setting}'"
+                );
+                return -1;
+            }
 
             if (!Directory.Exists(settingsLocation))
             {
@@ -147,6 +169,85 @@ public static class SecureSettings
             Console.WriteLine(ex);
             return -1;
         }
+    }
+
+    private static bool TryResolveSecureSettingPath(
+        string username,
+        string setting,
+        out string settingsLocation,
+        out string settingFile
+    )
+    {
+        settingsLocation = string.Empty;
+        settingFile = string.Empty;
+
+        if (!IsSafeRawComponent(username) || !IsSafeRawComponent(setting))
+            return false;
+
+        string purifiedUser = CoreTools.MakeValidFileName(username);
+        string purifiedSetting = CoreTools.MakeValidFileName(setting);
+
+        if (!IsSafePathComponent(purifiedUser) || !IsSafePathComponent(purifiedSetting))
+            return false;
+
+        string root = Path.GetFullPath(GetSecureSettingsRoot());
+        string location = Path.GetFullPath(Path.Join(root, purifiedUser));
+        string file = Path.GetFullPath(Path.Join(location, purifiedSetting));
+
+        if (!IsDirectChildOf(location, root) || !IsDirectChildOf(file, location))
+            return false;
+
+        if (!purifiedUser.Equals(Path.GetFileName(location), StringComparison.Ordinal))
+            return false;
+
+        if (!purifiedSetting.Equals(Path.GetFileName(file), StringComparison.Ordinal))
+            return false;
+
+        if (
+            IsLink(new DirectoryInfo(root))
+            || IsLink(new DirectoryInfo(location))
+            || IsLink(new FileInfo(file))
+        )
+            return false;
+
+        settingsLocation = location;
+        settingFile = file;
+        return true;
+    }
+
+    private static bool IsSafeRawComponent(string value)
+    {
+        return !string.IsNullOrWhiteSpace(value)
+            && !value.All(character => character is '.' || char.IsWhiteSpace(character));
+    }
+
+    private static bool IsSafePathComponent(string value)
+    {
+        return !string.IsNullOrWhiteSpace(value)
+            && value is not ("." or "..")
+            && value.Equals(Path.GetFileName(value), StringComparison.Ordinal);
+    }
+
+    private static bool IsLink(FileSystemInfo entry)
+    {
+        try
+        {
+            return entry.LinkTarget is not null;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    private static bool IsDirectChildOf(string candidate, string parent)
+    {
+        return string.Equals(
+            Path.GetDirectoryName(candidate),
+            parent.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal
+        );
     }
 
     private static string GetSecureSettingsRoot()

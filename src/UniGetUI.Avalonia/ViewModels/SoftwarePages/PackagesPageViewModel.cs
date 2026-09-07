@@ -103,6 +103,7 @@ public class SourceTreeNode : INotifyPropertyChanged
 
 public partial class PackagesPageViewModel : ViewModelBase
 {
+    private const int MaximumPreloadedIcons = 512;
     // Live width of the filter pane. Code-behind keeps this in sync with the GridSplitter
     // so the toolbar's main button (bound to FilterPaneColumnWidth) tracks resizes.
     private double _trackedFilterPaneWidth = 220.0;
@@ -145,6 +146,7 @@ public partial class PackagesPageViewModel : ViewModelBase
     public readonly bool LoadsOnStart;
     public readonly bool RoleIsUpdateLike;
     public bool SimilarSearchEnabled { get; private set; }
+    public bool InstallerHostColumnVisible { get; }
     public readonly string NoPackagesText;
     public readonly string NoMatchesText;
     public readonly string SearchBoxPlaceholder;
@@ -188,6 +190,7 @@ public partial class PackagesPageViewModel : ViewModelBase
     [ObservableProperty] private string _versionHeaderText = "";
     [ObservableProperty] private string _newVersionHeaderText = "";
     [ObservableProperty] private string _sourceHeaderText = "";
+    [ObservableProperty] private string _installerHostHeaderText = "";
 
     // ─── Collections ──────────────────────────────────────────────────────────
     public ObservablePackageCollection FilteredPackages { get; } = new();
@@ -204,6 +207,7 @@ public partial class PackagesPageViewModel : ViewModelBase
     public string QueryBackup { get; set; } = "";
 
     private readonly ObservableCollection<PackageWrapper> _wrappedPackages = new();
+    private CancellationTokenSource? _iconPreloadCts;
     protected List<IPackageManager> UsedManagers = [];
     protected ConcurrentDictionary<IPackageManager, List<IManagerSource>> UsedSourcesForManager = new();
     protected ConcurrentDictionary<IPackageManager, SourceTreeNode> RootNodeForManager = new();
@@ -221,6 +225,7 @@ public partial class PackagesPageViewModel : ViewModelBase
     public event Action? HelpRequested;
     /// <summary>Fired when the ViewModel wants to show the Manage-Ignored-Updates dialog.</summary>
     public event Action? ManageIgnoredRequested;
+    public event Action? ManageAutoUpdatesRequested;
 
     // ─── Constructor ─────────────────────────────────────────────────────────
     public PackagesPageViewModel(PackagesPageData data)
@@ -246,6 +251,8 @@ public partial class PackagesPageViewModel : ViewModelBase
         SimilarSearchEnabled = !data.DisableSuggestedResultsRadio;
         RoleIsUpdateLike = data.PageRole == OperationType.Update;
         NewVersionHeaderVisible = RoleIsUpdateLike;
+        InstallerHostColumnVisible = Settings.Get(Settings.K.ShowInstallerHostColumn)
+            && data.PageRole != OperationType.Uninstall;
         ReloadButtonVisible = !DisableReload;
         SearchBoxPlaceholder = CoreTools.Translate("Search for packages");
 
@@ -473,7 +480,35 @@ public partial class PackagesPageViewModel : ViewModelBase
         _lastLoadTime = DateTime.Now;
         ReloadButtonTooltip = CoreTools.Translate("Last checked: {0}", _lastLoadTime.ToString(CultureInfo.CurrentCulture));
         FilterPackages();
+        _iconPreloadCts?.Cancel();
+        _iconPreloadCts?.Dispose();
+        _iconPreloadCts = new CancellationTokenSource();
+        _ = PreloadPackageIconsAsync(
+            FilteredPackages.Take(MaximumPreloadedIcons).ToArray(),
+            _iconPreloadCts.Token);
         PackagesLoaded?.Invoke(ReloadReason.External);
+    }
+
+    private static async Task PreloadPackageIconsAsync(
+        PackageWrapper[] wrappers,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Leave half the global icon-loader slots free for rows that become visible immediately.
+            const int batchSize = 4;
+            for (int start = 0; start < wrappers.Length; start += batchSize)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                int count = Math.Min(batchSize, wrappers.Length - start);
+                var tasks = new Task[count];
+                for (int index = 0; index < count; index++)
+                    tasks[index] = wrappers[start + index].EnsureIconLoadedAsync();
+
+                await Task.WhenAll(tasks).WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) { }
     }
 
     private void Loader_StartedLoading(object? sender, EventArgs e)
@@ -484,6 +519,7 @@ public partial class PackagesPageViewModel : ViewModelBase
             return;
         }
         IsLoading = true;
+        _iconPreloadCts?.Cancel();
         UpdateSubtitle();
     }
 
@@ -868,6 +904,7 @@ public partial class PackagesPageViewModel : ViewModelBase
         VersionHeaderText = isList ? CoreTools.Translate("Version") : "";
         NewVersionHeaderText = isList ? CoreTools.Translate("New version") : "";
         SourceHeaderText = isList ? CoreTools.Translate("Source") : "";
+        InstallerHostHeaderText = isList ? CoreTools.Translate("Installer host") : "";
     }
 
     public bool IsListViewMode => ViewMode == PackageViewMode.List;
@@ -943,6 +980,7 @@ public partial class PackagesPageViewModel : ViewModelBase
     [RelayCommand] private void ClearSourceSelection_Cmd() { ClearSourceSelection(); FilterPackages(); }
     [RelayCommand] private void RequestHelp() => HelpRequested?.Invoke();
     [RelayCommand] private void RequestManageIgnored() => ManageIgnoredRequested?.Invoke();
+    [RelayCommand] private void RequestManageAutoUpdates() => ManageAutoUpdatesRequested?.Invoke();
 
     // ─── Sort commands ────────────────────────────────────────────────────────
     [RelayCommand] private void SortByName() => SortFieldIndex = 0;
@@ -1003,6 +1041,7 @@ public partial class PackagesPageViewModel : ViewModelBase
         {
             var opts = await InstallOptionsFactory.LoadApplicableAsync(
                 pkg, elevated: elevated, interactive: interactive, no_integrity: no_integrity);
+            if (PackageOperation.HasPendingOperation(pkg, OperationType.Install)) continue;
             var op = new InstallPackageOperation(pkg, opts);
             op.OperationSucceeded += (_, _) => TelemetryHandler.InstallPackage(pkg, TEL_OP_RESULT.SUCCESS, TEL_InstallReferral.DIRECT_SEARCH);
             op.OperationFailed += (_, _) => TelemetryHandler.InstallPackage(pkg, TEL_OP_RESULT.FAILED, TEL_InstallReferral.DIRECT_SEARCH);

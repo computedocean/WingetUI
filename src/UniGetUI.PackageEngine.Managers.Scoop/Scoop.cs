@@ -21,6 +21,23 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
 {
     public class Scoop : PackageManager
     {
+        public override bool CommandLineIsShellInterpreted => true;
+
+        /// <summary>
+        /// Scoop is addressed as "bucket/app", so the source name becomes part of the specifier
+        /// that reaches the command line. The base helpers validate the package identifier; the
+        /// bucket name comes from whatever is already installed and is checked here.
+        /// </summary>
+        internal static string RequireSafePackageSpec(string spec)
+        {
+            if (!CoreTools.IsValidPackageIdentifier(spec))
+                throw new InvalidOperationException(
+                    $"Refusing to build a Scoop command line for \"{spec}\": it is not a valid package specifier."
+                );
+
+            return spec;
+        }
+
         public static string[] FALSE_PACKAGE_IDS = ["No", "WARN"];
         public static string[] FALSE_PACKAGE_VERSIONS =
         [
@@ -33,6 +50,9 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
             "removed,",
         ];
 
+        private const int VersionProbeTimeout = 20_000;
+        private const int StreamDrainTimeout = 5_000;
+
         private long LastScoopSourceUpdateTime;
 
         public Scoop()
@@ -43,7 +63,7 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
                 new ManagerDependency(
                     "Scoop-Search",
                     CoreData.PowerShell5,
-                    "-ExecutionPolicy Bypass -NoLogo -NoProfile -Command \"& {scoop install main/scoop-search; if($error.count -ne 0){pause}}\"",
+                    "-ExecutionPolicy Bypass -NoLogo -NoProfile -Command \"& {scoop install main/scoop-search}\"",
                     "scoop install main/scoop-search",
                     async () => (await CoreTools.WhichAsync("scoop-search.exe")).Item1
                 ),
@@ -51,7 +71,7 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
                 new ManagerDependency(
                     "Git",
                     CoreData.PowerShell5,
-                    "-ExecutionPolicy Bypass -NoLogo -NoProfile -Command \"& {scoop install main/git; if($error.count -ne 0){pause}}\"",
+                    "-ExecutionPolicy Bypass -NoLogo -NoProfile -Command \"& {scoop install main/git}\"",
                     "scoop install main/git",
                     async () => (await CoreTools.WhichAsync("git.exe")).Item1
                 ),
@@ -391,10 +411,7 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
                     proc
                 );
                 proc.Start();
-                aux_logger.AddToStdOut(proc.StandardOutput.ReadToEnd());
-                aux_logger.AddToStdErr(proc.StandardError.ReadToEnd());
-                proc.WaitForExit();
-                aux_logger.Close(proc.ExitCode);
+                ScoopProcess.ReadToEnd(proc, aux_logger);
                 path = "scoop-search.exe";
             }
 
@@ -415,23 +432,14 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
             IProcessTaskLogger logger = TaskLogger.CreateNew(LoggableTaskType.FindPackages, p);
 
             p.Start();
+            RegisterListingProcess(p);
 
-            List<string> lines = [];
-            string? line;
-            while ((line = p.StandardOutput.ReadLine()) is not null)
-            {
-                logger.AddToStdOut(line);
-                lines.Add(line);
-            }
-            logger.AddToStdErr(p.StandardError.ReadToEnd());
-            p.WaitForExit();
-            logger.Close(p.ExitCode);
-            return ParseSearchOutput(lines);
+            return ParseSearchOutput(ScoopProcess.ReadLines(p, logger));
         }
 
         protected override IReadOnlyList<Package> GetAvailableUpdates_UnSafe()
         {
-            IReadOnlyList<IPackage> installedPackages = GetInstalledPackages();
+            IReadOnlyList<IPackage> installedPackages = GetInstalledPackages_UnSafe();
 
             using Process p = new()
             {
@@ -449,18 +457,9 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
             IProcessTaskLogger logger = TaskLogger.CreateNew(LoggableTaskType.ListUpdates, p);
 
             p.Start();
+            RegisterListingProcess(p);
 
-            List<string> lines = [];
-            string? line;
-            while ((line = p.StandardOutput.ReadLine()) is not null)
-            {
-                logger.AddToStdOut(line);
-                lines.Add(line);
-            }
-            logger.AddToStdErr(p.StandardError.ReadToEnd());
-            p.WaitForExit();
-            logger.Close(p.ExitCode);
-            return ParseAvailableUpdates(lines, installedPackages);
+            return ParseAvailableUpdates(ScoopProcess.ReadLines(p, logger), installedPackages);
         }
 
         protected override IReadOnlyList<Package> GetInstalledPackages_UnSafe() =>
@@ -487,17 +486,7 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
             );
             p.Start();
 
-            List<string> lines = [];
-            string? line;
-            while ((line = p.StandardOutput.ReadLine()) is not null)
-            {
-                logger.AddToStdOut(line);
-                lines.Add(line);
-            }
-            logger.AddToStdErr(p.StandardError.ReadToEnd());
-            p.WaitForExit();
-            logger.Close(p.ExitCode);
-            return ParseInstalledPackages(lines);
+            return ParseInstalledPackages(ScoopProcess.ReadLines(p, logger));
         }
 
         public override void RefreshPackageIndexes()
@@ -525,10 +514,10 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
             p.StartInfo = StartInfo;
             IProcessTaskLogger logger = TaskLogger.CreateNew(LoggableTaskType.RefreshIndexes, p);
             p.Start();
-            logger.AddToStdOut(p.StandardOutput.ReadToEnd());
-            logger.AddToStdErr(p.StandardError.ReadToEnd());
-            p.WaitForExit();
-            logger.Close(p.ExitCode);
+            RegisterListingProcess(p);
+            p.StandardInput.Close();
+
+            ScoopProcess.ReadToEnd(p, logger);
         }
 
         public override IReadOnlyList<string> FindCandidateExecutableFiles() =>
@@ -551,6 +540,27 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
                 $"-NoProfile -ExecutionPolicy Bypass -Command \"{executable.Replace(" ", "` ")}\" ";
         }
 
+        protected override IReadOnlyList<string> _getOperationCallArgs(
+            string executablePath,
+            string callArguments
+        )
+        {
+            var (found, executable) = GetExecutableFile();
+            if (!found)
+                return [];
+
+            // Whether this shell can run a script file at all is the thing in question, and a
+            // machine policy or endpoint protection can refuse it. The bundled launcher is used as
+            // the canary so the answer is cached once per shell instead of probing scoop itself.
+            if (!CoreTools.PowerShellLauncherWorks(executablePath, CoreData.PowerShellOperationLauncher))
+            {
+                Logger.Warn("Not using -File for Scoop operations; falling back to -Command");
+                return [];
+            }
+
+            return ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", executable];
+        }
+
         protected override void _loadManagerVersion(out string version)
         {
             using Process process = new()
@@ -567,7 +577,36 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
                 },
             };
             process.Start();
-            version = process.StandardOutput.ReadToEnd().Trim();
+            Task<string> stdOut = ScoopProcess.ReadStdOutAsync(process);
+            Task<string> stdErr = ScoopProcess.ReadStdErrAsync(process);
+
+            if (!process.WaitForExit(VersionProbeTimeout))
+            {
+                Logger.Warn(
+                    $"\"scoop --version\" did not finish after {VersionProbeTimeout / 1000} seconds, "
+                        + "it will be killed and Scoop will be loaded with an unknown version"
+                );
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Could not kill the timed-out scoop version process: {ex.Message}");
+                }
+            }
+
+            string errors = ScoopProcess.ReadWithTimeout(stdErr, StreamDrainTimeout);
+            if (errors.Length > 0)
+            {
+                Logger.Warn($"\"scoop --version\" reported errors: {errors}");
+            }
+
+            version = ScoopProcess.ReadWithTimeout(stdOut, StreamDrainTimeout);
+            if (version.Length == 0)
+            {
+                version = CoreTools.Translate("Unknown");
+            }
         }
 
         protected override void _performExtraLoadingSteps()

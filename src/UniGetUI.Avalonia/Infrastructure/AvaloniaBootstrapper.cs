@@ -12,6 +12,7 @@ using UniGetUI.Interface;
 using UniGetUI.Interface.Telemetry;
 using UniGetUI.PackageEngine;
 using UniGetUI.PackageEngine.Classes.Manager.Classes;
+using UniGetUI.PackageEngine.Classes.Packages.Classes;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.PackageEngine.Operations;
@@ -22,6 +23,10 @@ namespace UniGetUI.Avalonia.Infrastructure;
 internal static class AvaloniaBootstrapper
 {
     private static bool _hasStarted;
+    private static readonly TaskCompletionSource<bool> _initialized =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public static Task<bool> Initialized => _initialized.Task;
 
     // Coalesces broker-unavailable notifications: during bulk operations every failed
     // package raises the event, but only one dialog should be visible at a time.
@@ -38,12 +43,22 @@ internal static class AvaloniaBootstrapper
         _hasStarted = true;
         Logger.Info("Starting Avalonia shell bootstrap");
 
-        await Task.WhenAll(
-            InitializeSharedServicesAsync(),
-            InitializePackageEngineAsync()
-        );
+        try
+        {
+            await Task.WhenAll(
+                InitializeSharedServicesAsync(),
+                InitializePackageEngineAsync()
+            );
 
-        await RunPostLoadChecksAsync();
+            await RunPostLoadChecksAsync();
+        }
+        catch (Exception)
+        {
+            _initialized.TrySetResult(false);
+            throw;
+        }
+
+        _initialized.TrySetResult(true);
 
         Logger.Info("Avalonia shell bootstrap completed");
     }
@@ -91,14 +106,14 @@ internal static class AvaloniaBootstrapper
     private static async Task ShowIntegrityViolationDialogAsync()
     {
         if (MainWindow.Instance is not { } owner) return;
-        await new IntegrityViolationDialog().ShowDialog(owner);
+        await owner.ShowDialogAndRestoreVisibilityAsync(new IntegrityViolationDialog());
     }
 
     private static async Task ShowMissingDependencyDialogAsync(
         ManagerDependency dep, int current, int total)
     {
         if (MainWindow.Instance is not { } owner) return;
-        await new MissingDependencyDialog(dep, current, total).ShowDialog(owner);
+        await owner.ShowDialogAndRestoreVisibilityAsync(new MissingDependencyDialog(dep, current, total));
     }
 
     private static Task InitializeSharedServicesAsync()
@@ -173,6 +188,8 @@ internal static class AvaloniaBootstrapper
     {
         // LoadLoaders is called synchronously in App.axaml.cs before MainWindow creation
         await Task.Run(PEInterface.LoadManagers);
+
+        await Task.Run(() => AutoUpdatesMigration.RunOnce(PEInterface.Managers));
     }
 
     private static async Task InitializeIpcApiAsync()
@@ -310,7 +327,8 @@ internal static class AvaloniaBootstrapper
             ?? throw new InvalidOperationException("The application window is not available.");
         IPackage package = IpcPackageApi.ResolvePackage(request);
         window.ShowFromTray();
-        _ = new PackageDetailsWindow(package, OperationType.Install).ShowDialog(window);
+        _ = new PackageDetailsWindow(
+            package, OperationType.Install, TEL_InstallReferral.DIRECT_SEARCH).ShowDialog(window);
         return IpcCommandResult.Success("show-package");
     }
 

@@ -1,11 +1,17 @@
 using System.Diagnostics;
+using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
+using UniGetUI.Core.Tools;
 
 namespace UniGetUI.Avalonia.Infrastructure;
 
 internal static class ProcessEnvironmentConfigurator
 {
+    // #5236: a login shell whose startup files never return (a recursive `exec zsh -l`,
+    // a prompt waiting on input, ...) must not hold up startup forever.
+    private static readonly TimeSpan LoginShellTimeout = TimeSpan.FromSeconds(5);
+
     public static void PrepareForCurrentPlatform()
     {
         if (OperatingSystem.IsMacOS())
@@ -14,6 +20,42 @@ internal static class ProcessEnvironmentConfigurator
         }
 
         ApplyProxySettingsToProcess();
+    }
+
+    /// <summary>
+    /// Points Pinget at the portable folder so a portable copy leaves nothing in
+    /// %LOCALAPPDATA%\Devolutions\Pinget. The source mode has to be set alongside it:
+    /// an app-root override alone makes Pinget fall back to its own private source list
+    /// instead of the machine's real WinGet sources. An externally supplied value wins,
+    /// so an administrator can still place the store elsewhere.
+    /// </summary>
+    public static void ConfigurePingetStorage()
+    {
+        try
+        {
+            if (!CoreData.IsPortable)
+                return;
+
+            SetIfUnset("PINGET_APPROOT", Path.Join(CoreData.UniGetUIDataDirectory, "Pinget"));
+            SetIfUnset("PINGET_SOURCE_MODE", "auto");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Could not point Pinget at the portable folder:");
+            Logger.Error(ex);
+        }
+    }
+
+    private static void SetIfUnset(string name, string value)
+    {
+        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable(name)))
+        {
+            Logger.Info($"{name} is already set; leaving it untouched");
+            return;
+        }
+
+        Environment.SetEnvironmentVariable(name, value, EnvironmentVariableTarget.Process);
+        Logger.Info($"{name} set to {value}");
     }
 
     public static void ApplyProxySettingsToProcess()
@@ -58,28 +100,31 @@ internal static class ProcessEnvironmentConfigurator
 
     private static void ExpandMacOSPath()
     {
+        // This runs on a thread pool thread whose result is awaited from an `async void`
+        // startup path, so it must never throw: a faulty PATH is not worth a crash.
         try
         {
-            using var process = new Process
+            var startInfo = new ProcessStartInfo("zsh", ["-l", "-c", "printenv PATH"])
             {
-                StartInfo = new ProcessStartInfo("zsh", ["-l", "-c", "printenv PATH"])
-                {
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    CreateNoWindow = true,
-                },
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true,
             };
-            process.Start();
-            string shellPath = process.StandardOutput.ReadToEnd().Trim();
-            process.WaitForExit(5000);
-            if (!string.IsNullOrEmpty(shellPath))
+
+            if (CoreTools.TryReadStandardOutput(startInfo, LoginShellTimeout, out string shellPath)
+                && shellPath.Length > 0)
             {
                 Environment.SetEnvironmentVariable("PATH", shellPath);
+                return;
             }
+
+            Logger.Warn("Could not read PATH from the login shell; keeping the PATH inherited from the "
+                      + "launcher. Package managers installed outside the system directories may not be found.");
         }
-        catch
+        catch (Exception ex)
         {
-            // Keep the existing PATH if the shell can't be launched.
+            Logger.Error("Failed to expand the PATH from the login shell:");
+            Logger.Error(ex);
         }
     }
 }

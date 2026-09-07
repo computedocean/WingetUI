@@ -372,10 +372,17 @@ namespace UniGetUI.Core.Tools.Tests
         [InlineData("", 0, 0, 0, 0)]
         [InlineData("dfgfdsgdfg", 0, 0, 0, 0)]
         [InlineData("-12", 12, 0, 0, 0)]
-        [InlineData("4.0.0.1.0", 4, 0, 0, 10)]
-        [InlineData("4.0.0.1.05", 4, 0, 0, 105)]
+        // Segments past the fourth are kept separately instead of being appended to Remainder,
+        // which used to turn "1" followed by "0" into 10 and "1" followed by "05" into 105.
+        [InlineData("4.0.0.1.0", 4, 0, 0, 1)]
+        [InlineData("4.0.0.1.05", 4, 0, 0, 1)]
         [InlineData("2024.30.04.1223", 2024, 30, 4, 1223)]
         [InlineData("0.0", 0, 0, 0, 0)]
+        // Build revisions appended with '_' (Homebrew) must become their own segment, so that
+        // 18.4_1 stays below 18.6 instead of being read as 18.41 (issue #5293).
+        [InlineData("18.4_1", 18, 4, 1, 0)]
+        [InlineData("3.14.3_1", 3, 14, 3, 1)]
+        [InlineData("1_2_3_4", 1, 2, 3, 4)]
         public void TestGetVersionStringAsFloat(string version, int i1, int i2, int i3, int i4)
         {
             CoreTools.Version v = CoreTools.VersionStringToStruct(version);
@@ -390,6 +397,93 @@ namespace UniGetUI.Core.Tools.Tests
         {
             CoreTools.Version v = CoreTools.VersionStringToStruct("10c8e557");
             Assert.Equal(CoreTools.Version.Null, v);
+        }
+
+        // An underscore introducing a pre-release tag rather than a numeric revision must keep
+        // reporting as unknown, as it did before '_' became a segment separator. Parsing these
+        // would rank the pre-release above the final release and hide the 2.0.0_rc1 -> 2.0.0
+        // update, so the ambiguity check deliberately does not split on '_'.
+        [Theory]
+        [InlineData("2.0.0_rc1")]
+        [InlineData("2.0.0_beta2")]
+        [InlineData("1.0.0+build_1")]
+        [InlineData("1.2_3a4")]
+        public void TestGetVersionStringAsFloat_WithUnderscoredPreReleaseTag_ReturnsNull(string version)
+        {
+            Assert.Equal(CoreTools.Version.Null, CoreTools.VersionStringToStruct(version));
+        }
+
+        // ...while an underscore introducing a numeric revision must parse, since that is the
+        // whole point of treating '_' as a separator.
+        [Theory]
+        [InlineData("18.4_1", 18, 4, 1, 0)]
+        [InlineData("1.2.3_1", 1, 2, 3, 1)]
+        public void TestGetVersionStringAsFloat_WithUnderscoredRevision_Parses(
+            string version, int i1, int i2, int i3, int i4)
+        {
+            CoreTools.Version v = CoreTools.VersionStringToStruct(version);
+            Assert.NotEqual(CoreTools.Version.Null, v);
+            Assert.Equal(i1, v.Major);
+            Assert.Equal(i2, v.Minor);
+            Assert.Equal(i3, v.Patch);
+            Assert.Equal(i4, v.Remainder);
+        }
+
+        // Known limitation, recorded rather than endorsed: a pre-release tag carrying no number is
+        // dropped entirely, so the pre-release parses equal to its final release and
+        // NewerVersionIsInstalled() hides the upgrade onto that release. Every separator behaves
+        // this way, which is why '_' is not special-cased for it -- fixing this means ranking
+        // pre-releases below their release for all managers, well beyond the scope of the '_' work.
+        // Asserted against the '-' and '.' spellings so all variants move together when it is
+        // fixed.
+        [Theory]
+        [InlineData("2.0.0_alpha", "2.0.0")]
+        [InlineData("2.0.0-alpha", "2.0.0")]
+        [InlineData("2.0.0.alpha", "2.0.0")]
+        [InlineData("1.0.0_pre", "1.0.0")]
+        public void TestPreReleaseTagWithoutNumberStillParsesEqualToItsRelease(
+            string preRelease, string release)
+        {
+            Assert.Equal(
+                CoreTools.VersionStringToStruct(release),
+                CoreTools.VersionStringToStruct(preRelease)
+            );
+        }
+
+        // Versions that only differ past the fourth segment must still order correctly. The
+        // four-component assertions above cannot express this, since the difference lives in the
+        // segments beyond Remainder.
+        [Theory]
+        // A build revision on a four-part version used to inflate Remainder (1.2.3.41), making
+        // the installed version compare as greater than the newer release (issue #5293).
+        [InlineData("1.2.3.4_1", "1.2.3.5")]
+        [InlineData("1.2.3.4_1", "1.2.3.4_2")]
+        [InlineData("3.1.4.1_1", "3.1.4.2")]
+        [InlineData("4.0.0.1.0", "4.0.0.1.05")]
+        [InlineData("4.0.0.1.5", "4.0.0.1.10")]
+        public void TestVersionOrderingBeyondFourthSegment(string lower, string higher)
+        {
+            CoreTools.Version low = CoreTools.VersionStringToStruct(lower);
+            CoreTools.Version high = CoreTools.VersionStringToStruct(higher);
+
+            Assert.True(low < high, $"expected {lower} < {higher}");
+            Assert.True(high > low, $"expected {higher} > {lower}");
+            Assert.NotEqual(low, high);
+        }
+
+        [Theory]
+        // Trailing zeroes past the fourth segment are trimmed, so these are the same version and
+        // must agree on equality and hash code.
+        [InlineData("1.2.3.4", "1.2.3.4.0")]
+        [InlineData("1.2.3.4", "1.2.3.4.0.0")]
+        [InlineData("18.4_1", "18.4.1")]
+        public void TestVersionEqualityIgnoresTrailingZeroSegments(string left, string right)
+        {
+            CoreTools.Version a = CoreTools.VersionStringToStruct(left);
+            CoreTools.Version b = CoreTools.VersionStringToStruct(right);
+
+            Assert.Equal(a, b);
+            Assert.Equal(a.GetHashCode(), b.GetHashCode());
         }
 
         [Theory]
@@ -411,8 +505,15 @@ namespace UniGetUI.Core.Tools.Tests
         [InlineData("\"Hello; World\"", "Hello World")]
         [InlineData("'Hello; World'", "Hello World")]
         [InlineData("query\";start cmd.exe", "querystart cmd.exe")]
-        [InlineData("query;start /B program.exe", "querystart B program.exe")]
-        [InlineData(";&|<>%\"e'~?/\\`", "e")]
+        [InlineData("query;start /B program.exe", "querystart /B program.exe")]
+        [InlineData(";&|<>%\"e'~?\\`", "e")]
+        [InlineData("@babel/core", "@babel/core")]
+        [InlineData("query$(calc)", "querycalc")]
+        [InlineData("query${env:PATH}", "queryenv:PATH")]
+        [InlineData("query#comment", "querycomment")]
+        [InlineData("query!PATH!", "queryPATH")]
+        [InlineData("query^calc", "querycalc")]
+        [InlineData("query[char]65", "querychar65")]
         public void TestSafeQueryString(string query, string expected)
         {
             Assert.Equal(CoreTools.EnsureSafeQueryString(query), expected);
@@ -520,5 +621,52 @@ namespace UniGetUI.Core.Tools.Tests
                 );
             }
         }
+        [Theory]
+        [InlineData("..", "_")]
+        [InlineData(".", "_")]
+        [InlineData("...", "_")]
+        [InlineData("", "")]
+        [InlineData("   ", "_")]
+        [InlineData(". . .", "_")]
+        [InlineData(".NET Runtime", ".NET Runtime")]
+        [InlineData("Contoso.Tool", "Contoso.Tool")]
+        [InlineData("Contoso:Tool", "ContosoTool")]
+        [InlineData("CON", "_CON")]
+        [InlineData("con.exe", "_con.exe")]
+        [InlineData("NUL.json", "_NUL.json")]
+        [InlineData("LPT1", "_LPT1")]
+        [InlineData("COM¹.txt", "_COM¹.txt")]
+        [InlineData("LPT²", "_LPT²")]
+        [InlineData("COM³", "_COM³")]
+        [InlineData("icon. ", "icon")]
+        [InlineData("icon...", "icon")]
+        [InlineData("Contoso", "Contoso")]
+        [InlineData("a<b>c|d*e?f", "abcdef")]
+        [InlineData("dir/sub", "dirsub")]
+        [InlineData(@"dir\sub", "dirsub")]
+        public void MakeValidFileName_NeverReturnsATraversalComponent(
+            string input,
+            string expected
+        )
+        {
+            Assert.Equal(expected, CoreTools.MakeValidFileName(input));
+        }
+
+        [Theory]
+        [InlineData(@"..\..\..\evil")]
+        [InlineData("../../evil")]
+        [InlineData("..")]
+        [InlineData(".")]
+        [InlineData("   ")]
+        public void MakeValidFileName_ResultStaysInsideItsParentDirectory(string input)
+        {
+            string parent = Path.Combine(Path.GetTempPath(), "MVFN", Guid.NewGuid().ToString("N"));
+            string resolved = Path.GetFullPath(
+                Path.Join(parent, CoreTools.MakeValidFileName(input))
+            );
+
+            Assert.Equal(Path.GetFullPath(parent), Path.GetDirectoryName(resolved));
+        }
+
     }
 }

@@ -35,6 +35,12 @@ namespace UniGetUI.PackageEngine.PackageLoader
         /// </summary>
         public bool IsLoading { get; protected set; }
 
+        public bool LastLoadReportedFailures { get; private set; }
+
+        public DateTime? LastLoadFinishedUtc { get; private set; }
+
+        private TaskCompletionSource? _loadCompletion;
+
         public bool Any()
         {
             return !PackageReference.IsEmpty;
@@ -97,11 +103,23 @@ namespace UniGetUI.PackageEngine.PackageLoader
         /// <summary>
         /// Stops the current loading process
         /// </summary>
+        public Task WaitForCurrentLoadAsync()
+        {
+            var completion = Volatile.Read(ref _loadCompletion);
+            return IsLoading && completion is not null ? completion.Task : Task.CompletedTask;
+        }
+
+        private void CompleteCurrentLoad()
+            => Interlocked.Exchange(ref _loadCompletion, null)?.TrySetResult();
+
+        protected virtual bool DidManagerReportFailure(IPackageManager manager) => false;
+
         public void StopLoading(bool emitFinishSignal = true)
         {
             LoadOperationIdentifier = -1;
             IsLoaded = false;
             IsLoading = false;
+            CompleteCurrentLoad();
             if (emitFinishSignal)
                 InvokeFinishedLoadingEvent();
         }
@@ -146,7 +164,12 @@ namespace UniGetUI.PackageEngine.PackageLoader
 
                 LoadOperationIdentifier = new Random().Next();
                 int current_identifier = LoadOperationIdentifier;
+                Volatile.Write(
+                    ref _loadCompletion,
+                    new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)
+                );
                 IsLoading = true;
+                LastLoadReportedFailures = false;
                 StartedLoading?.Invoke(this, EventArgs.Empty);
 
                 // Clear packages only after signaling the load started, so the UI shows the
@@ -184,6 +207,9 @@ namespace UniGetUI.PackageEngine.PackageLoader
 
                         if (task.IsCompleted)
                         {
+                            if (task.IsFaulted || task.IsCanceled)
+                                LastLoadReportedFailures = true;
+
                             if (
                                 LoadOperationIdentifier == current_identifier
                                 && task.IsCompletedSuccessfully
@@ -209,8 +235,15 @@ namespace UniGetUI.PackageEngine.PackageLoader
                     }
                 }
 
+                foreach (IPackageManager manager in Managers)
+                {
+                    if (manager.IsReady() && DidManagerReportFailure(manager))
+                        LastLoadReportedFailures = true;
+                }
+
                 if (LoadOperationIdentifier == current_identifier)
                 {
+                    LastLoadFinishedUtc = DateTime.UtcNow;
                     InvokeFinishedLoadingEvent();
                     IsLoaded = true;
                 }
@@ -220,7 +253,12 @@ namespace UniGetUI.PackageEngine.PackageLoader
             catch (Exception ex)
             {
                 Logger.Error(ex);
+                LastLoadReportedFailures = true;
                 IsLoading = false;
+            }
+            finally
+            {
+                CompleteCurrentLoad();
             }
         }
 

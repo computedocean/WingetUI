@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -17,18 +18,93 @@ namespace UniGetUI.PackageEngine.PackageClasses
     /// </summary>
     public static class InstallOptionsFactory
     {
+        public static bool IsIdentityScopedOptionsFile(string fileName) =>
+            StoragePath.IsIdentityScoped(fileName);
+
         private static class StoragePath
         {
+            private const string IdentityScopedPrefix = "PackageOptions.";
+
             public static string Get(IPackageManager manager) =>
-                "GlobalValues." + manager.Name.Replace(" ", "").Replace(".", "") + ".json";
+                "GlobalValues." + ManagerComponent(manager.Name) + ".json";
 
             public static string Get(IPackage package) =>
-                package.Manager.Name.Replace(" ", "").Replace(".", "") + "." + package.Id + ".json";
+                IdentityScopedPrefix
+                + ManagerComponent(package.Manager.Name)
+                + "."
+                + CoreTools.MakeValidFileName(package.Id)
+                + "_"
+                + IdentityHash(package)
+                + ".json";
+
+            public static string GetLegacy(IPackage package) =>
+                ManagerComponent(package.Manager.Name) + "." + package.Id + ".json";
+
+            private static string ManagerComponent(string name) =>
+                CoreTools.MakeValidFileName(name.Replace(" ", "").Replace(".", ""));
+
+            public static bool IsIdentityScoped(string fileName) =>
+                fileName.StartsWith(IdentityScopedPrefix, StringComparison.Ordinal);
+
+            private static string IdentityHash(IPackage package)
+            {
+                string identity = string.Join(
+                    '\u0000',
+                    package.Manager.Name,
+                    package.Source.Name,
+                    package.Id
+                );
+                byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(identity));
+
+                return Convert.ToHexString(digest.AsSpan(0, 8)).ToLowerInvariant();
+            }
+        }
+
+        private static bool TryResolveOptionsPath(string key, out string filePath)
+        {
+            try
+            {
+                return TryResolveOptionsPathCore(key, out filePath);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Could not resolve an options path for key {key}");
+                Logger.Warn(ex);
+                filePath = string.Empty;
+                return false;
+            }
+        }
+
+        private static bool TryResolveOptionsPathCore(string key, out string filePath)
+        {
+            filePath = string.Empty;
+
+            string directory = Path.GetFullPath(CoreData.UniGetUIInstallationOptionsDirectory);
+            string candidate = Path.GetFullPath(Path.Join(directory, key));
+
+            if (
+                !string.Equals(
+                    Path.GetDirectoryName(candidate),
+                    directory.TrimEnd(
+                        Path.DirectorySeparatorChar,
+                        Path.AltDirectorySeparatorChar
+                    ),
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase
+                        : StringComparison.Ordinal
+                )
+            )
+                return false;
+
+            if (!key.Equals(Path.GetFileName(candidate), StringComparison.Ordinal))
+                return false;
+
+            filePath = candidate;
+            return true;
         }
 
         // Loading from disk (package and manager)
         public static InstallOptions LoadForPackage(IPackage package) =>
-            _loadFromDisk(StoragePath.Get(package));
+            _loadFromDisk(StoragePath.Get(package), StoragePath.GetLegacy(package));
 
         public static Task<InstallOptions> LoadForPackageAsync(IPackage package) =>
             Task.Run(() => LoadForPackage(package));
@@ -151,7 +227,12 @@ namespace UniGetUI.PackageEngine.PackageClasses
         {
             try
             {
-                var filePath = Path.Join(CoreData.UniGetUIInstallationOptionsDirectory, key);
+                if (!TryResolveOptionsPath(key, out string filePath))
+                {
+                    Logger.Error($"Refused to save options to an unsafe path for key {key}");
+                    return;
+                }
+
                 _optionsCache[key] = options.Copy();
 
                 string fileContents = options.AsJsonString();
@@ -164,9 +245,26 @@ namespace UniGetUI.PackageEngine.PackageClasses
             }
         }
 
-        private static InstallOptions _loadFromDisk(string key)
+        private static InstallOptions _loadFromDisk(string key, string? legacyKey = null)
         {
-            var filePath = Path.Join(CoreData.UniGetUIInstallationOptionsDirectory, key);
+            if (
+                legacyKey is not null
+                && !_optionsCache.ContainsKey(key)
+                && TryResolveOptionsPath(key, out string preferred)
+                && !File.Exists(preferred)
+                && TryResolveOptionsPath(legacyKey, out string legacy)
+                && File.Exists(legacy)
+            )
+            {
+                key = legacyKey;
+            }
+
+            if (!TryResolveOptionsPath(key, out string filePath))
+            {
+                Logger.Error($"Refused to load options from an unsafe path for key {key}");
+                return new InstallOptions();
+            }
+
             try
             {
                 InstallOptions serializedOptions;

@@ -169,7 +169,7 @@ internal sealed class PingetCliPackageDetailsProvider(string cliExecutablePath)
 
         if (CoreTools.IsAdministrator())
         {
-            string winGetTemp = Path.Join(Path.GetTempPath(), "UniGetUI", "ElevatedWinGetTemp");
+            string winGetTemp = Path.Join(AppPaths.ScratchDirectory, "ElevatedWinGetTemp");
             logger.Log(
                 $"[WARN] Redirecting %TEMP% folder to {winGetTemp}, since UniGetUI was run as admin"
             );
@@ -471,45 +471,92 @@ internal sealed class PingetPackageDetailsProvider : IPingetPackageDetailsProvid
     /// </summary>
     internal static IReadOnlySet<string>? TryGetInstallerHostsForVersion(
         IPackage package,
-        string version
+        string version,
+        Func<PackageQuery, ShowResult>? showPackage = null
+    )
+    {
+        IReadOnlyList<string>? urls = TryGetInstallerUrlsCore(
+            package,
+            version,
+            requireExactVersion: true,
+            showPackage
+        );
+        if (urls is null)
+            return null;
+
+        HashSet<string> hosts = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string url in urls)
+        {
+            if (TryCreateUri(url, out Uri? uri) && uri is not null)
+                hosts.Add(uri.Host);
+        }
+
+        return hosts.Count > 0 ? hosts : null;
+    }
+
+    internal static IReadOnlyList<string>? TryGetInstallerUrls(
+        IPackage package,
+        string? version,
+        Func<PackageQuery, ShowResult>? showPackage = null
+    )
+    {
+        IReadOnlyList<string>? urls = TryGetInstallerUrlsCore(
+            package,
+            version,
+            requireExactVersion: false,
+            showPackage
+        );
+        if (urls is not null || string.IsNullOrWhiteSpace(version))
+            return urls;
+
+        return TryGetInstallerUrlsCore(package, null, requireExactVersion: false, showPackage);
+    }
+
+    private static IReadOnlyList<string>? TryGetInstallerUrlsCore(
+        IPackage package,
+        string? version,
+        bool requireExactVersion,
+        Func<PackageQuery, ShowResult>? showPackage
     )
     {
         try
         {
             PackageQuery query = CreateQuery(package, version);
-            ShowResult result;
-            using (Repository repository = OpenRepository())
-            {
-                result = repository.ShowFirstMatchAcrossSources(query);
-            }
+            ShowResult result = (showPackage ?? ShowWithRepository)(query);
 
             // Pinget silently falls back to the latest manifest when the requested version
             // isn't in the index (yanked / expired / never indexed). That fallback would
             // make the host-change check return false-negatives, so reject any result whose
             // manifest version doesn't match what we asked for.
-            string returnedVersion = result.Manifest.Version ?? "";
-            if (!string.Equals(returnedVersion, version, StringComparison.OrdinalIgnoreCase))
+            if (requireExactVersion)
             {
-                Logger.Info(
-                    $"Pinget returned manifest version '{returnedVersion}' when '{version}' "
-                    + $"was requested for {package.Id}; treating as not found"
-                );
-                return null;
+                string returnedVersion = result.Manifest.Version ?? "";
+                if (!string.Equals(returnedVersion, version, StringComparison.OrdinalIgnoreCase))
+                {
+                    Logger.Info(
+                        $"Pinget returned manifest version '{returnedVersion}' when '{version}' "
+                        + $"was requested for {package.Id}; treating as not found"
+                    );
+                    return null;
+                }
             }
 
-            HashSet<string> hosts = new(StringComparer.OrdinalIgnoreCase);
+            List<string> urls = [];
             foreach (Installer installer in result.Manifest.Installers)
             {
-                if (TryCreateUri(installer.Url, out Uri? uri) && uri is not null)
-                    hosts.Add(uri.Host);
+                if (string.IsNullOrWhiteSpace(installer.Url))
+                    continue;
+                if (urls.Contains(installer.Url, StringComparer.OrdinalIgnoreCase))
+                    continue;
+                urls.Add(installer.Url);
             }
 
-            return hosts.Count > 0 ? hosts : null;
+            return urls.Count > 0 ? urls : null;
         }
         catch (Exception ex)
         {
             Logger.Warn(
-                $"Could not resolve installer hosts for {package.Id} version {version}: {ex.Message}"
+                $"Could not resolve installer URLs for {package.Id} version {version}: {ex.Message}"
             );
             return null;
         }

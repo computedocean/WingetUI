@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.Json.Nodes;
 using UniGetUI.Core.IconEngine;
 using UniGetUI.Core.Logging;
+using UniGetUI.Core.Tools;
 using UniGetUI.PackageEngine.Classes.Manager.BaseProviders;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
@@ -32,11 +33,6 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
                 p.StartInfo = new ProcessStartInfo
                 {
                     FileName = Manager.Status.ExecutablePath,
-                    Arguments =
-                        Manager.Status.ExecutableCallArgs
-                        + " show "
-                        + identifier.GetRegistryName()
-                        + " --json",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -47,12 +43,18 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
                     ),
                     StandardOutputEncoding = System.Text.Encoding.UTF8,
                 };
+                Manager.Status.ApplyArguments(
+                    p.StartInfo,
+                    "show",
+                    identifier.GetRegistryName(),
+                    "--json"
+                );
 
                 IProcessTaskLogger logger = Manager.TaskLogger.CreateNew(
                     LoggableTaskType.LoadPackageDetails,
                     p
                 );
-                p.Start();
+                CoreTools.StartAndCloseStandardInput(p);
 
                 string strContents = p.StandardOutput.ReadToEnd();
                 logger.AddToStdOut(strContents);
@@ -191,33 +193,34 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
         protected override IReadOnlyList<string> GetInstallableVersions_UnSafe(IPackage package)
         {
             var identifier = NpmPackageIdentifier.Parse(package.Id);
-            using Process p = new()
+            var startInfo = new ProcessStartInfo
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = Manager.Status.ExecutablePath,
-                    Arguments =
-                        Manager.Status.ExecutableCallArgs
-                        + " show "
-                        + identifier.GetRegistryName()
-                        + " versions --json",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    RedirectStandardInput = true,
-                    CreateNoWindow = true,
-                    WorkingDirectory = Environment.GetFolderPath(
-                        Environment.SpecialFolder.UserProfile
-                    ),
-                    StandardOutputEncoding = System.Text.Encoding.UTF8,
-                },
+                FileName = Manager.Status.ExecutablePath,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                RedirectStandardInput = true,
+                CreateNoWindow = true,
+                WorkingDirectory = Environment.GetFolderPath(
+                    Environment.SpecialFolder.UserProfile
+                ),
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
             };
+            Manager.Status.ApplyArguments(
+                startInfo,
+                "show",
+                identifier.GetRegistryName(),
+                "versions",
+                "--json"
+            );
+
+            using Process p = new() { StartInfo = startInfo };
 
             IProcessTaskLogger logger = Manager.TaskLogger.CreateNew(
                 LoggableTaskType.LoadPackageVersions,
                 p
             );
-            p.Start();
+            CoreTools.StartAndCloseStandardInput(p);
 
             string strContents = p.StandardOutput.ReadToEnd();
             logger.AddToStdOut(strContents);

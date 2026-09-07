@@ -17,12 +17,22 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
     public static string GetIdNamePiece(IPackage package)
     {
         if (!package.Id.EndsWith("…"))
-            return $"--id \"{package.Id.TrimEnd('…')}\" --exact";
+            return $"--id {Selector(package.Id.TrimEnd('…'), "identifier")} --exact";
 
         if (!package.Name.EndsWith("…"))
-            return $"--name \"{package.Name}\" --exact";
+            return $"--name {Selector(package.Name, "name")} --exact";
 
-        return $"--id \"{package.Id.TrimEnd('…')}\"";
+        return $"--id {Selector(package.Id.TrimEnd('…'), "identifier")}";
+    }
+
+    private static string Selector(string value, string description)
+    {
+        if (!CoreTools.IsOptionSafeIdentifier(value, quotedByTheSink: true))
+            throw new InvalidOperationException(
+                $"Refusing to build a WinGet command line for the package {description} \"{value}\": it would be read as a command-line option."
+            );
+
+        return CoreTools.EscapeCommandLineArgument(value);
     }
 
     public WinGetPkgOperationHelper(WinGet manager)
@@ -81,11 +91,15 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
             && package.OverridenOptions.WinGet_SpecifyVersion is not false
         )
         {
-            parameters.AddRange(["--version", $"\"{package.VersionString}\""]);
+            parameters.AddRange(
+                ["--version", CoreTools.EscapeCommandLineArgument(package.VersionString)]
+            );
         }
         else if (operation is OperationType.Install && options.Version != "")
         {
-            parameters.AddRange(["--version", $"\"{options.Version}\""]);
+            parameters.AddRange(
+                ["--version", CoreTools.EscapeCommandLineArgument(options.Version)]
+            );
         }
 
         if (usePinget && operation is OperationType.Update)
@@ -283,14 +297,7 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
             return OperationVeredict.Failure;
         }
 
-        bool pingetReportedNotApplicable =
-            ((WinGet)Manager).SelectedCliToolKind is WinGetCliToolKind.BundledPinget
-            && processOutput.Any(line =>
-                line.Contains("No applicable installer found", StringComparison.OrdinalIgnoreCase)
-                || line.Contains("No applicable upgrade found", StringComparison.OrdinalIgnoreCase)
-            );
-
-        if (uintCode is 0x8A15002B || pingetReportedNotApplicable)
+        if (ReportedUpdateNotApplicable(processOutput, returnCode))
         { // The update is not applicable to the platform
             // The scope/architecture we forced may exclude the only installer the package ships
             // (e.g. forcing --architecture x64 on a package that only has an x86 installer). Retry
@@ -421,6 +428,21 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
             id,
             $"{count}{AttemptSeparator}{version}"
         );
+    }
+
+    internal bool ReportedUpdateNotApplicable(
+        IReadOnlyList<string> processOutput,
+        int returnCode
+    )
+    {
+        if ((uint)returnCode is 0x8A15002B)
+            return true;
+
+        return ((WinGet)Manager).SelectedCliToolKind is WinGetCliToolKind.BundledPinget
+            && processOutput.Any(line =>
+                line.Contains("No applicable installer found", StringComparison.OrdinalIgnoreCase)
+                || line.Contains("No applicable upgrade found", StringComparison.OrdinalIgnoreCase)
+            );
     }
 
     public static void SuppressPhantomUpgrade(IPackage package)

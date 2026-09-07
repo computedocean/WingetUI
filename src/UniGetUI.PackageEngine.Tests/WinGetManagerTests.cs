@@ -8,6 +8,7 @@ using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.PackageEngine.Managers.WingetManager;
 using UniGetUI.PackageEngine.ManagerClasses.Classes;
+using UniGetUI.PackageEngine.Operations;
 using UniGetUI.PackageEngine.PackageClasses;
 using UniGetUI.PackageEngine.Serializable;
 using UniGetUI.PackageEngine.Tests.Infrastructure.Assertions;
@@ -669,6 +670,102 @@ public sealed class WinGetManagerTests : IDisposable
             dependency.Name == "Contoso.Dependency" && dependency.Version == "2.0"
         );
         Assert.Contains("utility", details.Tags);
+    }
+
+    [Fact]
+    public void TryGetInstallerUrlsCollectsEveryInstallerUrlWithoutDuplicates()
+    {
+        var package = CreatePingetQueryPackage();
+        var urls = PingetPackageDetailsProvider.TryGetInstallerUrls(
+            package,
+            null,
+            _ => CreatePingetShowResult(
+                installerUrls:
+                [
+                    "https://example.test/tool-x64.exe",
+                    "https://EXAMPLE.test/TOOL-X64.exe",
+                    "",
+                    "https://cdn.example.test/tool-arm64.exe",
+                ]
+            )
+        );
+
+        Assert.Equal(
+            ["https://example.test/tool-x64.exe", "https://cdn.example.test/tool-arm64.exe"],
+            urls
+        );
+    }
+
+    [Fact]
+    public void TryGetInstallerUrlsFallsBackToTheLatestManifestWhenTheVersionIsNotIndexed()
+    {
+        var package = CreatePingetQueryPackage();
+        List<string?> requestedVersions = [];
+
+        var urls = PingetPackageDetailsProvider.TryGetInstallerUrls(
+            package,
+            "9.9.9",
+            query =>
+            {
+                requestedVersions.Add(query.Version);
+                if (query.Version is not null)
+                    throw new InvalidOperationException("version not found in index");
+
+                return CreatePingetShowResult(installerUrls: ["https://example.test/latest.exe"]);
+            }
+        );
+
+        Assert.Equal(["9.9.9", null], requestedVersions);
+        Assert.Equal(["https://example.test/latest.exe"], urls);
+    }
+
+    [Fact]
+    public void TryGetInstallerUrlsReturnsNullWhenTheManifestHasNoInstaller()
+    {
+        var package = CreatePingetQueryPackage();
+
+        Assert.Null(
+            PingetPackageDetailsProvider.TryGetInstallerUrls(
+                package,
+                null,
+                _ => CreatePingetShowResult(installerUrls: [])
+            )
+        );
+    }
+
+    [Fact]
+    public void TryGetInstallerHostsForVersionRejectsAManifestOfAnotherVersion()
+    {
+        var package = CreatePingetQueryPackage();
+
+        Assert.Null(
+            PingetPackageDetailsProvider.TryGetInstallerHostsForVersion(
+                package,
+                "9.9.9",
+                _ => CreatePingetShowResult(installerUrls: ["https://example.test/latest.exe"])
+            )
+        );
+    }
+
+    [Fact]
+    public void TryGetInstallerHostsForVersionReturnsTheHostsOfTheRequestedVersion()
+    {
+        var package = CreatePingetQueryPackage();
+
+        var hosts = PingetPackageDetailsProvider.TryGetInstallerHostsForVersion(
+            package,
+            "1.2.3",
+            _ => CreatePingetShowResult(
+                installerUrls:
+                [
+                    "https://example.test/tool-x64.exe",
+                    "https://cdn.example.test/tool-arm64.exe",
+                ]
+            )
+        );
+
+        Assert.NotNull(hosts);
+        Assert.Equal(["cdn.example.test", "example.test"], hosts.Order());
     }
 
     [Fact]
@@ -1542,6 +1639,83 @@ public sealed class WinGetManagerTests : IDisposable
         }
         """;
 
+    [Fact]
+    public async Task WinGetUpdateNotApplicableExplainsTheFailureToTheUser()
+    {
+        var manager = new WinGet();
+        var package = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("Klocman.BulkCrapUninstaller")
+            .WithVersion("6.1")
+            .WithNewVersion("6.2")
+            .Build();
+        package.OverridenOptions.WinGet_DropArchAndScope = true;
+        using var operation = new VeredictProbingUpdateOperation(package, new InstallOptions());
+        string defaultMessage = operation.Metadata.FailureMessage;
+
+        var veredict = await operation.ProbeProcessVeredict(unchecked((int)0x8A15002B), []);
+
+        OperationAssert.HasVeredict(veredict, OperationVeredict.Failure);
+        Assert.NotEqual(defaultMessage, operation.Metadata.FailureMessage);
+        Assert.Contains("may already be up to date", operation.Metadata.FailureMessage);
+        Assert.False(operation.Metadata.FailureMessage.EndsWith('.'));
+    }
+
+    [Fact]
+    public async Task WinGetUpdateNotApplicableExplainsTheFailureOnlyOnTheFinalAttempt()
+    {
+        var manager = new WinGet();
+        SetCliToolKind(manager, WinGetCliToolKind.SystemWinGet);
+        var package = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("Klocman.BulkCrapUninstaller")
+            .WithVersion("6.1")
+            .WithNewVersion("6.2")
+            .Build();
+        package.OverridenOptions.Scope = PackageScope.Machine;
+        using var operation = new VeredictProbingUpdateOperation(package, new InstallOptions());
+        string defaultMessage = operation.Metadata.FailureMessage;
+
+        var firstAttempt = await operation.ProbeProcessVeredict(unchecked((int)0x8A15002B), []);
+
+        OperationAssert.HasVeredict(firstAttempt, OperationVeredict.AutoRetry);
+        Assert.Equal(defaultMessage, operation.Metadata.FailureMessage);
+
+        var finalAttempt = await operation.ProbeProcessVeredict(unchecked((int)0x8A15002B), []);
+
+        OperationAssert.HasVeredict(finalAttempt, OperationVeredict.Failure);
+        Assert.Contains("may already be up to date", operation.Metadata.FailureMessage);
+    }
+
+    [Fact]
+    public async Task WinGetUpdateFailureUnrelatedToApplicabilityKeepsTheDefaultMessage()
+    {
+        var manager = new WinGet();
+        var package = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("Klocman.BulkCrapUninstaller")
+            .WithVersion("6.1")
+            .WithNewVersion("6.2")
+            .Build();
+        using var operation = new VeredictProbingUpdateOperation(package, new InstallOptions());
+        string defaultMessage = operation.Metadata.FailureMessage;
+
+        var veredict = await operation.ProbeProcessVeredict(1, []);
+
+        OperationAssert.HasVeredict(veredict, OperationVeredict.Failure);
+        Assert.Equal(defaultMessage, operation.Metadata.FailureMessage);
+        Assert.DoesNotContain("may already be up to date", operation.Metadata.FailureMessage);
+    }
+
+    private sealed class VeredictProbingUpdateOperation : UpdatePackageOperation
+    {
+        public VeredictProbingUpdateOperation(IPackage package, InstallOptions options)
+            : base(package, options) { }
+
+        public Task<OperationVeredict> ProbeProcessVeredict(int returnCode, List<string> output)
+            => GetProcessVeredict(returnCode, output);
+    }
+
     private static void SetCliToolKind(WinGet manager, WinGetCliToolKind kind)
     {
         typeof(WinGet)
@@ -1575,9 +1749,20 @@ public sealed class WinGetManagerTests : IDisposable
             .Invoke(null, [value]);
     }
 
+    private static IPackage CreatePingetQueryPackage()
+    {
+        return new PackageBuilder()
+            .WithManager(new WinGet())
+            .WithName("Contoso Tool")
+            .WithId("Contoso.Tool")
+            .WithVersion("1.2.3")
+            .Build();
+    }
+
     private static ShowResult CreatePingetShowResult(
         string? description = "Contoso description",
-        string? shortDescription = null
+        string? shortDescription = null,
+        IReadOnlyList<string>? installerUrls = null
     )
     {
         var package = new SearchMatch
@@ -1597,6 +1782,9 @@ public sealed class WinGetManagerTests : IDisposable
             ReleaseDate = "2026-04-27",
             PackageDependencies = ["Contoso.Dependency [2.0]"],
         };
+        List<Installer> installers = installerUrls is null
+            ? [installer]
+            : [.. installerUrls.Select(url => installer with { Url = url })];
 
         return new ShowResult
         {
@@ -1615,9 +1803,9 @@ public sealed class WinGetManagerTests : IDisposable
                 ReleaseNotes = "Release notes",
                 Tags = ["utility"],
                 PackageDependencies = ["Contoso.Runtime"],
-                Installers = [installer],
+                Installers = installers,
             },
-            SelectedInstaller = installer,
+            SelectedInstaller = installers.FirstOrDefault(),
             StructuredDocument = new Dictionary<string, object?>(),
         };
     }

@@ -1,6 +1,7 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using Avalonia;
+using Avalonia.Media;
 #if WINDOWS
 using Avalonia.Win32;
 #endif
@@ -9,6 +10,7 @@ using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.Tools;
 using UniGetUI.Interface;
+using UniGetUI.Shared;
 
 namespace UniGetUI.Avalonia.Infrastructure;
 
@@ -17,12 +19,53 @@ public static class AvaloniaAppHost
     private static Mutex? _singleInstanceMutex;
     private static FileStream? _singleInstanceLock;
 
-    public static event Action<string[]>? SecondaryInstanceArgsReceived;
+    private static Action<string[]>? _secondaryInstanceArgsReceived;
+    private static readonly Queue<string[]> _bufferedSecondaryInstanceArgs = new();
+
+    public static event Action<string[]>? SecondaryInstanceArgsReceived
+    {
+        add
+        {
+            _secondaryInstanceArgsReceived += value;
+
+            if (value is null || _bufferedSecondaryInstanceArgs.Count == 0)
+                return;
+
+            string[][] buffered = [.. _bufferedSecondaryInstanceArgs];
+            _bufferedSecondaryInstanceArgs.Clear();
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                foreach (string[] bufferedArgs in buffered)
+                    value(bufferedArgs);
+            });
+        }
+        remove => _secondaryInstanceArgsReceived -= value;
+    }
+
+    private static void RaiseSecondaryInstanceArgs(string[] args)
+    {
+        if (_secondaryInstanceArgsReceived is null)
+        {
+            Logger.Info("Buffering forwarded arguments until the main window is ready");
+            _bufferedSecondaryInstanceArgs.Enqueue(args);
+            return;
+        }
+
+        _secondaryInstanceArgsReceived(args);
+    }
 
     public static void Run(string[] args)
     {
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             CrashHandler.ReportFatalException((Exception)e.ExceptionObject);
+
+        args = SharedPreUiCommandDispatcher.IgnoreArgumentsInjectedIntoProtocolLaunch(args);
+        CoreData.SetSanitizedProcessArguments(args);
+
+        Logger.RedactUsername = Core.SettingsEngine.Settings.Get(Core.SettingsEngine.Settings.K.RedactUsernameInLog);
+
+        ProcessEnvironmentConfigurator.ConfigurePingetStorage();
 
         if (ShouldPrepareCliConsole(args))
         {
@@ -60,8 +103,6 @@ public static class AvaloniaAppHost
                 Welcome to UniGetUI Version {CoreData.VersionName}
             """;
 
-        Logger.RedactUsername = Core.SettingsEngine.Settings.Get(Core.SettingsEngine.Settings.K.RedactUsernameInLog);
-
         Logger.ImportantInfo(textart);
         Logger.ImportantInfo("  ");
         Logger.ImportantInfo($"Build {CoreData.BuildNumber}");
@@ -79,6 +120,8 @@ public static class AvaloniaAppHost
         // would otherwise bind it to the worker thread and make Win32Platform.Initialize throw.
         _ = Dispatcher.UIThread;
 
+        args = StartupBundleArguments.Normalize(args, Environment.CurrentDirectory);
+
         if (!TryRegisterSingleInstance(args))
         {
             return;
@@ -91,6 +134,11 @@ public static class AvaloniaAppHost
     {
         AppBuilder builder = AppBuilder.Configure<App>()
             .UsePlatformDetect();
+
+        if (UiFontPolicy.ResolveDefaultFamilyName() is { } fontFamily)
+        {
+            builder = builder.With(new FontManagerOptions { DefaultFamilyName = fontFamily });
+        }
 
 #if WINDOWS
         if (WindowsAvaloniaRenderingPolicy.ShouldUseSoftwareRendering)
@@ -133,7 +181,7 @@ public static class AvaloniaAppHost
 
         if (createdNew)
         {
-            SingleInstanceRedirector.StartListener(a => SecondaryInstanceArgsReceived?.Invoke(a));
+            SingleInstanceRedirector.StartListener(RaiseSecondaryInstanceArgs);
             return true;
         }
 
@@ -167,7 +215,7 @@ public static class AvaloniaAppHost
             return true;
         }
 
-        SingleInstanceRedirector.StartListener(a => SecondaryInstanceArgsReceived?.Invoke(a));
+        SingleInstanceRedirector.StartListener(RaiseSecondaryInstanceArgs);
         return true;
     }
 }

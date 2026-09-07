@@ -1,3 +1,4 @@
+using UniGetUI.Core.Tools;
 using UniGetUI.PackageEngine.Classes.Manager.BaseProviders;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
@@ -16,26 +17,17 @@ internal sealed class NpmPkgOperationHelper : BasePkgOperationHelper
         OperationType operation
     )
     {
-        // On Windows, npm runs through PowerShell (-Command), so single quotes act as
-        // PowerShell string delimiters and are stripped before reaching npm.
-        // On macOS/Linux, npm is called directly (no shell), so single quotes are passed
-        // literally and must NOT be included.
-        bool useShellQuotes = OperatingSystem.IsWindows();
-
         List<string> parameters = operation switch
         {
             OperationType.Install =>
             [
                 Manager.Properties.InstallVerb,
-                FormatSpec(
-                    ResolveInstallSpec(package.Id, options.Version == string.Empty ? package.VersionString : options.Version),
-                    useShellQuotes
-                ),
+                ResolveInstallSpec(package.Id, ResolveRequestedVersion(package, options)),
             ],
             OperationType.Update =>
             [
                 Manager.Properties.UpdateVerb,
-                FormatSpec(ResolveInstallSpec(package.Id, package.NewVersionString), useShellQuotes),
+                ResolveInstallSpec(package.Id, package.NewVersionString),
             ],
             OperationType.Uninstall => [Manager.Properties.UninstallVerb, ResolveLocalName(package.Id)],
             _ => throw new InvalidDataException("Invalid package operation"),
@@ -64,9 +56,6 @@ internal sealed class NpmPkgOperationHelper : BasePkgOperationHelper
 
         return parameters;
     }
-
-    private static string FormatSpec(string spec, bool useShellQuotes) =>
-        useShellQuotes ? $"'{spec}'" : spec;
 
     /// <summary>
     /// npm-aliased dependencies (package.json entries like "eslint-v9": "npm:eslint@^9.x")
@@ -101,10 +90,31 @@ internal sealed class NpmPkgOperationHelper : BasePkgOperationHelper
     /// ("localName@npm:targetName@version") for aliased dependencies instead of treating
     /// package.Id as a literal, directly-installable package name.
     /// </summary>
-    private static string ResolveInstallSpec(string id, string version) =>
-        TryParseAlias(id, out string localName, out string targetName)
-            ? $"{localName}@npm:{targetName}@{version}"
-            : $"{id}@{version}";
+    /// <summary>
+    /// The version to install: the requested one, or the package's own when it has a real version.
+    /// An unpinned imported package has none, and npm then installs the latest.
+    /// </summary>
+    private static string ResolveRequestedVersion(IPackage package, InstallOptions options) =>
+        options.Version.Length > 0 ? options.Version
+        : package.HasConcreteVersion ? package.VersionString
+        : "";
+
+    // A version is appended only when there is one; npm installs the latest when none is given.
+    // A version that is present but unusable is refused rather than dropped, so a request for a
+    // specific version never quietly turns into a request for the latest. A dist-tag such as
+    // "next" or "beta" is a usable version and is passed through.
+    private string ResolveInstallSpec(string id, string version)
+    {
+        if (version.Length > 0 && !CoreTools.IsValidPackageVersion(version))
+            throw new InvalidOperationException(
+                $"Refusing to build an {Manager.Name} command line for package version \"{version}\": it is not a valid package version."
+            );
+
+        bool aliased = TryParseAlias(id, out string localName, out string targetName);
+        string suffix = version.Length > 0 ? $"@{version}" : "";
+
+        return aliased ? $"{localName}@npm:{targetName}{suffix}" : $"{id}{suffix}";
+    }
 
     protected override OperationVeredict _getOperationResult(
         IPackage package,

@@ -66,9 +66,31 @@ public abstract class AbstractProcessOperation : AbstractOperation
         _requiresUACCache = true;
     }
 
+    /// <summary>
+    /// Sets the command line as a vector of arguments so that .NET performs the quoting each
+    /// argument needs, instead of concatenating them into a single string that the target has to
+    /// take apart again.
+    /// </summary>
+    protected void SetArgumentVector(IReadOnlyList<string> arguments)
+    {
+        process.StartInfo.Arguments = string.Empty;
+        process.StartInfo.ArgumentList.Clear();
+        foreach (string argument in arguments)
+        {
+            process.StartInfo.ArgumentList.Add(argument);
+        }
+    }
+
+    /// <summary>
+    /// The elevator's own arguments, as a vector. <see cref="CoreData.ElevatorArgs"/> holds at most
+    /// a couple of fixed flags (for example "-A" for sudo with an askpass helper).
+    /// </summary>
+    protected static IReadOnlyList<string> ElevatorArgumentPrefix() =>
+        CoreData.ElevatorArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
     protected void RedirectWinGetTempFolder()
     {
-        string WinGetTemp = Path.Join(Path.GetTempPath(), "UniGetUI", "ElevatedWinGetTemp");
+        string WinGetTemp = Path.Join(AppPaths.ScratchDirectory, "ElevatedWinGetTemp");
         process.StartInfo.Environment["TEMP"] = WinGetTemp;
         process.StartInfo.Environment["TMP"] = WinGetTemp;
     }
@@ -85,12 +107,17 @@ public abstract class AbstractProcessOperation : AbstractOperation
             throw new InvalidOperationException("RedirectStandardError must be set to true");
         if (process.StartInfo.FileName == "lol")
             throw new InvalidOperationException("StartInfo.FileName has not been set");
-        if (process.StartInfo.Arguments == "lol")
+        if (process.StartInfo.Arguments == "lol" && process.StartInfo.ArgumentList.Count is 0)
             throw new InvalidOperationException("StartInfo.Arguments has not been set");
 
         Line("Executing process with StartInfo:", LineType.VerboseDetails);
         Line($" - FileName: \"{process.StartInfo.FileName.Trim()}\"", LineType.VerboseDetails);
-        Line($" - Arguments: \"{process.StartInfo.Arguments.Trim()}\"", LineType.VerboseDetails);
+        Line(
+            process.StartInfo.ArgumentList.Count > 0
+                ? $" - Arguments: {string.Join(" ", process.StartInfo.ArgumentList.Select(argument => $"[{argument}]"))}"
+                : $" - Arguments: \"{process.StartInfo.Arguments.Trim()}\"",
+            LineType.VerboseDetails
+        );
         Line($"Start Time: \"{DateTime.Now}\"", LineType.VerboseDetails);
 
         if (string.IsNullOrWhiteSpace(process.StartInfo.FileName))
@@ -113,10 +140,10 @@ public abstract class AbstractProcessOperation : AbstractOperation
         CancellationToken.ThrowIfCancellationRequested();
 
         // When admin-rights caching is disabled (or a cache miss), the elevator is launched
-        // directly here and the UAC prompt is raised at this Start() — bring it to the
-        // foreground too, not just on the cached path (#5146).
+        // directly here and the UAC prompt is raised at this Start() — delegate foreground
+        // rights here too, not just on the cached path (#5146).
         if (process.StartInfo.FileName == CoreData.ElevatorPath)
-            await CoreTools.PrepareForegroundForElevationAsync();
+            CoreTools.PrepareForegroundForElevation();
 
         process.Start();
         if (CancellationToken.IsCancellationRequested)
@@ -129,8 +156,9 @@ public abstract class AbstractProcessOperation : AbstractOperation
         if (!Settings.Get(Settings.K.DisableNewProcessLineHandler))
         {
             await process.StandardInput.WriteLineAsync("\r\n\r\n\r\n\r\n".AsMemory(), CancellationToken);
-            process.StandardInput.Close();
         }
+
+        process.StandardInput.Close();
         try
         {
             process.BeginErrorReadLine();

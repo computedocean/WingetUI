@@ -14,6 +14,7 @@ using Avalonia.Diagnostics;
 using UniGetUI.Avalonia.Assets.Styles;
 using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Avalonia.Views;
+using UniGetUI.Avalonia.Views.Controls;
 using UniGetUI.Avalonia.Views.DialogPages;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
@@ -29,6 +30,7 @@ public partial class App : Application
         AvaloniaXamlLoader.Load(this);
 
         ButtonActivationGuard.Install();
+        SmoothScrollManager.Install();
 
         // Windows 11 Mica look is opt-in per environment: only merge the translucent
         // surface overrides when Mica is actually usable (Win11 + transparency on).
@@ -67,6 +69,19 @@ public partial class App : Application
                     && msg.Contains("child window for native control host"))
                 {
                     e.Handled = true;
+                    return;
+                }
+
+                // #5285: the web view reports adapter-initialization failures from an
+                // `async void` continuation, so they land here instead of at the call site.
+                // NativeWebViewSupport pre-checks the common cause (no WebView2 runtime), but
+                // a runtime that is present and broken can still fail this late.
+                if (NativeWebViewSupport.IsWebViewFailure(e.Exception))
+                {
+                    Logger.Error("The built-in browser failed to initialize; falling back to the system browser");
+                    Logger.Error(e.Exception);
+                    NativeWebViewSupport.MarkUnavailable();
+                    e.Handled = true;
                 }
             };
         }
@@ -104,12 +119,60 @@ public partial class App : Application
             // AppIcon (scripts/macos/AppIcon.icon → Assets.car, via CFBundleIconName) and rendered by
             // the system — for packaged releases and for Debug builds, which also build into a .app
             // (see UniGetUI.Avalonia.csproj). There is nothing to do at runtime.
-            ProcessEnvironmentConfigurator.PrepareForCurrentPlatform();
+            //
+            // Only macOS reads its environment from a login shell, so only macOS finishes startup
+            // asynchronously; every other platform stays on the synchronous path below.
+            ResumeStartupAfterMacOSEnvironment(desktop, splash);
+            return;
         }
-        else
+
+        ProcessEnvironmentConfigurator.ApplyProxySettingsToProcess();
+        CreateAndShowMainWindow(desktop, splash);
+    }
+
+    /// <summary>
+    /// #5236: resolving PATH spawns a login shell that can be slow, or stuck for good. Keep it off
+    /// the UI thread so the splash keeps painting, then finish startup once it answers.
+    /// </summary>
+    /// <remarks>
+    /// `async void` on purpose: it hands failures to Dispatcher.UnhandledException (and from there
+    /// to the crash handler), whereas a dropped Task would swallow them.
+    /// </remarks>
+    private static async void ResumeStartupAfterMacOSEnvironment(
+        IClassicDesktopStyleApplicationLifetime desktop, SplashWindow? splash)
+    {
+        // The dispatcher keeps pumping meanwhile, so the app can be asked to quit before the main
+        // window exists. Nothing routes that through MainWindow.QuitApplication() yet, so watch for
+        // it here and abort instead of resurrecting a window on a lifetime that is shutting down.
+        bool quitRequested = false;
+        void MarkQuitRequested(object? _, EventArgs __) => quitRequested = true;
+
+        desktop.ShutdownRequested += MarkQuitRequested;
+        desktop.Exit += MarkQuitRequested;
+        try
         {
-            ProcessEnvironmentConfigurator.ApplyProxySettingsToProcess();
+            await Task.Run(ProcessEnvironmentConfigurator.PrepareForCurrentPlatform);
         }
+        finally
+        {
+            desktop.ShutdownRequested -= MarkQuitRequested;
+            desktop.Exit -= MarkQuitRequested;
+        }
+
+        if (quitRequested)
+        {
+            Logger.Warn("The application was asked to quit before startup completed; "
+                      + "the main window will not be created");
+            splash?.Close();
+            return;
+        }
+
+        CreateAndShowMainWindow(desktop, splash);
+    }
+
+    private static void CreateAndShowMainWindow(
+        IClassicDesktopStyleApplicationLifetime desktop, SplashWindow? splash)
+    {
         PEInterface.LoadLoaders();
         var mainWindow = new MainWindow();
         desktop.MainWindow = mainWindow;
@@ -134,19 +197,6 @@ public partial class App : Application
             };
         }
 
-        if (CoreData.WasDaemon)
-        {
-            // Start silently: hide the window on first open only.
-            // Opened fires on every Show() in Avalonia, so we must unsubscribe
-            // immediately or every ShowFromTray() call would hide the window again.
-            void HideOnce(object? s, EventArgs e)
-            {
-                mainWindow.Opened -= HideOnce;
-                mainWindow.Hide();
-            }
-            mainWindow.Opened += HideOnce;
-        }
-
         if (splash is not null)
         {
             var splashRef = splash;
@@ -158,14 +208,15 @@ public partial class App : Application
             mainWindow.Opened += CloseSplashOnce;
         }
 
-        // Framework auto-show already passed (we deferred via Dispatcher.Post),
-        // so we have to open the window ourselves.
-        mainWindow.Show();
+        // Framework auto-show already passed (we deferred via Dispatcher.Post), so we have to
+        // open the window ourselves. Daemon mode never shows it at all.
+        if (!CoreData.WasDaemon)
+            mainWindow.Show();
 
-        _ = StartupAsync(mainWindow);
+        _ = StartupAsync(mainWindow, desktop.Args ?? []);
     }
 
-    private static async Task StartupAsync(MainWindow mainWindow)
+    private static async Task StartupAsync(MainWindow mainWindow, string[] args)
     {
         // Show crash report from the previous session and wait for the user
         // to dismiss it before continuing with normal startup.
@@ -179,17 +230,21 @@ public partial class App : Application
                 // ShowDialog tries to attach to it as owner.
                 await Task.Yield();
 
-                // ShowDialog requires a visible owner. In daemon mode the main window
-                // is hidden, so temporarily show it and re-hide after the dialog closes.
-                bool reshide = CoreData.WasDaemon;
-                if (reshide) mainWindow.Show();
-                await new CrashReportWindow(report).ShowDialog(mainWindow);
-                if (reshide) mainWindow.Hide();
+                await mainWindow.ShowDialogAndRestoreVisibilityAsync(new CrashReportWindow(report));
             }
             catch { /* must not prevent normal startup */ }
         }
 
         await AvaloniaBootstrapper.InitializeAsync();
+
+        if (CoreData.WasDaemon)
+        {
+            StartupArgumentProcessor.WarnIfBundlesIgnored(
+                args, $"the launch requested {AvaloniaCliHandler.DAEMON}");
+            return;
+        }
+
+        await StartupArgumentProcessor.ProcessAsync(args);
     }
 
     private static void HandleSecondaryInstanceArgs(MainWindow mainWindow, string[] args)
@@ -213,9 +268,15 @@ public partial class App : Application
         }
 
         if (isDaemonLaunch)
+        {
+            StartupArgumentProcessor.WarnIfBundlesIgnored(
+                args, $"the launch requested {AvaloniaCliHandler.DAEMON}");
             return;
+        }
 
         mainWindow.ShowFromTray();
+
+        _ = StartupArgumentProcessor.ProcessAsync(args);
     }
 
     public static void ApplyTheme(string value)
@@ -229,7 +290,7 @@ public partial class App : Application
     }
 
     public static string WebViewUserDataFolder { get; } =
-        Path.Join(Path.GetTempPath(), "UniGetUI", "WebView");
+        Path.Join(AppPaths.ScratchDirectory, "WebView");
 
     private static void SetUpWebViewUserDataFolder()
     {

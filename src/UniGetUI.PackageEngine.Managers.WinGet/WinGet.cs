@@ -20,6 +20,10 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
 {
     public class WinGet : PackageManager
     {
+        // Add/Remove-programs identifiers legitimately contain spaces, for example
+        // "ARP\Machine\X86\Microsoft Copilot"; GetIdNamePiece quotes them.
+        public override bool IdentifiersAreQuotedOnCommandLine => true;
+
         internal const string CliToolPreferenceEnvironmentVariable = "UNIGETUI_WINGET_CLI";
         internal const string ComApiPolicyEnvironmentVariable = "UNIGETUI_WINGET_COM";
         private const string SystemWinGetExecutableName = "winget.exe";
@@ -223,6 +227,23 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
         )
         {
             return PingetPackageDetailsProvider.TryGetInstallerHostsForVersion(package, version);
+        }
+
+        public static IReadOnlyList<string>? TryGetInstallerUrls(
+            UniGetUI.PackageEngine.Interfaces.IPackage package,
+            string? version
+        )
+        {
+            return PingetPackageDetailsProvider.TryGetInstallerUrls(package, version);
+        }
+
+        public bool ReportedUpdateNotApplicable(
+            IReadOnlyList<string> processOutput,
+            int returnCode
+        )
+        {
+            return OperationHelper is WinGetPkgOperationHelper helper
+                && helper.ReportedUpdateNotApplicable(processOutput, returnCode);
         }
 
         protected override IReadOnlyList<Package> FindPackages_UnSafe(string query)
@@ -611,7 +632,7 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
 
             if (CoreTools.IsAdministrator())
             {
-                string WinGetTemp = Path.Join(Path.GetTempPath(), "UniGetUI", "ElevatedWinGetTemp");
+                string WinGetTemp = Path.Join(AppPaths.ScratchDirectory, "ElevatedWinGetTemp");
                 process.StartInfo.Environment["TEMP"] = WinGetTemp;
                 process.StartInfo.Environment["TMP"] = WinGetTemp;
             }
@@ -779,7 +800,7 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
 
             if (CoreTools.IsAdministrator())
             {
-                string WinGetTemp = Path.Join(Path.GetTempPath(), "UniGetUI", "ElevatedWinGetTemp");
+                string WinGetTemp = Path.Join(AppPaths.ScratchDirectory, "ElevatedWinGetTemp");
                 logger.AddToStdErr(
                     $"[WARN] Redirecting %TEMP% folder to {WinGetTemp}, since UniGetUI was run as admin"
                 );

@@ -36,11 +36,16 @@ public partial class PackageDetailsWindow : UniGetUI.Avalonia.Views.DialogPages.
     public bool ShouldProceedWithOperation { get; private set; }
 
     private readonly PackageDetailsViewModel _vm;
+    private readonly TEL_InstallReferral _referral;
     private InstallOptionsViewModel? _installVm;
     private InstallOptions? _installOpts;
 
-    public PackageDetailsWindow(IPackage package, OperationType operation)
+    public PackageDetailsWindow(
+        IPackage package,
+        OperationType operation,
+        TEL_InstallReferral referral)
     {
+        _referral = referral;
         _vm = new PackageDetailsViewModel(package, operation);
         DataContext = _vm;
         InitializeComponent();
@@ -466,10 +471,7 @@ public partial class PackageDetailsWindow : UniGetUI.Avalonia.Views.DialogPages.
     {
         if (!_vm.Package.Manager.Capabilities.CanDownloadInstaller) return;
         Close();
-        // Hook into the platform's download path if/when wired up. For now, fall back to opening
-        // the installer URL so the user can still grab the file.
-        if (_vm.InstallerUrl is not null)
-            OpenUrl(_vm.InstallerUrl.ToString());
+        _ = AvaloniaPackageOperationHelper.AskLocationAndDownloadAsync(_vm.Package, _referral);
     }
 
     // ── Action flyout ────────────────────────────────────────────────────────
@@ -524,6 +526,8 @@ public partial class PackageDetailsWindow : UniGetUI.Avalonia.Views.DialogPages.
             no_integrity: no_integrity,
             remove_data: remove_data);
 
+        if (PackageOperation.HasPendingOperation(pkg, role)) return;
+
         AbstractOperation op = role switch
         {
             OperationType.Install => new InstallPackageOperation(pkg, opts),
@@ -535,8 +539,8 @@ public partial class PackageDetailsWindow : UniGetUI.Avalonia.Views.DialogPages.
         switch (role)
         {
             case OperationType.Install:
-                op.OperationSucceeded += (_, _) => TelemetryHandler.InstallPackage(pkg, TEL_OP_RESULT.SUCCESS, TEL_InstallReferral.DIRECT_SEARCH);
-                op.OperationFailed += (_, _) => TelemetryHandler.InstallPackage(pkg, TEL_OP_RESULT.FAILED, TEL_InstallReferral.DIRECT_SEARCH);
+                op.OperationSucceeded += (_, _) => TelemetryHandler.InstallPackage(pkg, TEL_OP_RESULT.SUCCESS, _referral);
+                op.OperationFailed += (_, _) => TelemetryHandler.InstallPackage(pkg, TEL_OP_RESULT.FAILED, _referral);
                 break;
             case OperationType.Update:
                 op.OperationSucceeded += (_, _) => TelemetryHandler.UpdatePackage(pkg, TEL_OP_RESULT.SUCCESS);

@@ -22,6 +22,15 @@
             <settings:ComboboxCard x:Name="ThemeSelector"
                                    CornerRadius="8,8,0,0"/>
 
+            <settings:CheckboxCard x:Name="UseSystemUIFontCard"
+                                   SettingName="UseSystemUIFont"
+                                   Text="{t:Translate Use the font configured in Windows instead of the default interface font}"
+                                   WarningText="{t:Translate Restart UniGetUI to apply this change}"
+                                   StateChangedCommand="{Binding ShowRestartRequiredCommand}"
+                                   CornerRadius="0"
+                                   BorderThickness="1,0,1,1"
+                                   IsVisible="{Binding IsWindows}"/>
+
              <settings:ComboboxCard x:Name="StartupPageSelector"
                                     CornerRadius="0"
                                     BorderThickness="1,0,1,1"/>
@@ -86,6 +95,14 @@
             <settings:CheckboxCard x:Name="PackageIllustrationsCard"
                                    SettingName="DisablePackageIllustrations"
                                    Text="{t:Translate Show illustrations on package lists}"
+                                   WarningText="{t:Translate Restart UniGetUI to apply this change}"
+                                   StateChangedCommand="{Binding ShowRestartRequiredCommand}"
+                                   CornerRadius="0"
+                                   BorderThickness="1,0,1,1"/>
+
+            <settings:CheckboxCard x:Name="InstallerHostColumnCard"
+                                   SettingName="ShowInstallerHostColumn"
+                                   Text="{t:Translate Show the installer host on package lists}"
                                    WarningText="{t:Translate Restart UniGetUI to apply this change}"
                                    StateChangedCommand="{Binding ShowRestartRequiredCommand}"
                                    CornerRadius="0"

@@ -21,12 +21,59 @@ public partial class Cargo : PackageManager
     [GeneratedRegex(@"([\w-]+)\s=\s""(\d+\.\d+\.\d+)""\s*#\s(.*)")]
     private static partial Regex SearchLineRegex();
 
-    [GeneratedRegex(@"(.+)v(\d+\.\d+\.\d+)\s*v(\d+\.\d+\.\d+)\s*(Yes|No)")]
-    private static partial Regex UpdateLineRegex();
+    public override bool InstallerUrlFollowsPackageVersion => true;
 
-    // Matches "ripgrep v15.1.0:" lines from `cargo install --list`
-    [GeneratedRegex(@"^([\w-]+)\s+v(\d+\.\d+\.\d+):")]
-    private static partial Regex InstallListLineRegex();
+    internal static IReadOnlyList<string> GetCargoBinDirectories(
+        Func<string, string?> readEnvironmentVariable,
+        string userProfileDirectory
+    )
+    {
+        List<string> directories = [];
+
+        if (readEnvironmentVariable("CARGO_HOME")?.Trim() is { Length: > 0 } cargoHome)
+            directories.Add(Path.Join(cargoHome, "bin"));
+        else if (userProfileDirectory.Trim() is { Length: > 0 } userProfile)
+            directories.Add(Path.Join(userProfile, ".cargo", "bin"));
+
+        return directories;
+    }
+
+    internal static bool IsCargoBinaryPresent(string binaryName) =>
+        CoreTools.Which(binaryName).Item1
+        || GetCargoBinDirectories(
+                Environment.GetEnvironmentVariable,
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+            )
+            .Any(directory => IsExecutableFile(Path.Join(directory, binaryName)));
+
+    private static bool IsExecutableFile(string path)
+    {
+        if (!File.Exists(path))
+            return false;
+
+        if (OperatingSystem.IsWindows())
+            return true;
+
+        const UnixFileMode ExecutableBits =
+            UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
+
+        try
+        {
+            return (File.GetUnixFileMode(path) & ExecutableBits) is not 0;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
+    }
 
     public Cargo()
     {
@@ -38,23 +85,30 @@ public partial class Cargo : PackageManager
             ? "cargo-binstall.exe"
             : "cargo-binstall";
 
+        string CargoPath() =>
+            Status.ExecutablePath is { Length: > 0 } path ? path : cargoCommand;
+
         Dependencies =
         [
-            // cargo-update is required to check for installed and upgradable packages
-            new ManagerDependency(
-                "cargo-update",
-                cargoCommand,
-                "install cargo-update",
-                "cargo install cargo-update",
-                async () => (await CoreTools.WhichAsync(cargoUpdateBinary)).Item1
-            ),
             // Cargo-binstall is required to install and update cargo binaries
             new ManagerDependency(
                 "cargo-binstall",
                 cargoCommand,
-                "install cargo-binstall",
-                "cargo install cargo-binstall",
-                async () => (await CoreTools.WhichAsync(cargoBinstallBinary)).Item1
+                "install cargo-binstall --locked",
+                "cargo install cargo-binstall --locked",
+                async () => await Task.Run(() => IsCargoBinaryPresent(cargoBinstallBinary)),
+                () => (CargoPath(), "install cargo-binstall --locked")
+            ),
+            // cargo-update is required to check for installed and upgradable packages
+            new ManagerDependency(
+                "cargo-update",
+                cargoCommand,
+                "install cargo-update --locked",
+                "cargo install cargo-update --locked",
+                async () => await Task.Run(() => IsCargoBinaryPresent(cargoUpdateBinary)),
+                () => IsCargoBinaryPresent(cargoBinstallBinary)
+                    ? (CargoPath(), "binstall --no-confirm cargo-update")
+                    : (CargoPath(), "install cargo-update --locked")
             ),
         ];
 
@@ -165,7 +219,7 @@ public partial class Cargo : PackageManager
     }
 
     public readonly bool HasBinstall =
-        CoreTools.Which(OperatingSystem.IsWindows() ? "cargo-binstall.exe" : "cargo-binstall").Item1;
+        IsCargoBinaryPresent(OperatingSystem.IsWindows() ? "cargo-binstall.exe" : "cargo-binstall");
 
     public override IReadOnlyList<string> FindCandidateExecutableFiles() =>
         CoreTools.WhichMultiple(OperatingSystem.IsWindows() ? "cargo.exe" : "cargo");
@@ -182,6 +236,17 @@ public partial class Cargo : PackageManager
         callArguments = "";
     }
 
+    public override int? CompareVersions(string versionA, string versionB)
+    {
+        if (
+            SemanticVersion.TryParse(versionA, out SemanticVersion parsedA)
+            && SemanticVersion.TryParse(versionB, out SemanticVersion parsedB)
+        )
+            return parsedA.CompareTo(parsedB);
+
+        return base.CompareVersions(versionA, versionB);
+    }
+
     protected override void _loadManagerVersion(out string version)
     {
         using Process p = GetProcess(Status.ExecutablePath, "--version");
@@ -193,28 +258,44 @@ public partial class Cargo : PackageManager
     }
 
     public void InvalidateInstalledCache() =>
-        TaskRecycler<List<Match>>.RemoveFromCache(GetInstalledCommandOutput);
+        TaskRecycler<List<CargoListEntry>>.RemoveFromCache(GetInstalledCommandOutput);
 
     private IReadOnlyList<Package> GetPackages(LoggableTaskType taskType)
     {
         List<Package> Packages = [];
-        foreach (var match in TaskRecycler<List<Match>>.RunOrAttach(GetInstalledCommandOutput, 15))
+        var entries = TaskRecycler<List<CargoListEntry>>.RunOrAttach(GetInstalledCommandOutput, 15);
+        foreach (var entry in entries)
         {
-            var id = match.Groups[1]?.Value?.Trim() ?? "";
-            var name = CoreTools.FormatAsName(id);
-            var oldVersion = match.Groups[2]?.Value?.Trim() ?? "";
-            var newVersion = match.Groups[3]?.Value?.Trim() ?? "";
-            if (taskType is LoggableTaskType.ListUpdates && oldVersion != newVersion)
-                Packages.Add(new Package(name, id, oldVersion, newVersion, DefaultSource, this));
+            var name = CoreTools.FormatAsName(entry.Id);
+            if (taskType is LoggableTaskType.ListUpdates)
+            {
+                if (
+                    entry.NeedsUpdate
+                    && entry.LatestVersion is { Length: > 0 } latestVersion
+                    && latestVersion != entry.InstalledVersion
+                )
+                    Packages.Add(
+                        new Package(
+                            name,
+                            entry.Id,
+                            entry.InstalledVersion,
+                            latestVersion,
+                            DefaultSource,
+                            this
+                        )
+                    );
+            }
             else if (taskType is LoggableTaskType.ListInstalledPackages)
-                Packages.Add(new Package(name, id, oldVersion, DefaultSource, this));
+                Packages.Add(
+                    new Package(name, entry.Id, entry.InstalledVersion, DefaultSource, this)
+                );
         }
         return Packages;
     }
 
-    private List<Match> GetInstalledCommandOutput()
+    private List<CargoListEntry> GetInstalledCommandOutput()
     {
-        List<Match> output = [];
+        List<string> stdout = [];
         using Process p = GetProcess(Status.ExecutablePath, "install-update --list");
         IProcessTaskLogger logger = TaskLogger.CreateNew(LoggableTaskType.OtherTask, p);
         logger.AddToStdOut("Other task: Call the install-update command");
@@ -224,38 +305,39 @@ public partial class Cargo : PackageManager
         while ((line = p.StandardOutput.ReadLine()) is not null)
         {
             logger.AddToStdOut(line);
-            var match = UpdateLineRegex().Match(line);
-            if (match.Success)
-                output.Add(match);
+            stdout.Add(line);
         }
         logger.AddToStdErr(p.StandardError.ReadToEnd());
         p.WaitForExit();
+
+        List<string> skippedRows = [];
+        var output = ParseInstallUpdateList(stdout, skippedRows);
+        foreach (var skippedRow in skippedRows)
+            logger.AddToStdErr($"Ignored unrecognized `install-update --list` row: {skippedRow}");
         logger.Close(p.ExitCode);
 
         if (output.Count > 0)
             return output;
 
-        // Fallback: cargo-update is not installed, use the built-in `cargo install --list`.
-        // No latest-version info is available, so updates won't be detected, but the installed
-        // packages list will be populated correctly.
+        List<string> fallbackStdout = [];
         using Process fallback = GetProcess(Status.ExecutablePath, "install --list");
-        IProcessTaskLogger fallbackLogger = TaskLogger.CreateNew(LoggableTaskType.OtherTask, fallback);
-        fallbackLogger.AddToStdOut("Falling back to `cargo install --list` (cargo-update not available)");
+        IProcessTaskLogger fallbackLogger = TaskLogger.CreateNew(
+            LoggableTaskType.OtherTask,
+            fallback
+        );
+        fallbackLogger.AddToStdOut(
+            "Falling back to `cargo install --list` (cargo-update reported no packages)"
+        );
         fallback.Start();
         while ((line = fallback.StandardOutput.ReadLine()) is not null)
         {
             fallbackLogger.AddToStdOut(line);
-            var m = InstallListLineRegex().Match(line);
-            if (!m.Success) continue;
-            // Synthesise a match compatible with UpdateLineRegex (same installed and latest version → no update)
-            var fake = UpdateLineRegex().Match($"{m.Groups[1].Value} v{m.Groups[2].Value} v{m.Groups[2].Value} No");
-            if (fake.Success)
-                output.Add(fake);
+            fallbackStdout.Add(line);
         }
         fallbackLogger.AddToStdErr(fallback.StandardError.ReadToEnd());
         fallback.WaitForExit();
         fallbackLogger.Close(fallback.ExitCode);
-        return output;
+        return ParseInstallList(fallbackStdout);
     }
 
     private Process GetProcess(string fileName, string extraArguments)

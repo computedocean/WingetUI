@@ -9,6 +9,7 @@ using UniGetUI.Avalonia.Views;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
+using UniGetUI.Core.Tools.Scheduling;
 using UniGetUI.Interface.Telemetry;
 using UniGetUI.PackageEngine.Classes.Manager.Classes;
 using UniGetUI.PackageEngine.Enums;
@@ -63,10 +64,10 @@ public class InstalledPackagesPage : AbstractPackagesPage
             if (!_hasBackedUp)
             {
                 _hasBackedUp = true;
-                if (Settings.Get(Settings.K.EnablePackageBackup_LOCAL))
-                    _ = BackupViewModel.DoLocalBackupStatic();
-                if (Settings.Get(Settings.K.EnablePackageBackup_CLOUD))
-                    _ = BackupViewModel.DoCloudBackupStatic();
+                if (MaintenanceScheduler.ShouldRunAtAppStart(MaintenanceTaskKind.LocalBackup))
+                    _ = MaintenanceScheduler.RunAsync(MaintenanceTaskKind.LocalBackup);
+                if (MaintenanceScheduler.ShouldRunAtAppStart(MaintenanceTaskKind.CloudBackup))
+                    _ = MaintenanceScheduler.RunAsync(MaintenanceTaskKind.CloudBackup);
             }
 
             if (OperatingSystem.IsWindows()
@@ -285,7 +286,8 @@ public class InstalledPackagesPage : AbstractPackagesPage
         if (package is null) return;
         if (GetMainWindow() is not { } win) return;
 
-        var dialog = new PackageDetailsWindow(package, OperationType.Uninstall);
+        var dialog = new PackageDetailsWindow(
+            package, OperationType.Uninstall, TEL_InstallReferral.ALREADY_INSTALLED);
         await dialog.ShowDialog(win);
 
         if (dialog.ShouldProceedWithOperation)
@@ -362,6 +364,7 @@ public class InstalledPackagesPage : AbstractPackagesPage
         {
             var opts = await InstallOptionsFactory.LoadApplicableAsync(
                 pkg, elevated: elevated, interactive: interactive, remove_data: remove_data);
+            if (PackageOperation.HasPendingOperation(pkg, OperationType.Uninstall)) continue;
             var op = new UninstallPackageOperation(pkg, opts);
             op.OperationSucceeded += (_, _) => TelemetryHandler.UninstallPackage(pkg, TEL_OP_RESULT.SUCCESS);
             op.OperationFailed += (_, _) => TelemetryHandler.UninstallPackage(pkg, TEL_OP_RESULT.FAILED);
@@ -374,6 +377,7 @@ public class InstalledPackagesPage : AbstractPackagesPage
     {
         if (package is null || package.Source.IsVirtualManager) return;
         var opts = await InstallOptionsFactory.LoadApplicableAsync(package);
+        if (PackageOperation.HasPendingOperation(package, OperationType.Install)) return;
         var op = new InstallPackageOperation(package, opts);
         op.OperationSucceeded += (_, _) => TelemetryHandler.InstallPackage(package, TEL_OP_RESULT.SUCCESS, TEL_InstallReferral.ALREADY_INSTALLED);
         op.OperationFailed += (_, _) => TelemetryHandler.InstallPackage(package, TEL_OP_RESULT.FAILED, TEL_InstallReferral.ALREADY_INSTALLED);
@@ -386,6 +390,7 @@ public class InstalledPackagesPage : AbstractPackagesPage
         if (package is null || package.Source.IsVirtualManager) return;
         var uninstallOpts = await InstallOptionsFactory.LoadApplicableAsync(package);
         var reinstallOpts = await InstallOptionsFactory.LoadApplicableAsync(package);
+        if (PackageOperation.HasPendingOperation(package, OperationType.Install)) return;
         var uninstallOp = new UninstallPackageOperation(package, uninstallOpts);
         uninstallOp.OperationSucceeded += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.SUCCESS);
         uninstallOp.OperationFailed += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.FAILED);

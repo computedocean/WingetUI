@@ -33,8 +33,8 @@ internal static class AvaloniaPackageOperationHelper
     {
         foreach (var pkg in UpgradablePackagesLoader.Instance.Packages.ToList())
         {
-            if (pkg.Tag is PackageTag.BeingProcessed or PackageTag.OnQueue) continue;
             var opts = await InstallOptionsFactory.LoadApplicableAsync(pkg);
+            if (PackageOperation.HasPendingOperation(pkg, OperationType.Update)) continue;
             var op = new UpdatePackageOperation(pkg, opts);
             op.OperationSucceeded += (_, _) => TelemetryHandler.UpdatePackage(pkg, TEL_OP_RESULT.SUCCESS);
             op.OperationFailed += (_, _) => TelemetryHandler.UpdatePackage(pkg, TEL_OP_RESULT.FAILED);
@@ -49,8 +49,8 @@ internal static class AvaloniaPackageOperationHelper
             .Where(p => p.Manager.Id == managerName)
             .ToList())
         {
-            if (pkg.Tag is PackageTag.BeingProcessed or PackageTag.OnQueue) continue;
             var opts = await InstallOptionsFactory.LoadApplicableAsync(pkg);
+            if (PackageOperation.HasPendingOperation(pkg, OperationType.Update)) continue;
             var op = new UpdatePackageOperation(pkg, opts);
             op.OperationSucceeded += (_, _) => TelemetryHandler.UpdatePackage(pkg, TEL_OP_RESULT.SUCCESS);
             op.OperationFailed += (_, _) => TelemetryHandler.UpdatePackage(pkg, TEL_OP_RESULT.FAILED);
@@ -69,6 +69,7 @@ internal static class AvaloniaPackageOperationHelper
         }
 
         var opts = await InstallOptionsFactory.LoadApplicableAsync(pkg);
+        if (PackageOperation.HasPendingOperation(pkg, OperationType.Update)) return;
         var op = new UpdatePackageOperation(pkg, opts);
         op.OperationSucceeded += (_, _) => TelemetryHandler.UpdatePackage(pkg, TEL_OP_RESULT.SUCCESS);
         op.OperationFailed += (_, _) => TelemetryHandler.UpdatePackage(pkg, TEL_OP_RESULT.FAILED);
@@ -105,8 +106,8 @@ internal static class AvaloniaPackageOperationHelper
         if (string.IsNullOrWhiteSpace(suggestedName))
             suggestedName = CoreTools.MakeValidFileName(package.Id) + ".exe";
 
-        string ext = suggestedName.Contains('.')
-            ? CoreTools.MakeValidFileName(suggestedName.Split('.')[^1])
+        string ext = InstallerFileNaming.ExtractExtension(suggestedName) is { Length: > 1 } extension
+            ? CoreTools.MakeValidFileName(extension[1..])
             : "exe";
 
         var file = await win.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions

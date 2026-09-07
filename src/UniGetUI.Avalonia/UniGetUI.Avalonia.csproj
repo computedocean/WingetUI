@@ -198,7 +198,7 @@
         <PackageReference Include="Avalonia.Controls.WebView" Version="12.0.0" />
         <PackageReference Include="Tmds.DBus.Protocol" Version="0.92.0" />
         <PackageReference Include="Devolutions.UniGetUI.Elevator" Version="2.6.1.3" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive;native" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
-        <PackageReference Include="Devolutions.Pinget.Cli.Rust" Version="0.10.0" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive;native" />
+        <PackageReference Include="Devolutions.Pinget.Cli.Rust" Version="0.11.0" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive;native" />
     </ItemGroup>
 
     <ItemGroup>
@@ -217,6 +217,8 @@
     <ItemGroup>
       <Compile Include="..\SharedAssemblyInfo.cs" Link="SharedAssemblyInfo.cs" />
       <Compile Include="..\Shared\SharedPreUiCommandDispatcher.cs" Link="Shared\SharedPreUiCommandDispatcher.cs" />
+      <Compile Include="..\Shared\StartupBundleArguments.cs" Link="Shared\StartupBundleArguments.cs" />
+      <Compile Include="..\Shared\AutoUpdater.InstallerArguments.cs" Link="Shared\AutoUpdater.InstallerArguments.cs" />
     </ItemGroup>
 
     <ItemGroup>
@@ -246,9 +248,12 @@
         <AvaloniaResource Remove="Infrastructure\**" />
     </ItemGroup>
 
+    <ItemGroup>
+        <Content Include="..\SharedAssets\Assets\Utilities\*.ps1" Link="Assets\Utilities\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+
     <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
         <Content Include="..\SharedAssets\Assets\Utilities\*.cmd" Link="Assets\Utilities\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-        <Content Include="..\SharedAssets\Assets\Utilities\*.ps1" Link="Assets\Utilities\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
         <Content Include="$(ElevatorPackageExePath)" Link="Assets\Utilities\UniGetUI Elevator.exe" Condition="Exists('$(ElevatorPackageExePath)')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" Pack="false" />
         <Content Include="$(ElevatorPackageDllPath)" Link="Assets\Utilities\getfilesiginforedist.dll" Condition="Exists('$(ElevatorPackageDllPath)')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" Pack="false" />
     </ItemGroup>
@@ -269,6 +274,8 @@
       <Compile Include="Infrastructure\TrayService.cs" />
       <Compile Include="Infrastructure\MicaWindowHelper.cs" />
       <Compile Include="Infrastructure\MemoryTrimmer.cs" />
+      <Compile Include="Infrastructure\MaintenanceScheduler.cs" />
+      <Compile Include="Infrastructure\PowerConditions.cs" />
       <Compile Include="Infrastructure\EntrancePageTransition.cs" />
       <Compile Include="Infrastructure\DirectionalSlideTransition.cs" />
       <Compile Include="Infrastructure\MacOsNotificationBridge.cs" />

@@ -54,6 +54,7 @@ public static class SettingsSearchIndex
         new("Manage UniGetUI autostart behaviour", ["autostart", "run at login", "startup"], typeof(Interface_P), "EditAutostartSettings"),
         new("Show package icons on package lists", ["package icons"], typeof(Interface_P), "InterfacePackageListsCard"),
         new("Show illustrations on package lists", ["illustrations", "package illustrations"], typeof(Interface_P), "PackageIllustrationsCard"),
+        new("Show the installer host on package lists", ["installer host", "download host", "installer url", "column"], typeof(Interface_P), "InstallerHostColumnCard"),
         new("Clear the icon cache", ["icon cache", "clear cache", "cache size"], typeof(Interface_P), "ResetIconCache"),
         new("Select upgradable packages by default", ["select updates", "select upgradable"], typeof(Interface_P), "SelectUpgradableCard"),
         new("User interface preferences", ["interface", "ui"], typeof(Interface_P), null),
@@ -68,9 +69,9 @@ public static class SettingsSearchIndex
         new("Notification preferences", ["notifications"], typeof(Notifications), null),
 
         // ── Updates ──────────────────────────────────────────────────────────
-        new("Check for package updates periodically", ["check for updates", "periodically"], typeof(Updates), "UpdatesCheckingCard"),
-        new("Check for updates every:", ["update frequency", "update interval"], typeof(Updates), "UpdatesCheckIntervalSelector"),
-        new("Install available updates automatically", ["automatic updates", "auto install updates"], typeof(Updates), "UpdatesAutomaticCard"),
+        new("Check for package updates periodically", ["check for updates", "periodically"], typeof(Scheduler), null),
+        new("Check for updates every:", ["update frequency", "update interval"], typeof(Scheduler), null),
+        new("Install available updates automatically", ["automatic updates", "auto install updates"], typeof(Scheduler), null),
         new("Do not automatically install updates when the network connection is metered", ["metered connection"], typeof(Updates), "AUPMeteredCard"),
         new("Do not automatically install updates when the device runs on battery", ["battery"], typeof(Updates), "AUPBatteryCard"),
         new("Do not automatically install updates when the battery saver is on", ["battery saver"], typeof(Updates), "AUPBatterySaverCard"),
@@ -79,11 +80,20 @@ public static class SettingsSearchIndex
         new("Warn me when the installer URL host changes between the installed version and the new version (WinGet only)", ["installer host", "url host"], typeof(Updates), "InstallerHostWarningCard"),
         new("Package update preferences", ["updates"], typeof(Updates), null),
 
+        // ── Scheduler ────────────────────────────────────────────────────────
+        new("Scheduled maintenance", ["scheduler", "schedule", "time window", "maintenance window", "days", "hours", "at night"], typeof(Scheduler), null),
+        new("Check for package updates", ["schedule update check", "check daily", "check weekly"], typeof(Scheduler), null),
+        new("Install available updates", ["schedule updates", "install at night", "install weekly", "maintenance window"], typeof(Scheduler), null),
+        new("Local package backup", ["schedule local backup", "backup daily"], typeof(Scheduler), null),
+        new("Cloud package backup", ["schedule cloud backup"], typeof(Scheduler), null),
+
         // ── Operations ───────────────────────────────────────────────────────
         new("Choose how many operations should be performed in parallel", ["parallel", "concurrency"], typeof(Operations), "ParallelOperationCount"),
         new("Clear successful operations from the operation list after a 5 second delay", ["clear successful", "maintain installs"], typeof(Operations), "ClearSuccessfulOpsCard"),
         new("Try to kill the processes that refuse to close when requested to", ["kill processes"], typeof(Operations), "KillProcessesCard"),
+        new("Name of the downloaded installer files", ["installer name", "download name", "file name", "version in file name", "rename installers"], typeof(Operations), "InstallerNameSchemeCard"),
         new("Ask to delete desktop shortcuts created during an install or upgrade.", ["desktop shortcuts", "shortcut remover"], typeof(Operations), "AskToDeleteNewDesktopShortcuts"),
+        new("Ask about the Start Menu shortcuts created during an install or upgrade.", ["start menu shortcuts", "start menu folder", "move shortcuts", "relocate shortcuts", "organize start menu"], typeof(Operations), "AskAboutNewStartMenuShortcuts"),
         new("Package operation preferences", ["operations"], typeof(Operations), null),
 
         // ── Internet ─────────────────────────────────────────────────────────
@@ -102,7 +112,9 @@ public static class SettingsSearchIndex
         new("Perform a local backup now", ["local backup now"], typeof(Backup), "BackupNowButton_LOCAL"),
         new("Change backup output directory", ["backup directory", "backup folder"], typeof(Backup), "BackupDirectoryCard"),
         new("Set a custom backup file name", ["backup file name"], typeof(Backup), "BackupFileNameCard"),
-        new("Add a timestamp to the backup file names", ["backup timestamp"], typeof(Backup), "BackupTimestampCard"),
+        new("Keep a separate file for each backup", ["backup timestamp", "timestamped file names", "separate backups"], typeof(Backup), "BackupTimestampCard"),
+        new("Maximum number of local backups to keep", ["backup retention", "backup limit", "delete old backups"], typeof(Backup), "MaxBackupCountCard"),
+        new("Custom maximum number of backups", ["custom backup count"], typeof(Backup), "MaxBackupCountCustomInput"),
         new("Package backup", ["backup"], typeof(Backup), null),
 
         // ── Administrator ────────────────────────────────────────────────────
@@ -259,6 +271,7 @@ public static class SettingsSearchIndex
         nameof(Interface_P) => "User interface preferences",
         nameof(Notifications) => "Notification preferences",
         nameof(Updates) => "Package update preferences",
+        nameof(Scheduler) => "Scheduled maintenance",
         nameof(Operations) => "Package operation preferences",
         nameof(Internet) => "Internet connection settings",
         nameof(Backup) => "Package backup",

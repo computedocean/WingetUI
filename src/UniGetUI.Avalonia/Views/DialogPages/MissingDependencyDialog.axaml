@@ -1,8 +1,6 @@
 <dialogs:ImmersiveDialog xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:dialogs="using:UniGetUI.Avalonia.Views.DialogPages"
-        xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
-        xmlns:t="using:UniGetUI.Avalonia.MarkupExtensions"
         x:Class="UniGetUI.Avalonia.Views.DialogPages.MissingDependencyDialog"
         MaxWidth="560"
         MinHeight="230"
@@ -31,6 +29,23 @@
                                  Margin="0,0,0,4"
                                  FontFamily="Consolas"
                                  Opacity="0.7"/>
+            <Border x:Name="OutputBorder"
+                    IsVisible="False"
+                    Margin="0,0,0,4"
+                    Padding="8,6"
+                    CornerRadius="4"
+                    Background="{DynamicResource AppDialogSubtleBackground}"
+                    BorderThickness="1"
+                    BorderBrush="{DynamicResource AppBorderBrush}">
+                <ScrollViewer MaxHeight="120"
+                              HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Auto">
+                    <SelectableTextBlock x:Name="OutputBlock"
+                                         FontFamily="Consolas"
+                                         FontSize="11"
+                                         Opacity="0.8"/>
+                </ScrollViewer>
+            </Border>
             <CheckBox x:Name="DontShowCheck"
                       IsVisible="False"/>
             <ProgressBar x:Name="ProgressBar"
@@ -43,8 +58,7 @@
                     HorizontalAlignment="Right"
                     Spacing="8">
             <Button x:Name="SkipButton"
-                    MinWidth="110"
-                    automation:AutomationProperties.Name="{t:Translate Not right now}"/>
+                    MinWidth="110"/>
             <Button x:Name="InstallButton"
                     MinWidth="140"
                     Classes="accent"/>

@@ -71,6 +71,7 @@ namespace UniGetUI.PackageEngine.Operations
         internal static TimeSpan BrokerOperationTimeout = TimeSpan.FromHours(1);
 
         protected List<string> DesktopShortcutsBeforeStart = [];
+        protected List<string>? StartMenuShortcutsBeforeStart;
 
         public readonly IPackage Package;
         public readonly InstallOptions Options;
@@ -79,6 +80,19 @@ namespace UniGetUI.PackageEngine.Operations
         protected abstract Task HandleSuccess();
         protected abstract Task HandleFailure();
         protected abstract void Initialize();
+
+        protected void SnapshotStartMenuShortcutsOnStart()
+        {
+            OperationStarting += (_, _) =>
+            {
+                if (StartMenuShortcutsBeforeStart is not null)
+                    return;
+
+                if (StartMenuShortcutsDatabase.ShouldTrackShortcuts(Package))
+                    StartMenuShortcutsBeforeStart =
+                        StartMenuShortcutsDatabase.GetShortcutsOnDisk();
+            };
+        }
 
         public PackageOperation(
             IPackage package,
@@ -110,9 +124,24 @@ namespace UniGetUI.PackageEngine.Operations
 
                 Package.SetTag(PackageTag.OnQueue);
             };
-            CancelRequested += (_, _) => Package.SetTag(PackageTag.Default);
+            StatusChanged += (_, status) =>
+            {
+                if (status is OperationStatus.Canceled)
+                    Package.SetTag(PackageTag.Default);
+            };
             OperationSucceeded += (_, _) => HandleSuccess();
             OperationFailed += (_, _) => HandleFailure();
+        }
+
+        public static bool HasPendingOperation(IPackage package, OperationType role)
+        {
+            if (package.Tag is not (PackageTag.OnQueue or PackageTag.BeingProcessed))
+                return false;
+
+            Logger.Warn(
+                $"Skipping {role} of {package.Id} because an operation for this package is already queued or running"
+            );
+            return true;
         }
 
         private bool RequiresAdminRights() =>
@@ -154,12 +183,12 @@ namespace UniGetUI.PackageEngine.Operations
         {
             bool IsAdmin = CoreTools.IsAdministrator();
             Package.SetTag(PackageTag.OnQueue);
-            string operation_args = string.Join(
-                " ",
-                Package.Manager.OperationHelper.GetParameters(Package, Options, Role)
+            var operationParameters = Package.Manager.OperationHelper.GetParameters(
+                Package,
+                Options,
+                Role
             );
-            string FileName,
-                Arguments;
+            var callVector = Package.Manager.Status.OperationCallArgs;
 
             if (RequiresAdminRights() && IsAdmin is false)
             {
@@ -173,14 +202,36 @@ namespace UniGetUI.PackageEngine.Operations
                     RequestCachingOfUACPrompt();
                 }
 
-                FileName = CoreData.ElevatorPath;
-                Arguments =
-                    $"{CoreData.ElevatorArgs} \"{Package.Manager.Status.ExecutablePath}\" {Package.Manager.Status.ExecutableCallArgs} {operation_args}".TrimStart();
+                process.StartInfo.FileName = CoreData.ElevatorPath;
+                if (callVector.Count > 0)
+                {
+                    SetArgumentVector(
+                        [
+                            .. ElevatorArgumentPrefix(),
+                            Package.Manager.Status.ExecutablePath,
+                            .. callVector,
+                            .. operationParameters,
+                        ]
+                    );
+                }
+                else
+                {
+                    process.StartInfo.Arguments =
+                        $"{CoreData.ElevatorArgs} \"{Package.Manager.Status.ExecutablePath}\" {Package.Manager.Status.ExecutableCallArgs} {string.Join(" ", operationParameters)}".TrimStart();
+                }
             }
             else
             {
-                FileName = Package.Manager.Status.ExecutablePath;
-                Arguments = $"{Package.Manager.Status.ExecutableCallArgs} {operation_args}";
+                process.StartInfo.FileName = Package.Manager.Status.ExecutablePath;
+                if (callVector.Count > 0)
+                {
+                    SetArgumentVector([.. callVector, .. operationParameters]);
+                }
+                else
+                {
+                    process.StartInfo.Arguments =
+                        $"{Package.Manager.Status.ExecutableCallArgs} {string.Join(" ", operationParameters)}";
+                }
             }
 
             if (IsAdmin && IsWinGetManager(Package.Manager))
@@ -188,8 +239,6 @@ namespace UniGetUI.PackageEngine.Operations
                 RedirectWinGetTempFolder();
             }
 
-            process.StartInfo.FileName = FileName;
-            process.StartInfo.Arguments = Arguments;
             process.StartInfo.StandardOutputEncoding = Package.Manager.OutputEncoding;
             process.StartInfo.StandardErrorEncoding = Package.Manager.OutputEncoding;
 
@@ -844,9 +893,33 @@ namespace UniGetUI.PackageEngine.Operations
             List<string> Output
         )
         {
-            return Task.FromResult(
-                Package.Manager.OperationHelper.GetResult(Package, Role, Output, ReturnCode)
+            var veredict = Package.Manager.OperationHelper.GetResult(
+                Package,
+                Role,
+                Output,
+                ReturnCode
             );
+
+            if (veredict is OperationVeredict.Failure && Role is OperationType.Update)
+                ExplainNotApplicableUpdate(Output, ReturnCode);
+
+            return Task.FromResult(veredict);
+        }
+
+        private void ExplainNotApplicableUpdate(List<string> output, int returnCode)
+        {
+#if WINDOWS
+            if (Package.Manager is not WinGet winget)
+                return;
+
+            if (!winget.ReportedUpdateNotApplicable(output, returnCode))
+                return;
+
+            Metadata.FailureMessage = CoreTools.Translate(
+                "{package} may already be up to date, or no installer matches this system",
+                new Dictionary<string, object?> { { "package", Package.Name } }
+            );
+#endif
         }
 
         private static bool IsWinGetManager(IPackageManager manager)
@@ -1011,10 +1084,16 @@ namespace UniGetUI.PackageEngine.Operations
             else if (role is OperationType.Uninstall && opts.PostUninstallCommand.Any())
                 l.Add(new(new PrePostOperation(opts.PostUninstallCommand), false));
 
+            static bool IsSupersededBy(IPackage installed, IPackage update) =>
+                update.Manager.CompareVersions(installed.VersionString, update.NewVersionString)
+                    is { } comparison
+                    ? comparison < 0
+                    : installed.NormalizedVersion < update.NormalizedNewVersion;
+
             if (role is OperationType.Update && opts.UninstallPreviousVersionsOnUpdate)
             {
                 var matches = InstalledPackagesLoader.Instance.Packages.Where(p =>
-                    p.IsEquivalentTo(package) && p.NormalizedVersion < package.NormalizedNewVersion
+                    p.IsEquivalentTo(package) && IsSupersededBy(p, package)
                 );
                 foreach (var match in matches)
                 {
@@ -1063,6 +1142,14 @@ namespace UniGetUI.PackageEngine.Operations
                 DesktopShortcutsDatabase.HandleNewShortcuts(DesktopShortcutsBeforeStart);
             }
 
+            if (StartMenuShortcutsBeforeStart is not null)
+            {
+                StartMenuShortcutsDatabase.HandleNewShortcuts(
+                    Package,
+                    StartMenuShortcutsBeforeStart
+                );
+            }
+
             bool explicitVersionRequested = !string.IsNullOrWhiteSpace(Options.Version);
             var installedPackage = await ResolveInstalledPackageSnapshotAsync(
                 explicitVersionRequested ? Options.Version : Package.VersionString,
@@ -1106,6 +1193,8 @@ namespace UniGetUI.PackageEngine.Operations
             {
                 DesktopShortcutsBeforeStart = DesktopShortcutsDatabase.GetShortcutsOnDisk();
             }
+
+            SnapshotStartMenuShortcutsOnStart();
         }
     }
 
@@ -1139,6 +1228,14 @@ namespace UniGetUI.PackageEngine.Operations
             if (Settings.Get(Settings.K.AskToDeleteNewDesktopShortcuts))
             {
                 DesktopShortcutsDatabase.HandleNewShortcuts(DesktopShortcutsBeforeStart);
+            }
+
+            if (StartMenuShortcutsBeforeStart is not null)
+            {
+                StartMenuShortcutsDatabase.HandleNewShortcuts(
+                    Package,
+                    StartMenuShortcutsBeforeStart
+                );
             }
 
             bool explicitVersionRequested = !string.IsNullOrWhiteSpace(Options.Version);
@@ -1202,6 +1299,8 @@ namespace UniGetUI.PackageEngine.Operations
             {
                 DesktopShortcutsBeforeStart = DesktopShortcutsDatabase.GetShortcutsOnDisk();
             }
+
+            SnapshotStartMenuShortcutsOnStart();
         }
     }
 
@@ -1227,6 +1326,10 @@ namespace UniGetUI.PackageEngine.Operations
             Package.GetAvailablePackage()?.SetTag(PackageTag.Default);
             UpgradablePackagesLoader.Instance.Remove(Package);
             InstalledPackagesLoader.Instance.Remove(Package);
+
+            StartMenuShortcutsDatabase.CleanupForPackage(
+                StartMenuShortcutsDatabase.GetIdForPackage(Package)
+            );
 
             return Task.CompletedTask;
         }

@@ -1,12 +1,13 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Avalonia.ViewModels.Pages;
 using UniGetUI.Avalonia.Views;
+using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
+using UniGetUI.Core.Tools.Scheduling;
 using UniGetUI.Interface.Enums;
 using UniGetUI.Interface.Telemetry;
 using UniGetUI.PackageEngine.Classes.Manager.Classes;
@@ -27,6 +28,7 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
     private MenuItem? _menuSkipHash;
     private MenuItem? _menuDownloadInstaller;
     private MenuItem? _menuOpenInstallLocation;
+    private MenuItem? _menuAutoUpdate;
 
     public SoftwareUpdatesPage() : base(new PackagesPageData
     {
@@ -106,6 +108,11 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         });
         ViewModel.AddToolbarButton("clipboard_list", CoreTools.Translate("Manage ignored updates"),
             () => vm.RequestManageIgnoredCommand.Execute(null));
+        ViewModel.AddToolbarSeparator();
+        ViewModel.AddToolbarButton("sandclock", CoreTools.Translate("Automatically update selected packages"),
+            () => MarkForAutoUpdates(vm.FilteredPackages.GetCheckedPackages()));
+        ViewModel.AddToolbarButton("clipboard_list", CoreTools.Translate("Manage automatic updates"),
+            () => vm.RequestManageAutoUpdatesCommand.Execute(null));
         ViewModel.AddToolbarSeparator();
         ViewModel.AddToolbarButton("save_as", CoreTools.Translate("Export to CSV"),
             () => _ = ExportPackagesToCsvAsync());
@@ -196,6 +203,23 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
             UpgradablePackagesLoader.Instance.IgnoredPackages[pkg.Id] = pkg;
         };
 
+        _menuAutoUpdate = new MenuItem
+        {
+            Header = CoreTools.Translate("Update this package automatically"),
+            Icon = LoadMenuIcon("sandclock"),
+            ToggleType = MenuItemToggleType.CheckBox,
+        };
+        _menuAutoUpdate.Click += (_, _) =>
+        {
+            var pkg = SelectedItem;
+            if (pkg is null) return;
+            string id = AutoUpdatesDatabase.GetIdForPackage(pkg);
+            if (AutoUpdatesDatabase.IsAutoUpdated(id))
+                AutoUpdatesDatabase.Remove(id);
+            else
+                MarkForAutoUpdates([pkg]);
+        };
+
         var menuSkipVersion = new MenuItem
         {
             Header = CoreTools.Translate("Skip this version"),
@@ -263,6 +287,8 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         menu.Items.Add(menuUninstallThenUpdate);
         menu.Items.Add(menuUninstall);
         menu.Items.Add(new Separator());
+        menu.Items.Add(_menuAutoUpdate);
+        menu.Items.Add(new Separator());
         menu.Items.Add(menuIgnore);
         menu.Items.Add(menuSkipVersion);
         menu.Items.Add(menuPause);
@@ -275,7 +301,8 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
     protected override void WhenShowingContextMenu(IPackage package)
     {
         if (_menuAsAdmin is null || _menuInteractive is null || _menuSkipHash is null
-            || _menuDownloadInstaller is null || _menuOpenInstallLocation is null)
+            || _menuDownloadInstaller is null || _menuOpenInstallLocation is null
+            || _menuAutoUpdate is null)
         {
             Logger.Warn("Context menu items are null on SoftwareUpdatesPage");
             return;
@@ -288,6 +315,7 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         _menuDownloadInstaller.IsEnabled = caps.CanDownloadInstaller;
         _menuOpenInstallLocation.IsEnabled =
             package.Manager.DetailsHelper.GetInstallLocation(package) is not null;
+        _menuAutoUpdate.IsChecked = AutoUpdatesDatabase.IsAutoUpdated(package);
     }
 
     // ─── Abstract action overrides ────────────────────────────────────────────
@@ -302,7 +330,8 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         if (package is null) return;
         if (GetMainWindow() is not { } win) return;
 
-        var dialog = new PackageDetailsWindow(package, OperationType.Update);
+        var dialog = new PackageDetailsWindow(
+            package, OperationType.Update, TEL_InstallReferral.ALREADY_INSTALLED);
         await dialog.ShowDialog(win);
 
         if (dialog.ShouldProceedWithOperation)
@@ -344,6 +373,7 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         {
             var opts = await InstallOptionsFactory.LoadApplicableAsync(
                 pkg, elevated: elevated, interactive: interactive, no_integrity: no_integrity);
+            if (PackageOperation.HasPendingOperation(pkg, OperationType.Update)) continue;
             var op = new UpdatePackageOperation(pkg, opts);
             op.OperationSucceeded += (_, _) => TelemetryHandler.UpdatePackage(pkg, TEL_OP_RESULT.SUCCESS);
             op.OperationFailed += (_, _) => TelemetryHandler.UpdatePackage(pkg, TEL_OP_RESULT.FAILED);
@@ -357,6 +387,7 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         foreach (var pkg in packages)
         {
             var opts = await InstallOptionsFactory.LoadApplicableAsync(pkg);
+            if (PackageOperation.HasPendingOperation(pkg, OperationType.Uninstall)) continue;
             var op = new UninstallPackageOperation(pkg, opts);
             op.OperationSucceeded += (_, _) => TelemetryHandler.UninstallPackage(pkg, TEL_OP_RESULT.SUCCESS);
             op.OperationFailed += (_, _) => TelemetryHandler.UninstallPackage(pkg, TEL_OP_RESULT.FAILED);
@@ -370,6 +401,7 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         if (package is null || package.Source.IsVirtualManager) return;
         var uninstallOpts = await InstallOptionsFactory.LoadApplicableAsync(package);
         var updateOpts = await InstallOptionsFactory.LoadApplicableAsync(package);
+        if (PackageOperation.HasPendingOperation(package, OperationType.Update)) return;
         var uninstallOp = new UninstallPackageOperation(package, uninstallOpts);
         uninstallOp.OperationSucceeded += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.SUCCESS);
         uninstallOp.OperationFailed += (_, _) => TelemetryHandler.UninstallPackage(package, TEL_OP_RESULT.FAILED);
@@ -389,33 +421,35 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
     {
         try
         {
+            bool shouldAutoInstall = MaintenanceScheduler.IsAutoInstallDue();
+
             var upgradable = UpgradablePackagesLoader.Instance.Packages
                 .Where(p => p.Tag is not PackageTag.OnQueue and not PackageTag.BeingProcessed)
                 .ToList();
 
             if (upgradable.Count == 0) return;
 
-            if (Settings.Get(Settings.K.DisableAUPOnBattery) && IsOnBattery())
+            if (Settings.Get(Settings.K.DisableAUPOnBattery) && PowerConditions.IsOnBattery())
             {
                 Logger.Warn("Updates will not be installed automatically because the device is on battery.");
                 ShowAvailableUpdatesNotification(upgradable);
             }
-            else if (Settings.Get(Settings.K.DisableAUPOnBatterySaver) && IsBatterySaverOn())
+            else if (Settings.Get(Settings.K.DisableAUPOnBatterySaver) && PowerConditions.IsBatterySaverOn())
             {
                 Logger.Warn("Updates will not be installed automatically because battery saver is enabled.");
                 ShowAvailableUpdatesNotification(upgradable);
             }
-            else if (Settings.Get(Settings.K.DisableAUPOnMeteredConnections) && IsOnMeteredConnection())
+            else if (Settings.Get(Settings.K.DisableAUPOnMeteredConnections) && PowerConditions.IsOnMeteredConnection())
             {
                 Logger.Warn("Updates will not be installed automatically because the current internet connection is metered.");
                 ShowAvailableUpdatesNotification(upgradable);
             }
-            else if (Settings.Get(Settings.K.AutomaticallyUpdatePackages))
+            else if (shouldAutoInstall)
             {
-                _ = AvaloniaPackageOperationHelper.UpdateAllAsync();
-                ShowUpgradingPackagesNotification(upgradable);
+                MaintenanceScheduler.MarkAutoInstallHandled();
+                await LaunchScheduledUpdate(upgradable);
             }
-            else if (Environment.GetCommandLineArgs().Contains("--updateapps"))
+            else if (CoreData.GetProcessArguments().Contains("--updateapps"))
             {
                 _ = AvaloniaPackageOperationHelper.UpdateAllAsync();
                 ShowUpgradingPackagesNotification(upgradable);
@@ -423,12 +457,6 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
             }
             else
             {
-                foreach (var package in upgradable)
-                {
-                    var opts = await InstallOptionsFactory.LoadApplicableAsync(package);
-                    if (opts.AutoUpdatePackage)
-                        await LaunchUpdate([package]);
-                }
                 ShowAvailableUpdatesNotification(upgradable);
             }
         }
@@ -436,6 +464,61 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
         {
             Logger.Error(ex);
         }
+    }
+
+    private static void MarkForAutoUpdates(IEnumerable<IPackage> packages)
+    {
+        int marked = 0;
+        foreach (var pkg in packages)
+        {
+            string id = AutoUpdatesDatabase.GetIdForPackage(pkg);
+            if (AutoUpdatesDatabase.IsAutoUpdated(id)) continue;
+            AutoUpdatesDatabase.Add(id);
+            marked++;
+        }
+
+        if (marked is 0) return;
+
+        var schedule = MaintenanceScheduleStore.Get(MaintenanceTaskKind.InstallUpdates);
+        string message = !schedule.Enabled
+            ? CoreTools.Translate("Turn on \"Install available updates\" in the scheduled maintenance settings for this to take effect.")
+            : schedule.InstallTargets is ScheduleInstallTargets.AllPackages
+                ? CoreTools.Translate("Every upgradable package is already installed automatically, so this changes nothing until the scheduled task is limited to marked packages.")
+                : CoreTools.Translate("They will be updated when the scheduled maintenance task runs.");
+
+        GetMainWindow()?.ShowBanner(
+            CoreTools.Translate("{0} package(s) marked for automatic updates", marked),
+            message,
+            MainWindow.RuntimeNotificationLevel.Success);
+    }
+
+    private static async Task LaunchScheduledUpdate(IReadOnlyList<IPackage> upgradable)
+    {
+        bool markedOnly = MaintenanceScheduleStore.GetInstallTargets()
+            is ScheduleInstallTargets.MarkedPackagesOnly;
+
+        List<IPackage> targets = [];
+        List<IPackage> skipped = [];
+        foreach (var package in upgradable)
+        {
+            if (!markedOnly || AutoUpdatesDatabase.IsAutoUpdated(package))
+                targets.Add(package);
+            else
+                skipped.Add(package);
+        }
+
+        if (targets.Count > 0)
+        {
+            await LaunchUpdate(targets);
+            ShowUpgradingPackagesNotification(targets);
+        }
+        else
+        {
+            Logger.Info("No upgradable package is marked for automatic updates, nothing will be installed");
+        }
+
+        if (skipped.Count > 0)
+            ShowAvailableUpdatesNotification(skipped);
     }
 
     private static void ShowAvailableUpdatesNotification(IReadOnlyList<IPackage> upgradable)
@@ -454,51 +537,4 @@ public class SoftwareUpdatesPage : AbstractPackagesPage
             MacOsNotificationBridge.ShowUpgradingPackagesNotification(upgradable);
     }
 
-    // ─── Battery / power helpers (Windows P/Invoke) ───────────────────────────
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct SYSTEM_POWER_STATUS
-    {
-        public byte ACLineStatus;     // 0 = battery, 1 = AC, 255 = unknown
-        public byte BatteryFlag;
-        public byte BatteryLifePercent;
-        public byte SystemStatusFlag; // bit 0: battery saver active
-        public uint BatteryLifeTime;
-        public uint BatteryFullLifeTime;
-    }
-
-#pragma warning disable CA1416
-    [DllImport("kernel32.dll")]
-    private static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS status);
-#pragma warning restore CA1416
-
-    private static bool IsOnBattery()
-    {
-        if (!OperatingSystem.IsWindows()) return false;
-#pragma warning disable CA1416
-        return GetSystemPowerStatus(out var s) && s.ACLineStatus == 0;
-#pragma warning restore CA1416
-    }
-
-    private static bool IsBatterySaverOn()
-    {
-        if (!OperatingSystem.IsWindows()) return false;
-#pragma warning disable CA1416
-        return GetSystemPowerStatus(out var s) && (s.SystemStatusFlag & 0x01) != 0;
-#pragma warning restore CA1416
-    }
-
-    private static bool IsOnMeteredConnection()
-    {
-#if WINDOWS
-        var costType = Windows.Networking.Connectivity.NetworkInformation
-            .GetInternetConnectionProfile()
-            ?.GetConnectionCost()
-            .NetworkCostType;
-        return costType is Windows.Networking.Connectivity.NetworkCostType.Fixed
-            or Windows.Networking.Connectivity.NetworkCostType.Variable;
-#else
-        return false;
-#endif
-    }
 }

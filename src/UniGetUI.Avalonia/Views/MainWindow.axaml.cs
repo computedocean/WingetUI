@@ -19,7 +19,6 @@ using UniGetUI.Avalonia.ViewModels;
 using UniGetUI.Avalonia.Views.Controls;
 using UniGetUI.Avalonia.Views.DialogPages;
 using UniGetUI.Avalonia.Views.Pages;
-using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
@@ -90,9 +89,14 @@ public partial class MainWindow : Window
     private const uint WM_MOUSEMOVE = 0x0200;
     private const uint WM_SYSCOMMAND = 0x0112;
     private const uint WM_SETTINGCHANGE = 0x001A;
+    private const uint WM_SIZE = 0x0005;
+    private const uint WM_SHOWWINDOW = 0x0018;
+    private const nint SIZE_RESTORED = 0;
+    private const nint SIZE_MAXIMIZED = 2;
     private const uint WM_DWMCOLORIZATIONCOLORCHANGED = 0x0320;
     private const nint SC_MAXIMIZE = 0xF030;
     private const nint SC_RESTORE = 0xF120;
+    private const int HTCLIENT = 1;
     private const int HTMAXBUTTON = 9;
     private const uint TME_LEAVE = 0x0002;
     private const uint TME_NONCLIENT = 0x0010;
@@ -112,6 +116,7 @@ public partial class MainWindow : Window
     // accent-colored window border that tracks focus.
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     private const int DWMWA_BORDER_COLOR = 34;
+    private const int DWMWCP_DONOTROUND = 1;
     private const int DWMWCP_ROUND = 2;
     private const int WINDOW_BORDER_COLOR_LIGHT = 0x00B9B9B9;
     private const int WINDOW_BORDER_COLOR_DARK = 0x004A4A4A;
@@ -184,12 +189,6 @@ public partial class MainWindow : Window
 
         _trayService = new TrayService(this);
         _trayService.UpdateStatus();
-
-        // Let the elevation code activate us right before a UAC prompt, so we own the foreground
-        // and can delegate it to the consent UI (#5146). Only activate when we're already on screen;
-        // don't yank a tray-hidden window forward during silent/background elevation.
-        CoreData.BringMainWindowToForegroundAsync = () =>
-            Dispatcher.UIThread.InvokeAsync(() => { if (IsVisible) ShowFromTray(); }).GetTask();
     }
 
     protected override void OnOpened(EventArgs e)
@@ -218,6 +217,7 @@ public partial class MainWindow : Window
         }
 
         SetupMicaAndAccentBorder();
+        UpdateWindowCornerPreference();
 
         ActualThemeVariantChanged += (_, _) =>
         {
@@ -823,6 +823,11 @@ public partial class MainWindow : Window
     {
         try
         {
+            // Width/Height stay NaN until the window has been laid out, which never happens on a
+            // daemon launch the user has not opened yet. Saving then would persist a 0x0 size.
+            if (double.IsNaN(Width) || double.IsNaN(Height))
+                return;
+
             int state = WindowState == WindowState.Maximized ? 1 : 0;
             string geometry = $"v2,{Position.X},{Position.Y},{(int)Width},{(int)Height},{state}";
             Settings.SetValue(Settings.K.WindowGeometry, geometry);
@@ -972,8 +977,7 @@ public partial class MainWindow : Window
             return false;
         try
         {
-            int x = unchecked((short)(lParam.ToInt64() & 0xFFFF));
-            int y = unchecked((short)((lParam.ToInt64() >> 16) & 0xFFFF));
+            var (x, y) = ScreenPointFromLParam(lParam);
             PixelPoint topLeft = MaximizeButton.PointToScreen(new Point(0, 0));
             PixelPoint bottomRight = MaximizeButton.PointToScreen(
                 new Point(MaximizeButton.Bounds.Width, MaximizeButton.Bounds.Height));
@@ -983,6 +987,30 @@ public partial class MainWindow : Window
         {
             return false;
         }
+    }
+
+    private bool HitTestCaptionButtons(nint lParam)
+    {
+        if (!WindowButtons.IsVisible)
+            return false;
+        try
+        {
+            var (x, y) = ScreenPointFromLParam(lParam);
+            PixelPoint topLeft = WindowButtons.PointToScreen(new Point(0, 0));
+            PixelPoint bottomRight = WindowButtons.PointToScreen(
+                new Point(WindowButtons.Bounds.Width, WindowButtons.Bounds.Height));
+            return x >= topLeft.X && x < bottomRight.X && y >= topLeft.Y && y < bottomRight.Y;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static (int X, int Y) ScreenPointFromLParam(nint lParam)
+    {
+        long packed = lParam.ToInt64();
+        return (unchecked((short)(packed & 0xFFFF)), unchecked((short)((packed >> 16) & 0xFFFF)));
     }
 
     // Emulates the button's pointer-over/pressed fill (lost once input is non-client) using the
@@ -1042,15 +1070,23 @@ public partial class MainWindow : Window
             return;
         }
 
-        // The custom NCCALCSIZE frame keeps WS_THICKFRAME, so DWM still has a frame to round.
-        int corner = DWMWCP_ROUND;
-        NativeMethods.DwmSetWindowAttribute(handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref corner, sizeof(int));
-
         // Transparent window + transparent MicaPageBackground (from Styles.WindowsMica) let
         // the backdrop show through the chrome and page area.
         Background = Brushes.Transparent;
 
         ApplyWindowBorderColor(handle);
+    }
+
+    private void UpdateWindowCornerPreference()
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
+            return;
+
+        if (TryGetPlatformHandle()?.Handle is not { } handle || handle == 0)
+            return;
+
+        int corner = WindowState == WindowState.Normal ? DWMWCP_ROUND : DWMWCP_DONOTROUND;
+        NativeMethods.DwmSetWindowAttribute(handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref corner, sizeof(int));
     }
 
     private void ApplyWindowBorderColor(nint handle)
@@ -1093,6 +1129,12 @@ public partial class MainWindow : Window
             borderOwner.ApplyWindowBorderColor(hWnd);
         }
 
+        if ((msg == WM_SHOWWINDOW || (msg == WM_SIZE && (wParam == SIZE_RESTORED || wParam == SIZE_MAXIMIZED)))
+            && Instance is { } cornerOwner)
+        {
+            Dispatcher.UIThread.Post(cornerOwner.UpdateWindowCornerPreference);
+        }
+
         if (msg == WM_SETTINGCHANGE && Instance is { } trayOwner)
         {
             trayOwner.UpdateSystemTrayStatus();
@@ -1109,6 +1151,11 @@ public partial class MainWindow : Window
                     {
                         handled = true;
                         return HTMAXBUTTON;
+                    }
+                    if (self.HitTestCaptionButtons(lParam))
+                    {
+                        handled = true;
+                        return HTCLIENT;
                     }
                     break;
 
@@ -1536,6 +1583,31 @@ public partial class MainWindow : Window
         await ShowImmersiveDialogAsync(dialog);
     }
 
+    public async Task ShowManageAutoUpdatesAsync()
+    {
+        var dialog = new ManageAutoUpdatesWindow();
+        await ShowImmersiveDialogAsync(dialog);
+    }
+
+    // Immersive dialogs are hosted inside this window, so they are unreachable — and never complete —
+    // while it is off screen (daemon launch). Bring it up for the dialog and put it back after.
+    public async Task ShowDialogAndRestoreVisibilityAsync(ImmersiveDialog dialog)
+    {
+        bool reshide = !IsVisible;
+        if (reshide)
+            Show();
+
+        try
+        {
+            await dialog.ShowDialog(this);
+        }
+        finally
+        {
+            if (reshide)
+                Hide();
+        }
+    }
+
     public async Task ShowImmersiveDialogAsync(ImmersiveDialog dialog)
     {
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1796,7 +1868,7 @@ public partial class MainWindow : Window
 
     // ─── Public API (legacy compat) ───────────────────────────────────────────
     // Surfaces a fresh, auto-dismissing toast per call (name kept for pre-toast callers).
-    public void ShowBanner(string title, string message, RuntimeNotificationLevel level)
+    public void ShowBanner(string title, string message, RuntimeNotificationLevel level, string? launchAction = null)
     {
         if (level == RuntimeNotificationLevel.Progress) return;
 
@@ -1816,6 +1888,16 @@ public partial class MainWindow : Window
             IsOpen = true,
         };
         toast.OnClosed = () => ViewModel.DismissToast(toast);
+
+        if (launchAction == UniGetUI.Interface.Enums.NotificationArguments.ShowOnUpdatesTab)
+        {
+            toast.BodyCommand = new CommunityToolkit.Mvvm.Input.RelayCommand(() =>
+            {
+                ViewModel.NavigateTo(PageType.Updates);
+                ViewModel.DismissToast(toast);
+            });
+        }
+
         ViewModel.ShowToast(toast);
     }
 
@@ -1837,8 +1919,8 @@ public partial class MainWindow : Window
     private void UpdateOnScreenState()
         => _isOnScreen = IsVisible && WindowState != WindowState.Minimized;
 
-    public void ShowRuntimeNotification(string title, string message, RuntimeNotificationLevel level) =>
-        ShowBanner(title, message, level);
+    public void ShowRuntimeNotification(string title, string message, RuntimeNotificationLevel level, string? launchAction = null) =>
+        ShowBanner(title, message, level, launchAction);
 
     // ─── BackgroundAPI integration ────────────────────────────────────────────
     public void ShowFromTray()

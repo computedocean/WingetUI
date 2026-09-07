@@ -49,6 +49,192 @@ public sealed class InstallOptionsFactoryTests : IDisposable
         }
     }
 
+    [Theory]
+    [InlineData(@"..\..\..\PWNED")]
+    [InlineData("../../../PWNED")]
+    [InlineData("..")]
+    [InlineData(".")]
+    [InlineData("")]
+    public void SaveForPackage_NeverWritesOutsideTheInstallOptionsDirectory(string packageId)
+    {
+        var manager = new PackageManagerBuilder().WithName("WinGet").Build();
+        var package = new PackageBuilder().WithManager(manager).WithId(packageId).Build();
+
+        InstallOptionsFactory.SaveForPackage(
+            new InstallOptions { CustomInstallLocation = "MARKER-CONTENT" },
+            package
+        );
+
+        string optionsDirectory = Path.GetFullPath(
+            CoreData.UniGetUIInstallationOptionsDirectory
+        );
+
+        foreach (string written in Directory.GetFiles(
+            _testRoot,
+            "*",
+            SearchOption.AllDirectories
+        ))
+        {
+            if (Path.GetFileName(written).Contains("PWNED", StringComparison.Ordinal))
+            {
+                Assert.Equal(
+                    optionsDirectory,
+                    Path.GetDirectoryName(Path.GetFullPath(written))
+                );
+            }
+        }
+    }
+
+    [Fact]
+    public void SaveForPackage_StillRoundTripsAnOrdinaryPackageId()
+    {
+        var manager = new PackageManagerBuilder().WithName("WinGet").Build();
+        var package = new PackageBuilder().WithManager(manager).WithId("Contoso:Tool").Build();
+
+        InstallOptionsFactory.SaveForPackage(
+            new InstallOptions { CustomInstallLocation = @"C:\Apps\Contoso" },
+            package
+        );
+
+        Assert.Equal(
+            @"C:\Apps\Contoso",
+            InstallOptionsFactory.LoadForPackage(package).CustomInstallLocation
+        );
+    }
+
+    [Fact]
+    public void SaveForPackage_DoesNotLetSanitisationCollideDistinctIds()
+    {
+        var manager = new PackageManagerBuilder().WithName("WinGet").Build();
+        var colonId = new PackageBuilder().WithManager(manager).WithId("Contoso:Tool").Build();
+        var plainId = new PackageBuilder().WithManager(manager).WithId("ContosoTool").Build();
+
+        InstallOptionsFactory.SaveForPackage(
+            new InstallOptions { CustomInstallLocation = "FOR-COLON" },
+            colonId
+        );
+        InstallOptionsFactory.SaveForPackage(
+            new InstallOptions { CustomInstallLocation = "FOR-PLAIN" },
+            plainId
+        );
+
+        Assert.Equal(
+            "FOR-COLON",
+            InstallOptionsFactory.LoadForPackage(colonId).CustomInstallLocation
+        );
+        Assert.Equal(
+            "FOR-PLAIN",
+            InstallOptionsFactory.LoadForPackage(plainId).CustomInstallLocation
+        );
+    }
+
+    [Fact]
+    public void SaveForPackage_KeepsSameIdFromDifferentSourcesApart()
+    {
+        var manager = new PackageManagerBuilder().WithName("WinGet").Build();
+        var fromA = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("Contoso.Tool")
+            .WithSource(new SourceBuilder().WithManager(manager).WithName("winget").Build())
+            .Build();
+        var fromB = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("Contoso.Tool")
+            .WithSource(new SourceBuilder().WithManager(manager).WithName("msstore").Build())
+            .Build();
+
+        InstallOptionsFactory.SaveForPackage(
+            new InstallOptions { CustomInstallLocation = "FROM-A" },
+            fromA
+        );
+        InstallOptionsFactory.SaveForPackage(
+            new InstallOptions { CustomInstallLocation = "FROM-B" },
+            fromB
+        );
+
+        Assert.Equal(
+            "FROM-A",
+            InstallOptionsFactory.LoadForPackage(fromA).CustomInstallLocation
+        );
+        Assert.Equal(
+            "FROM-B",
+            InstallOptionsFactory.LoadForPackage(fromB).CustomInstallLocation
+        );
+    }
+
+    [Fact]
+    public void SaveForPackage_KeepsAmbiguousSourceAndIdSplitsApart()
+    {
+        var manager = new PackageManagerBuilder().WithName("WinGet").Build();
+        var dottedSource = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("c")
+            .WithSource(new SourceBuilder().WithManager(manager).WithName("a.b").Build())
+            .Build();
+        var dottedId = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("b.c")
+            .WithSource(new SourceBuilder().WithManager(manager).WithName("a").Build())
+            .Build();
+
+        InstallOptionsFactory.SaveForPackage(
+            new InstallOptions { CustomInstallLocation = "DOTTED-SOURCE" },
+            dottedSource
+        );
+        InstallOptionsFactory.SaveForPackage(
+            new InstallOptions { CustomInstallLocation = "DOTTED-ID" },
+            dottedId
+        );
+
+        Assert.Equal(
+            "DOTTED-SOURCE",
+            InstallOptionsFactory.LoadForPackage(dottedSource).CustomInstallLocation
+        );
+        Assert.Equal(
+            "DOTTED-ID",
+            InstallOptionsFactory.LoadForPackage(dottedId).CustomInstallLocation
+        );
+    }
+
+    [Fact]
+    public void LoadForPackage_DoesNotThrowOnPackageIdsWithControlCharacters()
+    {
+        var manager = new PackageManagerBuilder().WithName("WinGet").Build();
+        var package = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("Contoso\0Tool")
+            .Build();
+
+        var loaded = InstallOptionsFactory.LoadForPackage(package);
+
+        Assert.NotNull(loaded);
+    }
+
+    [Fact]
+    public void AutoUpdatesMigration_IgnoresIdentityScopedOptionFiles()
+    {
+        var manager = new PackageManagerBuilder().WithName("WinGet").Build();
+        var package = new PackageBuilder().WithManager(manager).WithId("Contoso.Tool").Build();
+
+        InstallOptionsFactory.SaveForPackage(
+            new InstallOptions { AutoUpdatePackage = true },
+            package
+        );
+
+        string written = Directory
+            .GetFiles(CoreData.UniGetUIInstallationOptionsDirectory, "*.json")
+            .Select(Path.GetFileName)
+            .First(name => !name!.StartsWith("GlobalValues.", StringComparison.Ordinal));
+
+        Assert.True(InstallOptionsFactory.IsIdentityScopedOptionsFile(written!));
+        Assert.False(
+            InstallOptionsFactory.IsIdentityScopedOptionsFile(
+                "WinGet.foo_0123456789abcdef.json"
+            )
+        );
+        Assert.False(InstallOptionsFactory.IsIdentityScopedOptionsFile("WinGet.Contoso.Tool.json"));
+    }
+
     [Fact]
     public void LoadApplicable_UsesManagerDefaultsAndExpandsPackageToken()
     {

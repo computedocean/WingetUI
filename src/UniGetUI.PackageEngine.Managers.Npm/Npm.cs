@@ -17,6 +17,8 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
 {
     public class Npm : PackageManager
     {
+        public override bool CommandLineIsShellInterpreted => true;
+
         public Npm()
         {
             Capabilities = new ManagerCapabilities
@@ -55,26 +57,32 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
 
         protected override IReadOnlyList<Package> FindPackages_UnSafe(string query)
         {
-            using Process p = new()
+            var startInfo = new ProcessStartInfo
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = Status.ExecutablePath,
-                    Arguments = Status.ExecutableCallArgs + " search \"" + query + "\" --json",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    RedirectStandardInput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WorkingDirectory = Environment.GetFolderPath(
-                        Environment.SpecialFolder.UserProfile
-                    ),
-                    StandardOutputEncoding = System.Text.Encoding.UTF8,
-                },
+                FileName = Status.ExecutablePath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                RedirectStandardInput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = Environment.GetFolderPath(
+                    Environment.SpecialFolder.UserProfile
+                ),
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
             };
 
+            if (
+                Status.OperationCallArgs.Count is 0
+                && !string.IsNullOrWhiteSpace(Status.ExecutableCallArgs)
+            )
+                startInfo.Arguments = BuildSearchArguments(query);
+            else
+                Status.ApplyArguments(startInfo, "search", query, "--json");
+
+            using Process p = new() { StartInfo = startInfo };
+
             IProcessTaskLogger logger = TaskLogger.CreateNew(LoggableTaskType.FindPackages, p);
-            p.Start();
+            CoreTools.StartAndCloseStandardInput(p);
 
             string strContents = p.StandardOutput.ReadToEnd();
             logger.AddToStdOut(strContents);
@@ -118,7 +126,7 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
                 };
 
                 IProcessTaskLogger logger = TaskLogger.CreateNew(LoggableTaskType.ListUpdates, p);
-                p.Start();
+                CoreTools.StartAndCloseStandardInput(p);
 
                 string strContents = p.StandardOutput.ReadToEnd();
                 logger.AddToStdOut(strContents);
@@ -167,7 +175,7 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
                     LoggableTaskType.ListInstalledPackages,
                     p
                 );
-                p.Start();
+                CoreTools.StartAndCloseStandardInput(p);
 
                 string strContents = p.StandardOutput.ReadToEnd();
                 logger.AddToStdOut(strContents);
@@ -180,6 +188,17 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
 
             return Packages;
         }
+
+        /// <summary>
+        /// When npm is reached through its own npm.ps1 the query travels as a separate argument, so
+        /// nothing has to be escaped. The remaining case is a Windows install without npm.ps1, where
+        /// the call still goes through powershell -Command and the query has to be quoted.
+        /// </summary>
+        private string BuildSearchArguments(string query) =>
+            Status.ExecutableCallArgs
+            + " search "
+            + CoreTools.EscapePowerShellSingleQuoted(query)
+            + " --json";
 
         public override IReadOnlyList<string> FindCandidateExecutableFiles() =>
             CoreTools.WhichMultiple(OperatingSystem.IsWindows() ? "npm.cmd" : "npm");
@@ -206,6 +225,61 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
             callArguments = "";
         }
 
+        protected override IReadOnlyList<string> _getOperationCallArgs(
+            string executablePath,
+            string callArguments
+        )
+        {
+            if (!OperatingSystem.IsWindows())
+                return [];
+
+            var (found, executable) = GetExecutableFile();
+            if (!found)
+                return [];
+
+            string? script = ResolvePowerShellEntryPoint(executable);
+            if (script is null)
+                return [];
+
+            // Finding npm.ps1 does not prove this shell may run it, and npm.cmd still works, so
+            // the capability is confirmed before giving up the working fallback.
+            if (!CoreTools.PowerShellLauncherWorks(executablePath, CoreData.PowerShellOperationLauncher))
+            {
+                Logger.Warn("Not using -File for npm operations; falling back to -Command");
+                return [];
+            }
+
+            return ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script];
+        }
+
+        /// <summary>
+        /// npm ships an npm.ps1 next to the npm.cmd shim. Running that script with -File keeps the
+        /// operation parameters as argv instead of handing them to a shell to re-parse.
+        /// </summary>
+        internal static string? ResolvePowerShellEntryPoint(string executable)
+        {
+            string? directory = Path.GetDirectoryName(executable);
+            if (string.IsNullOrEmpty(directory))
+                return null;
+
+            string candidate = Path.Join(
+                directory,
+                Path.GetFileNameWithoutExtension(executable) + ".ps1"
+            );
+            return File.Exists(candidate) ? candidate : null;
+        }
+
+        public override int? CompareVersions(string versionA, string versionB)
+        {
+            if (
+                SemanticVersion.TryParse(versionA, out SemanticVersion parsedA)
+                && SemanticVersion.TryParse(versionB, out SemanticVersion parsedB)
+            )
+                return parsedA.CompareTo(parsedB);
+
+            return base.CompareVersions(versionA, versionB);
+        }
+
         protected override void _loadManagerVersion(out string version)
         {
             using Process process = new()
@@ -225,7 +299,7 @@ namespace UniGetUI.PackageEngine.Managers.NpmManager
                     StandardOutputEncoding = System.Text.Encoding.UTF8,
                 },
             };
-            process.Start();
+            CoreTools.StartAndCloseStandardInput(process);
             version = process.StandardOutput.ReadToEnd().Trim();
             process.WaitForExit();
         }

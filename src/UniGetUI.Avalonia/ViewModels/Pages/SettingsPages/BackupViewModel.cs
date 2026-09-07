@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.Input;
 using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Avalonia.Views;
 using UniGetUI.Avalonia.Views.Pages;
+using UniGetUI.Avalonia.Views.Pages.SettingsPages;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.Tools;
@@ -20,6 +21,7 @@ namespace UniGetUI.Avalonia.ViewModels.Pages.SettingsPages;
 public partial class BackupViewModel : ViewModelBase, IDisposable
 {
     public event EventHandler? RestartRequired;
+    public event EventHandler<Type>? NavigationRequested;
 
     public IReadOnlyList<string> InfoLines { get; } =
     [
@@ -30,8 +32,22 @@ public partial class BackupViewModel : ViewModelBase, IDisposable
     ];
 
     /* ── Local backup ── */
-    [ObservableProperty] private bool _isLocalBackupEnabled;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(IsBackupRetentionAvailable))] private bool _isLocalBackupEnabled;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(IsBackupRetentionAvailable))] private bool _isBackupTimestampingEnabled;
+    [ObservableProperty] private bool _isCustomBackupCountSelected;
     [ObservableProperty] private string _backupDirectoryLabel = "";
+
+    public bool IsBackupRetentionAvailable => IsLocalBackupEnabled && IsBackupTimestampingEnabled;
+
+    public IReadOnlyList<(string Name, string Value)> MaxBackupCountItems { get; } =
+    [
+        (CoreTools.Translate("Keep all backups"),              "0"),
+        (CoreTools.Translate("Keep the last {0} backups", 5),  "5"),
+        (CoreTools.Translate("Keep the last {0} backups", 10), "10"),
+        (CoreTools.Translate("Keep the last {0} backups", 25), "25"),
+        (CoreTools.Translate("Keep the last {0} backups", 50), "50"),
+        (CoreTools.Translate("Custom..."),                     "custom"),
+    ];
 
     /* ── Cloud backup ── */
     [ObservableProperty] private bool _isLoggedIn;
@@ -53,6 +69,7 @@ public partial class BackupViewModel : ViewModelBase, IDisposable
     {
         _lifetimeToken = _lifetimeCancellation.Token;
         _isLocalBackupEnabled = CoreSettings.Get(CoreSettings.K.EnablePackageBackup_LOCAL);
+        _isBackupTimestampingEnabled = CoreSettings.Get(CoreSettings.K.EnableBackupTimestamping);
         RefreshDirectoryLabel();
 
         GitHubAuthService.AuthStatusChanged += OnAuthStatusChanged;
@@ -75,11 +92,21 @@ public partial class BackupViewModel : ViewModelBase, IDisposable
     /* ─────────────── Local backup ─────────────── */
 
     [RelayCommand]
+    private void NavigateToScheduler() => NavigationRequested?.Invoke(this, typeof(Scheduler));
+
+    [RelayCommand]
     private void EnableLocalBackupChanged()
     {
         if (IsDisposed) return;
         IsLocalBackupEnabled = CoreSettings.Get(CoreSettings.K.EnablePackageBackup_LOCAL);
         RestartRequired?.Invoke(this, EventArgs.Empty);
+    }
+
+    [RelayCommand]
+    private void EnableBackupTimestampingChanged()
+    {
+        if (IsDisposed) return;
+        IsBackupTimestampingEnabled = CoreSettings.Get(CoreSettings.K.EnableBackupTimestamping);
     }
 
     private void RefreshDirectoryLabel()
@@ -107,7 +134,7 @@ public partial class BackupViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private static Task DoLocalBackup(Visual? _) => DoLocalBackupStatic();
 
-    public static async Task DoLocalBackupStatic()
+    public static async Task<bool> DoLocalBackupStatic()
     {
         try
         {
@@ -115,33 +142,16 @@ public partial class BackupViewModel : ViewModelBase, IDisposable
                 ?? [];
             string backupContents = await PackageBundlesPage.CreateBundle(packages);
 
-            string dirName = CoreSettings.GetValue(CoreSettings.K.ChangeBackupOutputDirectory);
-            if (string.IsNullOrEmpty(dirName))
-                dirName = CoreData.UniGetUI_DefaultBackupDirectory;
-
-            if (!Directory.Exists(dirName))
-                Directory.CreateDirectory(dirName);
-
-            string fileName = CoreSettings.GetValue(CoreSettings.K.ChangeBackupFileName);
-            if (string.IsNullOrEmpty(fileName))
-                fileName = CoreTools.Translate(
-                    "{pcName} installed packages",
-                    new Dictionary<string, object?> { { "pcName", Environment.MachineName } }
-                );
-
-            if (CoreSettings.Get(CoreSettings.K.EnableBackupTimestamping))
-                fileName += " " + DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss");
-
-            fileName += ".ubundle";
-
-            string filePath = Path.Combine(dirName, fileName);
-            await File.WriteAllTextAsync(filePath, backupContents);
+            string filePath = await LocalBackupManager.SaveBackupAsync(backupContents);
             Logger.ImportantInfo("Local backup saved to " + filePath);
+            await Task.Run(LocalBackupManager.ApplyRetentionLimit);
+            return true;
         }
         catch (Exception ex)
         {
             Logger.Error("An error occurred while performing a LOCAL backup:");
             Logger.Error(ex);
+            return false;
         }
     }
 
@@ -292,7 +302,7 @@ public partial class BackupViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public static async Task DoCloudBackupStatic()
+    public static async Task<bool> DoCloudBackupStatic()
     {
         try
         {
@@ -300,11 +310,13 @@ public partial class BackupViewModel : ViewModelBase, IDisposable
             string bundle = await PackageBundlesPage.CreateBundle(packages);
             await GitHubCloudBackupService.UploadPackageBundleAsync(bundle);
             Logger.ImportantInfo("Cloud backup completed successfully.");
+            return true;
         }
         catch (Exception ex)
         {
             Logger.Error("An error occurred while performing a CLOUD backup:");
             Logger.Error(ex);
+            return false;
         }
     }
 

@@ -58,6 +58,11 @@ public abstract partial class AbstractPackagesPage : UserControl,
             if (GetMainWindow() is { } win)
                 await win.ShowManageIgnoredUpdatesAsync();
         };
+        ViewModel.ManageAutoUpdatesRequested += async () =>
+        {
+            if (GetMainWindow() is { } win)
+                await win.ShowManageAutoUpdatesAsync();
+        };
 
         // "New version" sort option is only relevant on the updates page
         OrderByNewVersion_Menu.IsVisible = ViewModel.RoleIsUpdateLike;
@@ -131,9 +136,6 @@ public abstract partial class AbstractPackagesPage : UserControl,
         // Type-to-search: printable characters typed while the list is focused
         // redirect focus + the typed character to the global search box.
         PackageList.TextInput += PackageList_TextInput;
-
-        // Ease wheel scrolling to a stop instead of jumping per notch (WinUI-like feel).
-        DataGridWheelAnimator.Attach(PackageList);
 
         // Snap-close when splitter is dragged below the minimum (inline mode only).
         // Using ColumnDefinition.WidthProperty fires every drag step, not just on release.
