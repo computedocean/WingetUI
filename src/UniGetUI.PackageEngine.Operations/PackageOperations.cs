@@ -148,6 +148,43 @@ namespace UniGetUI.PackageEngine.Operations
             !Settings.Get(Settings.K.ProhibitElevation)
             && (Package.OverridenOptions.RunAsAdministrator is true || Options.RunAsAdministrator);
 
+        private volatile int _ranElevated = -1;
+
+        public virtual bool WillRunElevated =>
+            _ranElevated switch
+            {
+                1 => true,
+                0 => false,
+                _ => CoreTools.IsAdministrator() || RequiresAdminRights(),
+            };
+
+        public static bool CanRetrySkippingIntegrityChecks(
+            IPackageManager manager,
+            InstallOptions options,
+            OperationType role,
+            bool willRunElevated
+        )
+        {
+            if (!manager.Capabilities.CanSkipIntegrityChecks || options.SkipHashCheck)
+                return false;
+
+            return IntegrityCheckSkipIsHonored(manager, role, willRunElevated);
+        }
+
+        private static bool IntegrityCheckSkipIsHonored(
+            IPackageManager manager,
+            OperationType role,
+            bool willRunElevated
+        )
+        {
+#if WINDOWS
+            if (manager is WinGet winget)
+                return role is not OperationType.Uninstall
+                    && (!willRunElevated || winget.HonorsIntegrityCheckSkipWhenElevated);
+#endif
+            return true;
+        }
+
         protected override void ApplyRetryAction(string retryMode)
         {
             switch (retryMode)
@@ -242,6 +279,8 @@ namespace UniGetUI.PackageEngine.Operations
             process.StartInfo.StandardOutputEncoding = Package.Manager.OutputEncoding;
             process.StartInfo.StandardErrorEncoding = Package.Manager.OutputEncoding;
 
+            _ranElevated = IsAdmin ? 1 : 0;
+
             ApplyCapabilities(
                 IsAdmin,
                 Options.InteractiveInstallation,
@@ -311,6 +350,7 @@ namespace UniGetUI.PackageEngine.Operations
             Package.Manager.OperationHelper.ApplyElevationRequirements(Package, Options, Role);
 
             bool requestElevated = RequiresAdminRights();
+            _ranElevated = requestElevated ? 1 : 0;
             using var client = CreateBrokerClient(requestElevated);
 
             // Check broker availability. Brokered operations must not fall back to local
@@ -900,8 +940,12 @@ namespace UniGetUI.PackageEngine.Operations
                 ReturnCode
             );
 
-            if (veredict is OperationVeredict.Failure && Role is OperationType.Update)
-                ExplainNotApplicableUpdate(Output, ReturnCode);
+            if (veredict is OperationVeredict.Failure)
+            {
+                if (Role is OperationType.Update)
+                    ExplainNotApplicableUpdate(Output, ReturnCode);
+                ExplainInstallerHashMismatch(ReturnCode);
+            }
 
             return Task.FromResult(veredict);
         }
@@ -918,6 +962,33 @@ namespace UniGetUI.PackageEngine.Operations
             Metadata.FailureMessage = CoreTools.Translate(
                 "{package} may already be up to date, or no installer matches this system",
                 new Dictionary<string, object?> { { "package", Package.Name } }
+            );
+#endif
+        }
+
+        private void ExplainInstallerHashMismatch(int returnCode)
+        {
+#if WINDOWS
+            if (Package.Manager is not WinGet winget)
+                return;
+
+            if (!winget.ReportedInstallerHashMismatch(returnCode))
+                return;
+
+            Metadata.FailureMessage = CoreTools.Translate(
+                "The installer for {package} does not match the hash in its manifest",
+                new Dictionary<string, object?> { { "package", Package.Name } }
+            );
+
+            Line(
+                WillRunElevated && !winget.HonorsIntegrityCheckSkipWhenElevated
+                    ? CoreTools.Translate(
+                        "The package manifest is likely out of date. WinGet cannot skip this check while running as administrator."
+                    )
+                    : CoreTools.Translate(
+                        "The package manifest is likely out of date. Skipping this check requires WinGet's InstallerHashOverride administrator setting."
+                    ),
+                LineType.Error
             );
 #endif
         }

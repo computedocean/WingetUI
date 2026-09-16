@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.SettingsEngine.SecureSettings;
@@ -107,6 +108,23 @@ public sealed class PackageManagerTests : IDisposable
         Assert.True(manager.Status.Found);
         Assert.Equal(manager.ExecutablePath, manager.Status.ExecutablePath);
         Assert.Equal("9.9.9-test", manager.Status.Version);
+    }
+
+    [Fact]
+    public void InitializeEnabledManagerThatCannotBeStartedIsFoundButNotReady()
+    {
+        var manager = CreateManager();
+        manager.ExecutablePath = CreateExecutable("unstartable-manager.exe");
+        manager.VersionLoadFailure = new Win32Exception(
+            unchecked((int)0xC0EA0001),
+            "No applicable app licenses found"
+        );
+
+        manager.Initialize();
+
+        Assert.True(manager.IsEnabled());
+        Assert.True(manager.Status.Found);
+        Assert.False(manager.IsReady());
     }
 
     [Fact]
@@ -266,7 +284,7 @@ public sealed class PackageManagerTests : IDisposable
     }
 
     [Fact]
-    public void GetAvailableUpdatesRetriesOnceAndRefreshesIndexesPerAttempt()
+    public void GetAvailableUpdatesRetriesOnceWithoutRefreshingIndexesAgain()
     {
         var manager = CreateReadyManager();
         var attempts = 0;
@@ -283,7 +301,7 @@ public sealed class PackageManagerTests : IDisposable
         var package = Assert.Single(packages);
         Assert.Equal("Contoso.Update", package.Id);
         Assert.Equal(1, manager.AttemptFastRepairCalls);
-        Assert.Equal(2, manager.RefreshPackageIndexesCalls);
+        Assert.Equal(1, manager.RefreshPackageIndexesCalls);
     }
 
     [Fact]

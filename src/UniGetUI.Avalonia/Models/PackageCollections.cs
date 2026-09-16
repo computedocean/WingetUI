@@ -188,6 +188,9 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable, IPacka
     public bool InstallerHostChanged { get; private set; }
     public string InstallerHostChangeTooltip { get; private set; } = "";
 
+    public bool InstalledVersionIsUnverified => Package.InstalledVersionIsUnverified;
+    public string? InstalledVersionTooltip { get; private set; }
+
     public string InstallerHostText { get; private set; } = "";
     public string? InstallerHostTooltip { get; private set; }
 
@@ -219,6 +222,7 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable, IPacka
         Package = package;
         _page = page;
         VersionComboString = package.VersionString;
+        InstalledVersionTooltip = InstalledVersionNotice.BuildTooltip(package);
 
         Package.PropertyChanged += Package_PropertyChanged;
         UpdateDisplayState();

@@ -76,83 +76,78 @@ internal sealed class WinGetCliHelper : IWinGetManagerHelper
 
         p.Start();
 
-        string OldLine = "";
-        int IdIndex = -1;
-        int VersionIndex = -1;
-        int NewVersionIndex = -1;
-        int SourceIndex = -1;
-        bool DashesPassed = false;
+        Packages.AddRange(ParseAvailableUpdates(Manager, ReadOutputLines(p, logger)));
+
+        logger.AddToStdErr(p.StandardError.ReadToEnd());
+        p.WaitForExit();
+        logger.Close(p.ExitCode);
+
+        return Packages;
+    }
+
+    private static IEnumerable<string> ReadOutputLines(Process p, IProcessTaskLogger logger)
+    {
         string? line;
         while ((line = p.StandardOutput.ReadLine()) is not null)
         {
             logger.AddToStdOut(line);
+            yield return line;
+        }
+    }
 
-            if (line.Contains("have pins"))
+    internal static IReadOnlyList<Package> ParseAvailableUpdates(
+        WinGet manager,
+        IEnumerable<string> outputLines
+    )
+    {
+        List<Package> packages = [];
+
+        foreach (
+            WinGetTable table in WinGetTableLayout.ReadTables(
+                outputLines.Where(line => !line.Contains("have pins"))
+            )
+        )
+        {
+            WinGetTableLayout layout = table.Layout;
+            if (layout.ColumnCount < 4)
             {
                 continue;
             }
 
-            if (!DashesPassed && line.Contains("---"))
+            foreach (string line in table.Rows)
             {
-                string HeaderPrefix = OldLine.Contains("SearchId") ? "Search" : "";
-                string HeaderSuffix = OldLine.Contains("SearchId") ? "Header" : "";
-                IdIndex = OldLine.IndexOf(HeaderPrefix + "Id", StringComparison.InvariantCulture);
-                VersionIndex = OldLine.IndexOf(
-                    HeaderPrefix + "Version",
-                    StringComparison.InvariantCulture
-                );
-                NewVersionIndex = OldLine.IndexOf(
-                    "Available" + HeaderSuffix,
-                    StringComparison.InvariantCulture
-                );
-                SourceIndex = OldLine.IndexOf(
-                    HeaderPrefix + "Source",
-                    StringComparison.InvariantCulture
-                );
-                DashesPassed = true;
-            }
-            else if (line.Trim() == "")
-            {
-                DashesPassed = false;
-            }
-            else if (
-                DashesPassed
-                && IdIndex > 0
-                && VersionIndex > 0
-                && NewVersionIndex > 0
-                && IdIndex < VersionIndex
-                && VersionIndex < NewVersionIndex
-                && NewVersionIndex < line.Length
-            )
-            {
-                int offset = 0; // Account for non-unicode character length
-                while (line[IdIndex - offset - 1] != ' ' || offset > (IdIndex - 5))
+                if (!layout.IsRowReaching(line, WinGetTableLayout.AvailableColumn))
                 {
-                    offset++;
+                    continue;
                 }
 
-                string name = line[..(IdIndex - offset)].Trim();
-                string id = line[(IdIndex - offset)..].Trim().Split(' ')[0];
-                string version = line[(VersionIndex - offset)..(NewVersionIndex - offset)].Trim();
+                string name = layout.GetCell(line, WinGetTableLayout.NameColumn);
+                string id = layout.GetCell(line, WinGetTableLayout.IdColumn);
+                string version = layout.GetCell(line, WinGetTableLayout.VersionColumn);
+
                 string newVersion;
-                if (SourceIndex != -1)
-                {
-                    newVersion = line[(NewVersionIndex - offset)..(SourceIndex - offset)].Trim();
-                }
-                else
-                {
-                    newVersion = line[(NewVersionIndex - offset)..].Trim().Split(' ')[0];
-                }
-
                 IManagerSource source;
-                if (SourceIndex == -1 || SourceIndex >= line.Length)
+                if (layout.HasSourceColumn)
                 {
-                    source = Manager.DefaultSource;
+                    newVersion = layout.GetCell(
+                        line,
+                        WinGetTableLayout.AvailableColumn,
+                        layout.LastColumn
+                    );
+                    string sourceName = layout.GetCell(line, layout.LastColumn);
+                    source =
+                        sourceName.Length == 0
+                            ? manager.DefaultSource
+                            : manager.SourcesHelper.Factory.GetSourceOrDefault(sourceName);
                 }
                 else
                 {
-                    string sourceName = line[(SourceIndex - offset)..].Trim().Split(' ')[0];
-                    source = Manager.SourcesHelper.Factory.GetSourceOrDefault(sourceName);
+                    newVersion = layout.GetCell(
+                        line,
+                        WinGetTableLayout.AvailableColumn,
+                        layout.ColumnCount
+                    );
+                    source = manager.DefaultSource;
                 }
 
                 // Restore the version we last upgraded to when WinGet reports it as unknown (#5158).
@@ -160,11 +155,17 @@ internal sealed class WinGetCliHelper : IWinGetManagerHelper
                 if (versionUnknown)
                     version = WinGetPkgOperationHelper.GetLastInstalledVersion(id);
 
-                var package = new Package(name, id, version, newVersion, source, Manager);
-                // Skip one-shot suppression for unknown versions so the restored mark isn't cleared.
-                if (versionUnknown || !WinGetPkgOperationHelper.ConsumeAlreadyUpgradedSuppression(package))
+                var package = new Package(name, id, version, newVersion, source, manager)
                 {
-                    Packages.Add(package);
+                    InstalledVersionIsUnverified = versionUnknown,
+                };
+                // Skip one-shot suppression for unknown versions so the restored mark isn't cleared.
+                if (
+                    versionUnknown
+                    || !WinGetPkgOperationHelper.ConsumeAlreadyUpgradedSuppression(package)
+                )
+                {
+                    packages.Add(package);
                 }
                 else
                 {
@@ -173,14 +174,9 @@ internal sealed class WinGetCliHelper : IWinGetManagerHelper
                     );
                 }
             }
-            OldLine = line;
         }
 
-        logger.AddToStdErr(p.StandardError.ReadToEnd());
-        p.WaitForExit();
-        logger.Close(p.ExitCode);
-
-        return Packages;
+        return packages;
     }
 
     public IReadOnlyList<Package> GetInstalledPackages_UnSafe()
@@ -221,100 +217,60 @@ internal sealed class WinGetCliHelper : IWinGetManagerHelper
 
         p.Start();
 
-        string OldLine = "";
-        int IdIndex = -1;
-        int VersionIndex = -1;
-        int SourceIndex = -1;
-        int NewVersionIndex = -1;
-        bool DashesPassed = false;
-        string? line;
-        while ((line = p.StandardOutput.ReadLine()) is not null)
-        {
-            try
-            {
-                logger.AddToStdOut(line);
-                if (!DashesPassed && line.Contains("---"))
-                {
-                    string HeaderPrefix = OldLine.Contains("SearchId") ? "Search" : "";
-                    string HeaderSuffix = OldLine.Contains("SearchId") ? "Header" : "";
-                    IdIndex = OldLine.IndexOf(
-                        HeaderPrefix + "Id",
-                        StringComparison.InvariantCulture
-                    );
-                    VersionIndex = OldLine.IndexOf(
-                        HeaderPrefix + "Version",
-                        StringComparison.InvariantCulture
-                    );
-                    NewVersionIndex = OldLine.IndexOf(
-                        "Available" + HeaderSuffix,
-                        StringComparison.InvariantCulture
-                    );
-                    SourceIndex = OldLine.IndexOf(
-                        HeaderPrefix + "Source",
-                        StringComparison.InvariantCulture
-                    );
-                    DashesPassed = true;
-                }
-                else if (
-                    DashesPassed
-                    && IdIndex > 0
-                    && VersionIndex > 0
-                    && IdIndex < VersionIndex
-                    && VersionIndex < line.Length
-                )
-                {
-                    int offset = 0; // Account for non-unicode character length
-                    while (
-                        ((IdIndex - offset) <= line.Length && line[IdIndex - offset - 1] != ' ')
-                        || offset > (IdIndex - 5)
-                    )
-                    {
-                        offset++;
-                    }
-
-                    string name = line[..(IdIndex - offset)].Trim();
-                    string id = line[(IdIndex - offset)..].Trim().Split(' ')[0];
-                    if (NewVersionIndex == -1 && SourceIndex != -1)
-                    {
-                        NewVersionIndex = SourceIndex;
-                    }
-                    else if (NewVersionIndex == -1 && SourceIndex == -1)
-                    {
-                        NewVersionIndex = line.Length - 1;
-                    }
-
-                    string version = line[(VersionIndex - offset)..(NewVersionIndex - offset)]
-                        .Trim();
-
-                    IManagerSource source;
-                    if (SourceIndex == -1 || (SourceIndex - offset) >= line.Length)
-                    {
-                        source = Manager.GetLocalSource(id); // Load Winget Local Sources
-                    }
-                    else
-                    {
-                        string sourceName = line[(SourceIndex - offset)..]
-                            .Trim()
-                            .Split(' ')[0]
-                            .Trim();
-                        source = Manager.SourcesHelper.Factory.GetSourceOrDefault(sourceName);
-                    }
-                    version = WinGetPkgOperationHelper.ResolveReportedInstalledVersion(id, version);
-                    Packages.Add(new Package(name, id, version, source, Manager));
-                }
-                OldLine = line;
-            }
-            catch (Exception e)
-            {
-                Logger.Error(e);
-            }
-        }
+        Packages.AddRange(ParseInstalledPackages(Manager, ReadOutputLines(p, logger)));
 
         logger.AddToStdErr(p.StandardError.ReadToEnd());
         p.WaitForExit();
         logger.Close(p.ExitCode);
 
         return Packages;
+    }
+
+    internal static IReadOnlyList<Package> ParseInstalledPackages(
+        WinGet manager,
+        IEnumerable<string> outputLines
+    )
+    {
+        List<Package> packages = [];
+
+        foreach (WinGetTable table in WinGetTableLayout.ReadTables(outputLines))
+        {
+            WinGetTableLayout layout = table.Layout;
+            foreach (string line in table.Rows)
+            {
+                try
+                {
+                    string name = layout.GetCell(line, WinGetTableLayout.NameColumn);
+                    string id = layout.GetCell(line, WinGetTableLayout.IdColumn);
+                    string version = layout.GetCell(line, WinGetTableLayout.VersionColumn);
+
+                    string sourceName =
+                        layout.HasSourceColumn
+                            ? layout.GetCell(line, layout.LastColumn)
+                            : "";
+
+                    IManagerSource source =
+                        sourceName.Length == 0
+                            ? manager.GetLocalSource(id) // Load Winget Local Sources
+                            : manager.SourcesHelper.Factory.GetSourceOrDefault(sourceName);
+
+                    bool versionUnknown = WinGetPkgOperationHelper.IsUnknownVersion(version);
+                    version = WinGetPkgOperationHelper.ResolveReportedInstalledVersion(id, version);
+                    packages.Add(
+                        new Package(name, id, version, source, manager)
+                        {
+                            InstalledVersionIsUnverified = versionUnknown,
+                        }
+                    );
+                }
+                catch (Exception e)
+                {
+                    Logger.Error(e);
+                }
+            }
+        }
+
+        return packages;
     }
 
     public IReadOnlyList<Package> FindPackages_UnSafe(string query)
@@ -356,66 +312,46 @@ internal sealed class WinGetCliHelper : IWinGetManagerHelper
 
         p.Start();
 
-        string OldLine = "";
-        int IdIndex = -1;
-        int VersionIndex = -1;
-        int SourceIndex = -1;
-        bool DashesPassed = false;
-        string? line;
-        while ((line = p.StandardOutput.ReadLine()) is not null)
-        {
-            logger.AddToStdOut(line);
-            if (!DashesPassed && line.Contains("---"))
-            {
-                string HeaderPrefix = OldLine.Contains("SearchId") ? "Search" : "";
-                IdIndex = OldLine.IndexOf(HeaderPrefix + "Id", StringComparison.InvariantCulture);
-                VersionIndex = OldLine.IndexOf(
-                    HeaderPrefix + "Version",
-                    StringComparison.InvariantCulture
-                );
-                SourceIndex = OldLine.IndexOf(
-                    HeaderPrefix + "Source",
-                    StringComparison.InvariantCulture
-                );
-                DashesPassed = true;
-            }
-            else if (
-                DashesPassed
-                && IdIndex > 0
-                && VersionIndex > 0
-                && IdIndex < VersionIndex
-                && VersionIndex < line.Length
-            )
-            {
-                int offset = 0; // Account for non-unicode character length
-                while (line[IdIndex - offset - 1] != ' ' || offset > (IdIndex - 5))
-                {
-                    offset++;
-                }
-
-                string name = line[..(IdIndex - offset)].Trim();
-                string id = line[(IdIndex - offset)..].Trim().Split(' ')[0];
-                string version = line[(VersionIndex - offset)..].Trim().Split(' ')[0];
-                IManagerSource source;
-                if (SourceIndex == -1 || SourceIndex >= line.Length)
-                {
-                    source = Manager.DefaultSource;
-                }
-                else
-                {
-                    string sourceName = line[(SourceIndex - offset)..].Trim().Split(' ')[0];
-                    source = Manager.SourcesHelper.Factory.GetSourceOrDefault(sourceName);
-                }
-                Packages.Add(new Package(name, id, version, source, Manager));
-            }
-            OldLine = line;
-        }
+        Packages.AddRange(ParseFoundPackages(Manager, ReadOutputLines(p, logger)));
 
         logger.AddToStdErr(p.StandardError.ReadToEnd());
         p.WaitForExit();
         logger.Close(p.ExitCode);
 
         return Packages;
+    }
+
+    internal static IReadOnlyList<Package> ParseFoundPackages(
+        WinGet manager,
+        IEnumerable<string> outputLines
+    )
+    {
+        List<Package> packages = [];
+
+        foreach (WinGetTable table in WinGetTableLayout.ReadTables(outputLines))
+        {
+            WinGetTableLayout layout = table.Layout;
+            foreach (string line in table.Rows)
+            {
+                string name = layout.GetCell(line, WinGetTableLayout.NameColumn);
+                string id = layout.GetCell(line, WinGetTableLayout.IdColumn);
+                string version = layout.GetCell(line, WinGetTableLayout.VersionColumn);
+
+                string sourceName =
+                    layout.HasSourceColumn
+                        ? layout.GetCell(line, layout.LastColumn)
+                        : "";
+
+                IManagerSource source =
+                    sourceName.Length == 0
+                        ? manager.DefaultSource
+                        : manager.SourcesHelper.Factory.GetSourceOrDefault(sourceName);
+
+                packages.Add(new Package(name, id, version, source, manager));
+            }
+        }
+
+        return packages;
     }
 
     public void GetPackageDetails_UnSafe(IPackageDetails details)

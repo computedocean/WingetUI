@@ -209,16 +209,20 @@
             </StackPanel>
 
             <!-- Toolbar (AppBarButtons added by subclass) -->
-            <ItemsControl x:Name="ToolBar"
-                          Grid.Column="2"
-                          HorizontalAlignment="Left"
-                          ItemsSource="{Binding ToolBarItems}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal" Spacing="4"/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-            </ItemsControl>
+            <controls:ToolbarOverflowPanel x:Name="ToolBar"
+                                           Grid.Column="2"
+                                           Spacing="4"
+                                           ClipToBounds="True">
+                <Button x:Name="ToolbarOverflowButton"
+                        Width="40" Height="40"
+                        Padding="0"
+                        CornerRadius="4"
+                        automation:AutomationProperties.Name="{t:Translate More options}">
+                    <TextBlock Text="···" FontSize="20"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Margin="0,-4,0,0"/>
+                </Button>
+            </controls:ToolbarOverflowPanel>
 
         </Grid>
 
@@ -613,9 +617,16 @@
                                         <DataTemplate x:DataType="pkg:PackageWrapper">
                                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center" Margin="4,0">
                                                 <controls:SvgIcon Grid.Column="0" Path="avares://UniGetUI/Assets/Symbols/version.svg"
-                                                                  Width="24" Height="24" VerticalAlignment="Center"/>
+                                                                  Width="24" Height="24" VerticalAlignment="Center"
+                                                                  IsVisible="{Binding !InstalledVersionIsUnverified}"/>
+                                                <controls:SvgIcon Grid.Column="0" Path="avares://UniGetUI/Assets/Symbols/warning_filled.svg"
+                                                                  Width="22" Height="22" VerticalAlignment="Center"
+                                                                  Foreground="#F59E0B"
+                                                                  IsVisible="{Binding InstalledVersionIsUnverified}"
+                                                                  ToolTip.Tip="{Binding InstalledVersionTooltip}"/>
                                                 <TextBlock Grid.Column="1" Text="{Binding VersionComboString}" VerticalAlignment="Center"
-                                                           TextTrimming="CharacterEllipsis"/>
+                                                           TextTrimming="CharacterEllipsis"
+                                                           ToolTip.Tip="{Binding InstalledVersionTooltip}"/>
                                             </Grid>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -754,7 +765,8 @@
                                                                TextTrimming="CharacterEllipsis"/>
                                                     <TextBlock Text="{Binding VersionComboString}"
                                                                FontSize="11" Opacity="0.5"
-                                                               TextTrimming="CharacterEllipsis"/>
+                                                               TextTrimming="CharacterEllipsis"
+                                                               ToolTip.Tip="{Binding InstalledVersionTooltip}"/>
                                                 </StackPanel>
                                                 <!-- Col 2: checkbox (top) + overflow button (bottom). The taller card leaves
                                                      room to stack them without overlap. -->
@@ -866,7 +878,8 @@
                                                            Text="{Binding VersionComboString}"
                                                            FontSize="11" Opacity="0.5"
                                                            HorizontalAlignment="Center"
-                                                           TextTrimming="CharacterEllipsis"/>
+                                                           TextTrimming="CharacterEllipsis"
+                                                           ToolTip.Tip="{Binding InstalledVersionTooltip}"/>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>

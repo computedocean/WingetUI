@@ -63,6 +63,12 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
         internal WinGetCliToolKind SelectedCliToolKind { get; private set; } =
             WinGetCliToolKind.SystemWinGet;
 
+        private static readonly TimeSpan VersionProbeTimeout = TimeSpan.FromSeconds(30);
+
+        private string? _pendingVersionOutput;
+
+        private string? _pendingVersionFailure;
+
         // winget's local index isn't safe under concurrent process access: a `source update` (writer)
         // running alongside list/upgrade/search (readers) yields partial or empty results. The COM
         // backend serialized this implicitly; the CLI backends (winget.exe / pinget.exe) must do it
@@ -91,6 +97,13 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                 Monitor.Exit(_cliInvocationLock);
             }
         }
+
+        private static long _sourceIndexGeneration;
+
+        internal static long SourceIndexGeneration => Volatile.Read(ref _sourceIndexGeneration);
+
+        internal static void MarkSourceIndexRefreshed() =>
+            Interlocked.Increment(ref _sourceIndexGeneration);
 
         public WinGet()
         {
@@ -246,6 +259,12 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                 && helper.ReportedUpdateNotApplicable(processOutput, returnCode);
         }
 
+        public bool ReportedInstallerHashMismatch(int returnCode) =>
+            WinGetPkgOperationHelper.ReportedInstallerHashMismatch(returnCode);
+
+        public bool HonorsIntegrityCheckSkipWhenElevated =>
+            SelectedCliToolKind is WinGetCliToolKind.BundledPinget;
+
         protected override IReadOnlyList<Package> FindPackages_UnSafe(string query)
         {
             return WinGetHelper.Instance.FindPackages_UnSafe(query);
@@ -332,7 +351,8 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                 executableName => CoreTools.WhichMultiple(executableName),
                 File.Exists,
                 GetBundledPingetExecutablePath(),
-                GetCliToolPreference()
+                GetCliToolPreference(),
+                () => SystemWinGetLocator.EnumerateOffPathExecutables(File.Exists)
             );
         }
 
@@ -340,7 +360,8 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
             Func<string, IReadOnlyList<string>> findExecutables,
             Func<string, bool> fileExists,
             string bundledPingetPath,
-            WinGetCliToolPreference cliToolPreference = WinGetCliToolPreference.Default
+            WinGetCliToolPreference cliToolPreference = WinGetCliToolPreference.Default,
+            Func<IEnumerable<string>>? findOffPathSystemWinGetFiles = null
         )
         {
             List<string> candidates = [];
@@ -348,6 +369,7 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
             if (cliToolPreference is not WinGetCliToolPreference.BundledPinget)
             {
                 candidates.AddRange(findExecutables(SystemWinGetExecutableName));
+                candidates.AddRange(findOffPathSystemWinGetFiles?.Invoke() ?? []);
             }
 
             if (cliToolPreference is not WinGetCliToolPreference.SystemWinGet)
@@ -418,6 +440,253 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                 : new WinGetCliHelper(this, executablePath);
         }
 
+        private string ResolveLaunchableExecutableFile(string preferredPath, string callArguments)
+        {
+            var (resolvedPath, versionOutput, failureReason) = ResolveLaunchableExecutableFile(
+                preferredPath,
+                executablePath => TryReadExecutableVersion(executablePath, callArguments),
+                FindCandidateExecutableFiles
+            );
+
+            _pendingVersionOutput = versionOutput;
+            _pendingVersionFailure = failureReason;
+            return resolvedPath;
+        }
+
+        internal static (
+            string Path,
+            string? VersionOutput,
+            string? FailureReason
+        ) ResolveLaunchableExecutableFile(
+            string preferredPath,
+            Func<string, (bool Succeeded, string Output, string FailureReason)> readVersion,
+            Func<IReadOnlyList<string>> findCandidates
+        )
+        {
+            var (succeeded, output, failureReason) = readVersion(preferredPath);
+
+            if (succeeded)
+            {
+                return (preferredPath, output, null);
+            }
+
+            Logger.Warn(
+                $"The WinGet executable at {preferredPath} cannot be run ({failureReason}); looking for another usable executable..."
+            );
+
+            foreach (string candidate in findCandidates())
+            {
+                if (IsSameExecutablePath(candidate, preferredPath))
+                {
+                    continue;
+                }
+
+                var (candidateSucceeded, candidateOutput, candidateFailureReason) = readVersion(
+                    candidate
+                );
+
+                if (!candidateSucceeded)
+                {
+                    Logger.Warn(
+                        $"The WinGet executable at {candidate} cannot be run either ({candidateFailureReason})"
+                    );
+                    continue;
+                }
+
+                Logger.ImportantInfo(
+                    $"WinGet will use {candidate}, since {preferredPath} cannot be run on this machine"
+                );
+                return (candidate, candidateOutput, null);
+            }
+
+            Logger.Error("No usable WinGet executable could be found on this machine");
+            return (preferredPath, null, failureReason);
+        }
+
+        internal static (
+            bool Succeeded,
+            string Output,
+            string FailureReason
+        ) TryReadExecutableVersion(string executablePath, string callArguments)
+        {
+            Task<string>? stdout = null;
+            Task<string>? stderr = null;
+
+            try
+            {
+                using Process process = new()
+                {
+                    StartInfo = BuildVersionProcessStartInfo(executablePath, callArguments),
+                };
+
+                var budget = Stopwatch.StartNew();
+                process.Start();
+
+                stdout = process.StandardOutput.ReadToEndAsync();
+                stderr = process.StandardError.ReadToEndAsync();
+
+                if (!process.WaitForExit((int)VersionProbeTimeout.TotalMilliseconds))
+                {
+                    KillProcessTree(process, executablePath);
+                    return (false, "", "the process did not exit in time");
+                }
+
+                TimeSpan remaining = VersionProbeTimeout - budget.Elapsed;
+                if (
+                    !Task.WhenAll(stdout, stderr)
+                        .Wait(remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero)
+                )
+                {
+                    KillProcessTree(process, executablePath);
+                    return (
+                        false,
+                        "",
+                        "the process exited but something it started still holds its output open"
+                    );
+                }
+
+                string output = stdout.GetAwaiter().GetResult().Trim();
+                string error = stderr.GetAwaiter().GetResult().Trim();
+
+                if (process.ExitCode != 0)
+                {
+                    return (
+                        false,
+                        "",
+                        error.Length > 0
+                            ? $"exit code {process.ExitCode}: {error}"
+                            : $"exit code {process.ExitCode}"
+                    );
+                }
+
+                if (output.Length == 0)
+                {
+                    return (false, "", "no version was reported");
+                }
+
+                if (error.Length > 0)
+                {
+                    Logger.Error("WinGet STDERR not empty: " + error);
+                }
+
+                return (true, output, "");
+            }
+            catch (Exception ex)
+            {
+                return (false, "", ex.Message);
+            }
+            finally
+            {
+                ObserveAbandonedRead(stdout);
+                ObserveAbandonedRead(stderr);
+            }
+        }
+
+        private static void KillProcessTree(Process process, string executablePath)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn(
+                    $"Could not kill the unresponsive {executablePath} process: {ex.Message}"
+                );
+            }
+        }
+
+        private static void ObserveAbandonedRead(Task<string>? read)
+        {
+            if (read is null)
+            {
+                return;
+            }
+
+            if (read.IsCompleted)
+            {
+                _ = read.Exception;
+                return;
+            }
+
+            read.ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
+        }
+
+        private string ConsumePendingVersion()
+        {
+            string? output = _pendingVersionOutput;
+            string? failureReason = _pendingVersionFailure;
+            _pendingVersionOutput = null;
+            _pendingVersionFailure = null;
+
+            if (output is not null)
+            {
+                return output;
+            }
+
+            if (failureReason is null)
+            {
+                var (succeeded, probedOutput, probeFailureReason) = TryReadExecutableVersion(
+                    Status.ExecutablePath,
+                    Status.ExecutableCallArgs
+                );
+
+                if (succeeded)
+                {
+                    return probedOutput;
+                }
+
+                failureReason = probeFailureReason;
+            }
+
+            throw new InvalidOperationException(
+                $"The WinGet executable at {Status.ExecutablePath} cannot be run: {failureReason}"
+            );
+        }
+
+        private static ProcessStartInfo BuildVersionProcessStartInfo(
+            string executablePath,
+            string callArguments
+        )
+        {
+            ProcessStartInfo startInfo = new()
+            {
+                FileName = executablePath,
+                Arguments = callArguments + " --version",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+            };
+
+            if (CoreTools.IsAdministrator())
+            {
+                string WinGetTemp = Path.Join(AppPaths.ScratchDirectory, "ElevatedWinGetTemp");
+                startInfo.Environment["TEMP"] = WinGetTemp;
+                startInfo.Environment["TMP"] = WinGetTemp;
+            }
+
+            return startInfo;
+        }
+
+        private static bool IsSameExecutablePath(string first, string second)
+        {
+            try
+            {
+                return Path.GetFullPath(first)
+                    .Equals(Path.GetFullPath(second), StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return first.Equals(second, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
         protected override void _loadManagerExecutableFile(
             out bool found,
             out string path,
@@ -428,10 +697,17 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
             found = _found;
             path = _path;
             callArguments = "";
+            _pendingVersionOutput = null;
+            _pendingVersionFailure = null;
 
             if (!found)
             {
                 return;
+            }
+
+            if (!IsUserSelectedExecutablePath(path))
+            {
+                path = ResolveLaunchableExecutableFile(path, callArguments);
             }
 
             SelectedCliToolKind = GetCliToolKind(path);
@@ -615,30 +891,8 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
             bool usesCliHelper = WinGetHelper.Instance is WinGetCliHelper;
             bool usesPingetHelper = WinGetHelper.Instance is PingetCliHelper;
 
-            using Process process = new()
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = Status.ExecutablePath,
-                    Arguments = Status.ExecutableCallArgs + " --version",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                    StandardOutputEncoding = Encoding.UTF8,
-                    StandardErrorEncoding = Encoding.UTF8,
-                },
-            };
+            string rawVersion = ConsumePendingVersion();
 
-            if (CoreTools.IsAdministrator())
-            {
-                string WinGetTemp = Path.Join(AppPaths.ScratchDirectory, "ElevatedWinGetTemp");
-                process.StartInfo.Environment["TEMP"] = WinGetTemp;
-                process.StartInfo.Environment["TMP"] = WinGetTemp;
-            }
-            process.Start();
-
-            string rawVersion = process.StandardOutput.ReadToEnd().Trim();
             version = usesPingetHelper
                 ? $"Pinget CLI Version: {rawVersion}"
                 : $"System WinGet (CLI) Version: {rawVersion}";
@@ -657,10 +911,6 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                     version += $"\nActivation source: {nativeHelper.ActivationSource}";
                 }
             }
-
-            string error = process.StandardError.ReadToEnd();
-            if (error != "")
-                Logger.Error("WinGet STDERR not empty: " + error);
         }
 
         protected override void _performExtraLoadingSteps()
@@ -808,12 +1058,19 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
                 p.StartInfo.Environment["TMP"] = WinGetTemp;
             }
 
-            p.Start();
-            logger.AddToStdOut(p.StandardOutput.ReadToEnd());
-            logger.AddToStdErr(p.StandardError.ReadToEnd());
-            logger.Close(p.ExitCode);
-            p.WaitForExit();
-            p.Close();
+            try
+            {
+                p.Start();
+                logger.AddToStdOut(p.StandardOutput.ReadToEnd());
+                logger.AddToStdErr(p.StandardError.ReadToEnd());
+                logger.Close(p.ExitCode);
+                p.WaitForExit();
+                p.Close();
+            }
+            finally
+            {
+                MarkSourceIndexRefreshed();
+            }
         }
 
         private string GetCliToolProxyArgument()
