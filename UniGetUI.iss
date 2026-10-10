@@ -70,6 +70,7 @@ UsePreviousTasks=yes
 UsePreviousPrivileges=yes
 UsePreviousAppDir=yes
 ChangesEnvironment=yes
+SetupLogging=yes
 RestartIfNeededByRun=no
 Uninstallable=WizardIsTaskSelected('regularinstall')
 AppModifyPath="{app}\UniGetUI.Installer.exe" /silent /NoDeployInstaller
@@ -80,6 +81,9 @@ AppModifyPath="{app}\UniGetUI.Installer.exe" /silent /NoDeployInstaller
 #include "InstallerExtras\CustomMessages.iss"
 
 [Code]
+#include "InstallerExtras\AddToPath.iss"
+#include "InstallerExtras\AddToPathTask.iss"
+
 var
   PreserveAutostartDisabled: Boolean;
   // Set once the marker is written (which happens only after {app} is initialized).
@@ -103,6 +107,14 @@ begin
   WizardForm.Bevel1.Visible := True;
   // DisableWelcomePage=no makes Inno caption use AppName alone; put the version back in.
   WizardForm.Caption := FmtMessage(SetupMessage(msgSetupWindowTitle), ['{#MyAppName} {#MyAppVersion}']);
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  // Inno populates the task list after InitializeWizard. Apply once when the
+  // tasks page is initialized, including silent installs; later UI edits win.
+  if CurPageID = wpSelectTasks then
+    ApplyUnigetPathTaskAlias;
 end;
 
 // Kills all instances of an image and loops until none remain (taskkill returns 0 while killing, 128 when none left).
@@ -130,6 +142,8 @@ begin
     // Elevator (gsudo cache) and pinget live in {app} and lock their own files.
     TaskKillWait('UniGetUI Elevator.exe');
     TaskKillWait('pinget.exe');
+    // The elevated policy helper is short-lived, but it lives in {app} and can hold a file lock.
+    TaskKillWait('UniGetUI.PolicyElevator.exe');
     Sleep(1000); // let the OS release file handles before copying
 
 end;
@@ -177,7 +191,26 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
     if CurStep = ssPostInstall then
+    begin
         RemoveUpdateMarker;
+        // Portable installs must never inspect or modify PATH/ownership, even
+        // when installing over a directory previously used by a regular install.
+        if WizardIsTaskSelected('regularinstall') then
+            UpdateUnigetPath(WizardIsTaskSelected('regularinstall\addtopath'));
+    end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+    if CurUninstallStep = usUninstall then
+        UpdateUnigetPath(False);
+end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+    // Files can be installed successfully while this optional task fails.
+    // Tell silent-install callers about that partial failure as well as logging it.
+    if UnigetPathUpdateFailed then Result := 100 else Result := 0;
 end;
 
 function CmdLineParamExists(const Value: string): Boolean;
@@ -264,6 +297,9 @@ end;
 
 function InitializeSetup: Boolean;
 begin
+  // Reject malformed/conflicting properties before prerequisite or install work.
+  Result := InitializeUnigetPathTaskAlias;
+  if not Result then Exit;
   try
     if ShouldInstallVCRedist then
     begin
@@ -285,6 +321,7 @@ Name: "portableinstall"; Description: "{cm:PortInst}"; GroupDescription: "{cm:In
 Name: "regularinstall"; Description: "{cm:RegInst}"; GroupDescription: "{cm:InstallType}"; Flags: exclusive   
 Name: "regularinstall\startmenuicon"; Description: "{cm:RegStartMmenuIcon}"; GroupDescription: "{cm:ShCuts}"; 
 Name: "regularinstall\desktopicon"; Description: "{cm:RegDesktopIcon}"; GroupDescription: "{cm:ShCuts}";
+Name: "regularinstall\addtopath"; Description: "{cm:RegAddToPath}"; Flags: unchecked;
 
 [Registry]
 Root: HKCU; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "WingetUI"; ValueData: """{app}\UniGetUI.exe"" --daemon"; Flags: uninsdeletevalue noerror; Tasks: regularinstall;
@@ -325,6 +362,8 @@ Source: "{srcexe}"; DestDir: "{app}"; DestName: "UniGetUI.Installer.exe"; Flags:
 Source: "unigetui_bin\IntegrityTree.json"; DestDir: "{app}"; Flags: createallsubdirs ignoreversion recursesubdirs;
 ; Deploy executable files (running instances already killed in PrepareToInstall).
 Source: "unigetui_bin\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion;
+; Require the NativeAOT CLI in the installer input, alongside the GUI executable.
+Source: "unigetui_bin\uniget.exe"; DestDir: "{app}"; Flags: ignoreversion;
 Source: "unigetui_bin\*"; DestDir: "{app}"; Flags: createallsubdirs ignoreversion recursesubdirs;
 ; Make installation portable (if required)
 Source: "InstallerExtras\ForceUniGetUIPortable"; DestDir: "{app}"; Tasks: portableinstall
@@ -346,3 +385,9 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "--migrate-wingetui-to-unigetui";
 Filename: {sys}\taskkill.exe; Parameters: "/f /im WingetUI.exe"; Flags: skipifdoesntexist runhidden; RunOnceId: "KillWingetUI"
 Filename: {sys}\taskkill.exe; Parameters: "/f /im UniGetUI.exe"; Flags: skipifdoesntexist runhidden; RunOnceId: "KillUniGetUI"
 Filename: {sys}\taskkill.exe; Parameters: "/f /im UniGetUI.Avalonia.exe"; Flags: skipifdoesntexist runhidden; RunOnceId: "KillUniGetUIAvalonia"
+Filename: {sys}\taskkill.exe; Parameters: "/f /im UniGetUI.PolicyElevator.exe"; Flags: skipifdoesntexist runhidden; RunOnceId: "KillUniGetUIPolicyElevator"
+
+[UninstallDelete]
+; The elevated policy helper is authenticated by exact path, so a leftover copy must never
+; survive an uninstall.
+Type: files; Name: "{app}\Assets\Utilities\UniGetUI.PolicyElevator.exe"

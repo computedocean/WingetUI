@@ -10,6 +10,8 @@ public sealed class IpcAppInfo
     public bool CanQuit { get; set; }
     public string CurrentPage { get; set; } = "";
     public IReadOnlyList<string> SupportedPages { get; set; } = IpcAppPages.SupportedPages;
+    public bool SystemRestartPending { get; set; }
+    public int SystemRestartPendingPackages { get; set; }
 }
 
 public sealed class IpcAppNavigateRequest
@@ -27,6 +29,8 @@ public static class IpcAppPages
         "updates",
         "installed",
         "bundles",
+        "catalog",
+        "catalog-editor",
         "settings",
         "managers",
         "own-log",
@@ -48,6 +52,8 @@ public static class IpcAppPages
             "updates" => normalized,
             "installed" => normalized,
             "bundles" => normalized,
+            "catalog" => normalized,
+            "catalog-editor" => normalized,
             "settings" => normalized,
             "managers" => normalized,
             "own-log" => normalized,
@@ -75,6 +81,8 @@ public static class IpcAppPages
             "Updates" => "updates",
             "Installed" => "installed",
             "Bundles" => "bundles",
+            "Catalog" => "catalog",
+            "CatalogEditor" => "catalog-editor",
             "Settings" => "settings",
             "Managers" => "managers",
             "OwnLog" => "own-log",

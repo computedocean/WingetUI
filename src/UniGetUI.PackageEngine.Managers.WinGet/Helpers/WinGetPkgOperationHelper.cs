@@ -3,6 +3,7 @@ using Microsoft.Win32;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
+using UniGetUI.PackageEngine.Classes.Manager;
 using UniGetUI.PackageEngine.Classes.Manager.BaseProviders;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
@@ -23,6 +24,31 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
             return $"--name {Selector(package.Name, "name")} --exact";
 
         return $"--id {Selector(package.Id.TrimEnd('…'), "identifier")}";
+    }
+
+    private static string GetSelectorPiece(IPackage package)
+    {
+        if (
+            package.OverridenOptions.WinGet_UseLocalIdentifier
+            && GetFallbackIdentifier(package) is { } localIdentifier
+        )
+            return $"--id {Selector(localIdentifier, "local identifier")} --exact";
+
+        return GetIdNamePiece(package);
+    }
+
+    private static bool OperationIsBrokered(IPackage package) =>
+        Settings.Get(Settings.K.UseAgentBroker) && !package.Source.IsVirtualManager;
+
+    private static string? GetFallbackIdentifier(IPackage package)
+    {
+        string? localIdentifier = NativePackageHandler.GetLocalIdentifier(package);
+        if (localIdentifier is null || localIdentifier == package.Id)
+            return null;
+
+        return CoreTools.IsOptionSafeIdentifier(localIdentifier, quotedByTheSink: true)
+            ? localIdentifier
+            : null;
     }
 
     private static string Selector(string value, string description)
@@ -61,7 +87,7 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
             },
         ];
 
-        parameters.AddRange(GetIdNamePiece(package).Split(" "));
+        parameters.AddRange(GetSelectorPiece(package).Split(" "));
         if (!package.Source.IsVirtualManager)
         {
             parameters.AddRange(["--source", package.Source.Name]);
@@ -218,20 +244,22 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
             )
             {
                 if (CoreTools.IsAdministrator())
-                    throw new UnauthorizedAccessException(
+                    throw new OperationPreconditionException(
                         CoreTools.Translate(
                             "This package cannot be installed from an elevated context."
                         )
+                            + " "
                             + CoreTools.Translate(
                                 "Please run UniGetUI as a regular user and try again."
                             )
                     );
 
                 if (options.RunAsAdministrator)
-                    throw new UnauthorizedAccessException(
+                    throw new OperationPreconditionException(
                         CoreTools.Translate(
                             "This package cannot be installed from an elevated context."
                         )
+                            + " "
                             + CoreTools.Translate(
                                 "Please check the installation options for this package and try again"
                             )
@@ -251,7 +279,7 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
         }
         catch (Exception ex)
         {
-            if (ex is UnauthorizedAccessException)
+            if (ex is OperationPreconditionException)
                 throw;
 
             Logger.Error("Recovered from fatal WinGet exception:");
@@ -269,12 +297,12 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
         // See https://github.com/microsoft/winget-cli/blob/master/doc/windows/package-manager/winget/returnCodes.md for reference
         uint uintCode = (uint)returnCode;
 
-        if (uintCode is 0x8A150109)
-        { // TODO: Restart required to finish installation
+        if (uintCode is 0x8A150109 or 0x8A15010B)
+        {
             if (operation is OperationType.Update or OperationType.Install)
                 // Pending-restart sticks after reboot; don't count it as a phantom no-op (#5042).
                 MarkUpgradeAsDone(package, countTowardStuckLoop: false);
-            return OperationVeredict.Success;
+            return OperationVeredict.RestartRequired;
         }
 
         if (uintCode is 0x8A150077 or 0x8A15010C or 0x8A150005)
@@ -376,6 +404,22 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
             return OperationVeredict.AutoRetry;
         }
 
+        if (
+            uintCode is 0x8A150014
+            && operation is OperationType.Update or OperationType.Uninstall
+            && !package.OverridenOptions.WinGet_UseLocalIdentifier
+            && !OperationIsBrokered(package)
+            && GetFallbackIdentifier(package) is { } localIdentifier
+        )
+        {
+            Logger.Warn(
+                $"WinGet found no installed package matching {package.Id}; retrying the {operation} "
+                + $"against the local identifier {localIdentifier} (issue #5413)"
+            );
+            package.OverridenOptions.WinGet_UseLocalIdentifier = true;
+            return OperationVeredict.AutoRetry;
+        }
+
         return OperationVeredict.Failure;
     }
 
@@ -432,6 +476,9 @@ internal sealed class WinGetPkgOperationHelper : BasePkgOperationHelper
 
     internal static bool ReportedInstallerHashMismatch(int returnCode) =>
         (uint)returnCode is 0x8A150011;
+
+    internal static bool ReportedApplicationCurrentlyRunning(int returnCode) =>
+        (uint)returnCode is 0x8A150101 or 0x8A150103 or 0x8A150111;
 
     internal bool ReportedUpdateNotApplicable(
         IReadOnlyList<string> processOutput,

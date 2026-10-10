@@ -6,7 +6,9 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using UniGetUI.Avalonia.Views.Controls;
+using UniGetUI.Core.Tools;
 using ICommand = System.Windows.Input.ICommand;
 
 namespace UniGetUI.Avalonia.Views.Controls.Settings;
@@ -24,7 +26,17 @@ public class SettingsCard : UserControl
     private readonly ContentControl _descriptionPresenter;
     private readonly ContentControl _contentPresenter;
     private readonly StackPanel _descriptionRow;
+    private readonly StackPanel _headerStack;
+    private readonly Grid _layoutGrid;
     private readonly SvgIcon _chevron;
+
+    // Match CommunityToolkit SettingsCard's responsive breakpoints. At normal widths
+    // the layout is unchanged; below these widths the content drops below the header,
+    // and at the narrowest width the header icon is hidden.
+    private const double ContentWrapThreshold = 476;
+    private const double ContentUnwrapThreshold = 488;
+    private const double HideHeaderIconThreshold = 286;
+    private bool _contentWrapped;
 
     // ── Styled properties ──────────────────────────────────────────────────
     public static readonly StyledProperty<object?> HeaderProperty =
@@ -43,6 +55,13 @@ public class SettingsCard : UserControl
     private Control? _headerIcon;
     private object? _rightContent;
     private bool _isClickEnabled;
+    private bool _pointerPressed;
+
+    /// <summary>
+    /// Keep compact toggle-style content at the right edge when the card wraps.
+    /// Other settings controls follow the WinUI SettingsCard behavior and align left.
+    /// </summary>
+    protected bool RightAlignWrappedContent { get; set; }
 
     // ── Events ─────────────────────────────────────────────────────────────
     public event EventHandler<RoutedEventArgs>? Click;
@@ -58,6 +77,7 @@ public class SettingsCard : UserControl
             _contentPresenter.Content = value is string s
                 ? new TextBlock { Text = s, FontSize = 14, VerticalAlignment = VerticalAlignment.Center }
                 : value;
+            UpdateResponsiveLayout(Bounds.Width);
         }
     }
 
@@ -92,7 +112,7 @@ public class SettingsCard : UserControl
         {
             _headerIcon = value;
             _iconPresenter.Content = value;
-            _iconPresenter.IsVisible = value is not null;
+            UpdateResponsiveLayout(Bounds.Width);
         }
     }
 
@@ -103,6 +123,7 @@ public class SettingsCard : UserControl
         {
             _isClickEnabled = value;
             Focusable = value;
+            _border.Focusable = false;
             Cursor = value ? new Cursor(StandardCursorType.Hand) : Cursor.Default;
             _chevron.IsVisible = value;
             if (value)
@@ -118,31 +139,10 @@ public class SettingsCard : UserControl
         set => _border.CornerRadius = value;
     }
 
-    // Base (unfocused) thickness as assigned by the consumer. Grouped cards use a
-    // partial thickness like "1,0,1,1" to share a divider with the card above; we
-    // must remember it so we can restore it when focus leaves.
-    private Thickness _baseBorderThickness = new(1);
-
     public new Thickness BorderThickness
     {
         get => _border.BorderThickness;
-        set
-        {
-            _baseBorderThickness = value;
-            // While focused the border is forced complete (see GotFocus); don't clobber it.
-            if (!_border.Classes.Contains("settings-card-focused"))
-                _border.BorderThickness = value;
-        }
-    }
-
-    // A focused card needs a border on all four sides, even when its base thickness omits
-    // the top (grouped cards). The accent focus style can't supply this: BorderThickness is
-    // a local value on _border, which wins over the style setter — so we set it here instead.
-    private static Thickness FocusedBorderThickness(Thickness baseThickness)
-    {
-        double t = Math.Max(Math.Max(baseThickness.Left, baseThickness.Right),
-                            Math.Max(baseThickness.Top, baseThickness.Bottom));
-        return new Thickness(Math.Max(t, 1));
+        set => _border.BorderThickness = value;
     }
 
     // ── Constructor ────────────────────────────────────────────────────────
@@ -176,21 +176,13 @@ public class SettingsCard : UserControl
         };
         _descriptionRow.Children.Add(_descriptionPresenter);
 
-        var leftStack = new StackPanel
+        _headerStack = new StackPanel
         {
             Orientation = Orientation.Vertical,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        leftStack.Children.Add(_headerPresenter);
-        leftStack.Children.Add(_descriptionRow);
-
-        var leftRow = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        leftRow.Children.Add(_iconPresenter);
-        leftRow.Children.Add(leftStack);
+        _headerStack.Children.Add(_headerPresenter);
+        _headerStack.Children.Add(_descriptionRow);
 
         _contentPresenter = new ContentControl
         {
@@ -212,43 +204,94 @@ public class SettingsCard : UserControl
         };
         AutomationProperties.SetAccessibilityView(_chevron, AccessibilityView.Raw);
 
-        var grid = new Grid
+        // This mirrors the WinUI SettingsCard template: icon | header | content | action.
+        // Keeping the header directly in the star-sized grid column is important: unlike a
+        // horizontal StackPanel, it receives a finite width and TextBlock wrapping can engage
+        // before the right-side control overlaps it.
+        _layoutGrid = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"),
+            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto"),
+            RowDefinitions = new RowDefinitions("*,Auto"),
             MinHeight = 60,
             Margin = new Thickness(16, 8, 16, 8),
         };
-        Grid.SetColumn(leftRow, 0);
-        Grid.SetColumn(_contentPresenter, 1);
-        Grid.SetColumn(_chevron, 2);
-        grid.Children.Add(leftRow);
-        grid.Children.Add(_contentPresenter);
-        grid.Children.Add(_chevron);
+        Grid.SetRow(_iconPresenter, 0);
+        Grid.SetColumn(_iconPresenter, 0);
+        Grid.SetRow(_headerStack, 0);
+        Grid.SetColumn(_headerStack, 1);
+        Grid.SetRow(_contentPresenter, 0);
+        Grid.SetColumn(_contentPresenter, 2);
+        Grid.SetRow(_chevron, 0);
+        Grid.SetRowSpan(_chevron, 2);
+        Grid.SetColumn(_chevron, 3);
+        _layoutGrid.Children.Add(_iconPresenter);
+        _layoutGrid.Children.Add(_headerStack);
+        _layoutGrid.Children.Add(_contentPresenter);
+        _layoutGrid.Children.Add(_chevron);
 
         _border = new Border
         {
             CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(1),
-            Child = grid,
+            Child = _layoutGrid,
         };
         _border.Classes.Add("settings-card");
+        Classes.Add("settings-card-control");
 
         base.Content = _border;
 
         PointerPressed += OnPointerPressed;
+        PointerReleased += OnPointerReleased;
+        PointerCaptureLost += OnPointerCaptureLost;
         KeyDown += OnKeyDown;
-        GotFocus += (_, _) =>
-        {
-            if (!_isClickEnabled) return;
-            _border.Classes.Add("settings-card-focused");
-            _border.BorderThickness = FocusedBorderThickness(_baseBorderThickness);
-        };
-        LostFocus += (_, _) =>
-        {
-            _border.Classes.Remove("settings-card-focused");
-            _border.BorderThickness = _baseBorderThickness;
-        };
+        SizeChanged += (_, e) => UpdateResponsiveLayout(e.NewSize.Width);
+        // Keyboard focus keeps the SettingsCard itself as the focus target. A card-specific
+        // adorner style in Styles.Common only insets the visual ring to the visible card bounds.
         SyncAutomationProperties();
+    }
+
+    private void UpdateResponsiveLayout(double width)
+    {
+        // Before first layout there is no useful width yet. HeaderIcon starts hidden when null,
+        // and the first SizeChanged pass will apply the responsive state.
+        if (width <= 0)
+        {
+            _iconPresenter.IsVisible = _headerIcon is not null;
+            return;
+        }
+
+        double cardWidth = Math.Max(0, width - _border.Margin.Left - _border.Margin.Right);
+        bool wrapContent = _rightContent is not null
+            && (_contentWrapped
+                ? cardWidth <= ContentUnwrapThreshold
+                : cardWidth <= ContentWrapThreshold);
+        bool hideHeaderIcon = cardWidth <= HideHeaderIconThreshold;
+
+        _iconPresenter.IsVisible = _headerIcon is not null && !hideHeaderIcon;
+
+        if (wrapContent == _contentWrapped)
+            return;
+
+        _contentWrapped = wrapContent;
+        if (wrapContent)
+        {
+            Grid.SetRow(_contentPresenter, 1);
+            Grid.SetColumn(_contentPresenter, 1);
+            _contentPresenter.HorizontalAlignment = HorizontalAlignment.Stretch;
+            _contentPresenter.HorizontalContentAlignment =
+                RightAlignWrappedContent ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            _contentPresenter.Margin = new Thickness(0);
+            _layoutGrid.RowSpacing = 8;
+        }
+        else
+        {
+            Grid.SetRow(_contentPresenter, 0);
+            Grid.SetColumn(_contentPresenter, 2);
+            _contentPresenter.HorizontalAlignment = HorizontalAlignment.Right;
+            _contentPresenter.HorizontalContentAlignment = HorizontalAlignment.Right;
+            _contentPresenter.Margin = new Thickness(16, 0, 0, 0);
+            _layoutGrid.RowSpacing = 0;
+        }
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -281,8 +324,8 @@ public class SettingsCard : UserControl
                 ? new TextBlock
                 {
                     Text = s,
-                    TextWrapping = TextWrapping.NoWrap,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    TextWrapping = TextWrapping.Wrap,
+                    TextTrimming = TextTrimming.None,
                     FontSize = 12,
                     Opacity = 0.7,
                 }
@@ -306,6 +349,21 @@ public class SettingsCard : UserControl
 
         if (!string.IsNullOrWhiteSpace(helpText))
             AutomationProperties.SetHelpText(control, helpText);
+    }
+
+    protected void ApplyToggleAutomationState(Control control, bool isChecked, string? baseName)
+    {
+        string state = isChecked
+            ? CoreTools.Translate("Enabled")
+            : CoreTools.Translate("Disabled");
+        // ItemStatus: some screen readers read this separately
+        AutomationProperties.SetItemStatus(control, state);
+        // Name with state suffix: guarantees VoiceOver announces state on macOS
+        // where ToggleSwitch AX role may not expose IsChecked natively
+        if (!string.IsNullOrEmpty(baseName))
+        {
+            AutomationProperties.SetName(control, baseName + ", " + state);
+        }
     }
 
     private static string? ExtractAutomationText(object? value) => value switch
@@ -339,14 +397,34 @@ public class SettingsCard : UserControl
         if (!_isClickEnabled) return;
         if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
 
+        // Pointer activation leaves the card's normal stroke untouched; keyboard focus is
+        // handled solely by the external focus adorner.
+        _pointerPressed = true;
+        e.Handled = true;
+    }
+
+    private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_pointerPressed) return;
+        _pointerPressed = false;
+
+        if (!_isClickEnabled) return;
+        if (e.InitialPressMouseButton is not MouseButton.Left) return;
+        if (!this.GetVisualsAt(e.GetPosition(this)).Any(c => this == c || this.IsVisualAncestorOf(c))) return;
+
         InvokeClick();
         e.Handled = true;
+    }
+
+    private void OnPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        _pointerPressed = false;
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
         if (!_isClickEnabled) return;
-        if (e.Source != this) return;   // only when the card itself has focus, not a child
+        if (e.Source != this) return;   // only when the card itself has focus, not a child control
         if (e.Key is not (Key.Enter or Key.Space)) return;
 
         InvokeClick();

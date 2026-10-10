@@ -43,11 +43,32 @@ The constructor sets `Capabilities`, `Properties`, and wires the helpers. See `s
 These four managers share `BaseNuGet` / `BaseNuGetDetailsHelper`, which talk to a NuGet feed
 over HTTP. Each source picks its protocol independently, in `NuGetV3ServiceIndex.GetServiceIndexUrl`:
 
+- A source URL with the `file` scheme - what `new Uri()` produces for a local folder or a UNC
+  share such as `C:\packages` or `\\server\share` - is a **local folder feed**, served by
+  `NuGetLocalFeed`. There is no HTTP endpoint to call, so search, details, icons, versions and
+  updates read the `.nupkg` files and their embedded `.nuspec` straight from disk. This check
+  runs before the V3 one, everywhere.
 - A source URL whose path ends in `index.json`, or whose last path segment is `v3`, is a
   **NuGet V3** feed. Its service index is fetched once per session and cached.
 - Every other source URL is treated as a **V2/OData** feed and keeps the legacy code path.
 
 Detection is purely by URL shape, so it costs no probe request and no V2 feed changes behaviour.
+
+A local folder feed is scanned at most three directories deep, which covers both the flat layout
+and the `<id>/<version>/<id>.<version>.nupkg` layout, and each parsed manifest is cached against
+its file's size and write time. Installers on such a feed are copied from disk instead of being
+downloaded (`DownloadOperation`), which refuses a destination that is the package file itself.
+
+Every `.nupkg` in the folder is opened during a search, so its contents are treated as untrusted:
+a manifest is rejected above 4 MiB (checked against the declared size *and* while decompressing,
+since the declared one can lie) and parsed with DTD processing prohibited, and an embedded
+`<icon>` is extracted under the same bounds into the package's icon cache directory, named from
+the package version, a digest of the archive's path, write time and size, and an allow-listed
+extension - never from the entry path, so a crafted entry name cannot escape that directory, and
+two feeds carrying the same id and version keep their own icons. Note that `GetIconLocal` re-reads
+a replaced archive whichever way its timestamp moved, but `Package.GetIconUrlIfAny` caches the
+resolved address for the process against the package's versioned hash, so a package replaced in
+place under the same version keeps showing the icon it had until a restart.
 
 ### V3 resources used
 
@@ -74,11 +95,15 @@ retried against a fabricated V2 endpoint. V2-only feeds never enter the V3 path 
 - **.NET Tool** — `https://api.nuget.org/v3/index.json`. Safe to repoint because the manager
   does not support custom sources and never passes the source URL to the `dotnet` CLI. Also
   filters search on `packageType=DotnetTool`.
-- **PowerShell / PowerShell 7** — sources are enumerated from `Get-PSRepository`, so the URL is
-  CLI-owned identity (`PowerShellSourceHelper` compares it literally to choose
-  `Register-PSRepository -Default`) and must not be rewritten. The PowerShell Gallery serves no
-  V3 service index, so it stays on V2; a V3-capable custom repository (Azure Artifacts, GitHub
-  Packages, JFrog, MyGet) is picked up automatically.
+- **PowerShell / PowerShell 7** — sources are enumerated from `Get-PSRepository` (or
+  `Get-PSResourceRepository` on PowerShell 7), so the URL is CLI-owned identity
+  (`PowerShellSourceHelper` compares it literally to choose `Register-PSRepository -Default`)
+  and must not be rewritten. Both helpers ask for an untruncated two-column table and read it by
+  column position (`ManagerTable`), because a repository name or path containing a space breaks
+  whitespace splitting and a long location is otherwise cut by `Format-Table`; a location that
+  is not an http URL - a folder or a UNC share - is kept rather than discarded. The PowerShell
+  Gallery serves no V3 service index, so it stays on V2; a V3-capable custom repository (Azure
+  Artifacts, GitHub Packages, JFrog, MyGet) is picked up automatically.
 - **Chocolatey** — sources come from `choco source list` and `community.chocolatey.org` serves no
   `index.json`, so it stays on V2. Note that only its updates and version listing are CLI-driven;
   its search, details and icons run through the shared `BaseNuGet` HTTP path.
@@ -139,6 +164,17 @@ dotnet publish src/UniGetUI.Avalonia/UniGetUI.Avalonia.csproj /p:Configuration=R
 - Self-contained, publish-trimmed (partial), Windows App SDK self-contained
 - Tests use **xUnit** (`[Fact]`, `Assert.*`)
 
+### Formatting (required before every commit)
+
+The PR check (`.github/workflows/dotnet-test.yml`) fails on any whitespace or code-style diff, even when the build and tests pass. After changing any C# file, apply both formatters from the repo root and commit the result:
+
+```shell
+dotnet format whitespace src --folder
+dotnet format style src/UniGetUI.Windows.slnx --no-restore
+```
+
+To reproduce the CI gate exactly, add `--verify-no-changes --verbosity minimal` to both commands; they must exit with code 0. Run both — `whitespace` and `style` catch different issues, and passing one does not imply passing the other.
+
 ## NativeAOT and Trim Safety
 
 Release packages are self-contained, fully trimmed NativeAOT binaries on every supported RID. Treat NativeAOT safety as a non-negotiable production requirement: changes must work without runtime-generated code or metadata that the trimmer cannot prove is required.
@@ -193,6 +229,14 @@ Use `CoreTools.Translate("text")` for all user-facing strings. Parameterized: `C
 - Manager initialization flows through `Initialize()` -> `_loadManagerExecutableFile()` -> `_loadManagerVersion()` -> `_performExtraLoadingSteps()`
 - Operations that may fail return `OperationVeredict` (note: intentional misspelling used throughout codebase)
 
+## Terminal UI
+
+- `src/UniGetUI.Tui` is the Consolonia terminal front-end library, hosted by the main executable's `tui` command (`unigetui tui` or `uniget tui`). Pages must reach the engine through `TuiEngine` (never `PEInterface` directly), so that `--fake-data` can swap in the fake managers from `FakeData/`.
+- Run it with fake data: `dotnet run --project src/UniGetUI.Avalonia/UniGetUI.Avalonia.csproj -- tui --fake-data`. Nothing real is installed; all state lives in a sandbox.
+- Dialogs are in-window overlays (`Views/Dialogs/TuiModal`), not Avalonia popups. Popups capture input unreliably in Windows console hosts.
+- Colours come from the active theme: use `TuiPalette` brushes (`Theme/TuiPalette.cs`), never `Color.Parse` in a control, so themes and live theme switching reach it.
+- End-to-end tests in `src/UniGetUI.Tui.Tests/E2E` drive the real UI by keystrokes against the fake data set. Add a test for any new page action.
+
 ## Key Files
 
 | Purpose | Path |
@@ -208,3 +252,5 @@ Use `CoreTools.Translate("text")` for all user-facing strings. Parameterized: `C
 | Setting keys | `src/UniGetUI.Core.Settings/SettingsEngine_Names.cs` |
 | Logger | `src/UniGetUI.Core.Logger/Logger.cs` |
 | CI test workflow | `.github/workflows/dotnet-test.yml` |
+| Terminal UI (Consolonia) | `src/UniGetUI.Tui/` — see `docs/TUI.md` |
+| Terminal UI tests (E2E, fake data) | `src/UniGetUI.Tui.Tests/` |

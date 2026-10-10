@@ -34,7 +34,7 @@ public static class AvaloniaOperationRegistry
     private static readonly ConcurrentDictionary<AbstractOperation, int> _errorCounts = new();
     private static int _errorsOccurred;
     public static int ErrorsOccurred => _errorsOccurred;
-    public static bool RestartRequired { get; set; }
+    public static bool AppRestartRequired { get; set; }
 
     private static bool _shortcutDialogOpen;
 
@@ -84,16 +84,17 @@ public static class AvaloniaOperationRegistry
             Dispatcher.UIThread.Post(UpdateTrayStatus);
         };
 
-        // Cancellation drives Status = Canceled from several code paths, so StatusChanged(Canceled)
-        // can fire more than once for a single operation. Handle the terminal cancel exactly once.
+        // Keep the canceled card visible, matching the removed WinUI control, but retain the
+        // old short IPC lifetime so canceled operations do not stay tracked indefinitely.
         int cancelHandled = 0;
         op.StatusChanged += (_, status) =>
         {
             if (status is OperationStatus.Canceled && Interlocked.Exchange(ref cancelHandled, 1) == 0)
             {
                 WindowsAppNotificationBridge.RemoveProgress(op);
-                _ = RemoveAfterDelayAsync(op, milliseconds: 2500);
+                _ = ForgetTrackingAfterDelayAsync(op, milliseconds: 2500);
             }
+
             Dispatcher.UIThread.Post(UpdateTrayStatus);
         };
 
@@ -103,6 +104,8 @@ public static class AvaloniaOperationRegistry
         // concurrently with the writer). MainThread() returns the still-running run task here.
         op.OperationFinished += (_, _) =>
         {
+            _ = RunElevationCleanupAsync();
+
             op.MainThread().ContinueWith(
                 _ => RecordOperationHistory(op, StatusStringFor(op.Status)),
                 TaskScheduler.Default);
@@ -158,11 +161,18 @@ public static class AvaloniaOperationRegistry
             Operations.Remove(vm.Operation);
             UpdateTrayStatus();
         });
-        while (AbstractOperation.OperationQueue.Remove(vm.Operation)) ;
+        AbstractOperation.RemoveFromQueue(vm.Operation);
         if (vm.Operation.Status is not (OperationStatus.InQueue or OperationStatus.Running))
         {
             IpcOperationApi.ForgetTracking(vm.Operation.Metadata.Identifier);
         }
+    }
+
+    private static async Task ForgetTrackingAfterDelayAsync(AbstractOperation op, int milliseconds)
+    {
+        await Task.Delay(milliseconds);
+        if (op.Status is not (OperationStatus.InQueue or OperationStatus.Running))
+            IpcOperationApi.ForgetTracking(op.Metadata.Identifier);
     }
 
     private static async Task RemoveAfterDelayAsync(AbstractOperation op, int milliseconds)
@@ -219,13 +229,8 @@ public static class AvaloniaOperationRegistry
         if (Settings.AreSuccessNotificationsDisabled())
             return;
 
-        string title = op.Metadata.SuccessTitle.Length > 0
-            ? op.Metadata.SuccessTitle
-            : CoreTools.Translate("Success!");
-
-        string message = op.Metadata.SuccessMessage.Length > 0
-            ? op.Metadata.SuccessMessage
-            : CoreTools.Translate("Success!");
+        string title = OperationNotificationText.SuccessTitle(op);
+        string message = OperationNotificationText.SuccessMessage(op);
 
         AccessibilityAnnouncementService.Announce(
             $"{title}. {message}",
@@ -281,6 +286,30 @@ public static class AvaloniaOperationRegistry
         }
     }
 
+    private static async Task RunElevationCleanupAsync()
+    {
+        // Let all remaining operations settle before making decisions
+        await Task.Delay(500);
+
+        long generation = await Dispatcher.UIThread.InvokeAsync(() =>
+            Operations.Any(o => o.Status is OperationStatus.Running or OperationStatus.InQueue)
+                ? -1L
+                : CoreTools.UACCacheGeneration);
+
+        if (generation < 0)
+            return;
+
+        if (Settings.Get(Settings.K.DoCacheAdminRightsForBatches))
+        {
+            if (await CoreTools.ResetUACForCurrentProcess(generation))
+                Logger.Info("Clearing UAC prompt since there are no remaining operations");
+        }
+        else
+        {
+            await CoreTools.InvalidateUACCacheState(generation);
+        }
+    }
+
     private static async Task RunPostOperationChecksAsync()
     {
         // Let all remaining operations settle before making decisions
@@ -288,13 +317,6 @@ public static class AvaloniaOperationRegistry
 
         bool anyStillRunning = Operations.Any(
             o => o.Status is OperationStatus.Running or OperationStatus.InQueue);
-
-        // Clear UAC cache after the last operation in a batch finishes
-        if (!anyStillRunning && Settings.Get(Settings.K.DoCacheAdminRightsForBatches))
-        {
-            Logger.Info("Clearing UAC prompt since there are no remaining operations");
-            await CoreTools.ResetUACForCurrentProcess();
-        }
 
         if (!anyStillRunning)
         {

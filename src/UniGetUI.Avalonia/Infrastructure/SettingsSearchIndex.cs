@@ -27,7 +27,12 @@ public sealed class SettingsSearchResult
 /// </summary>
 public static class SettingsSearchIndex
 {
-    private sealed record Entry(string Title, string[] Keywords, Type PageType, string? Anchor);
+    private sealed record Entry(
+        string Title,
+        string[] Keywords,
+        Type PageType,
+        string? Anchor,
+        bool WindowsOnly = false);
 
     // Order matters only as a tie-break for equally-ranked matches.
     private static readonly Entry[] Entries =
@@ -55,6 +60,7 @@ public static class SettingsSearchIndex
         new("Show package icons on package lists", ["package icons"], typeof(Interface_P), "InterfacePackageListsCard"),
         new("Show illustrations on package lists", ["illustrations", "package illustrations"], typeof(Interface_P), "PackageIllustrationsCard"),
         new("Show the installer host on package lists", ["installer host", "download host", "installer url", "column"], typeof(Interface_P), "InstallerHostColumnCard"),
+        new("Show the download size on package lists", ["download size", "installer size", "size", "column"], typeof(Interface_P), "DownloadSizeColumnCard"),
         new("Clear the icon cache", ["icon cache", "clear cache", "cache size"], typeof(Interface_P), "ResetIconCache"),
         new("Select upgradable packages by default", ["select updates", "select upgradable"], typeof(Interface_P), "SelectUpgradableCard"),
         new("User interface preferences", ["interface", "ui"], typeof(Interface_P), null),
@@ -91,6 +97,7 @@ public static class SettingsSearchIndex
         new("Choose how many operations should be performed in parallel", ["parallel", "concurrency"], typeof(Operations), "ParallelOperationCount"),
         new("Clear successful operations from the operation list after a 5 second delay", ["clear successful", "maintain installs"], typeof(Operations), "ClearSuccessfulOpsCard"),
         new("Try to kill the processes that refuse to close when requested to", ["kill processes"], typeof(Operations), "KillProcessesCard"),
+        new("Default location for downloaded installers", ["download location", "download folder", "download directory", "save installers", "installer folder"], typeof(Operations), "DownloadLocationCard"),
         new("Name of the downloaded installer files", ["installer name", "download name", "file name", "version in file name", "rename installers"], typeof(Operations), "InstallerNameSchemeCard"),
         new("Ask to delete desktop shortcuts created during an install or upgrade.", ["desktop shortcuts", "shortcut remover"], typeof(Operations), "AskToDeleteNewDesktopShortcuts"),
         new("Ask about the Start Menu shortcuts created during an install or upgrade.", ["start menu shortcuts", "start menu folder", "move shortcuts", "relocate shortcuts", "organize start menu"], typeof(Operations), "AskAboutNewStartMenuShortcuts"),
@@ -121,6 +128,11 @@ public static class SettingsSearchIndex
         new("Ask for administrator privileges once for each batch of operations", ["administrator", "admin rights", "elevation", "uac", "batch"], typeof(Administrator), "AdminElevationCard"),
         new("Ask only once for administrator privileges", ["admin once", "cache admin rights"], typeof(Administrator), "CacheAdminOnceCard"),
         new("Prohibit any kind of Elevation via UniGetUI Elevator or GSudo", ["prohibit elevation", "no elevation"], typeof(Administrator), "ProhibitElevationCard"),
+        new("Inspect active package broker policy", ["policy", "package broker", "devolutions agent", "rules", "enforcement"], typeof(AgentPolicyInspector), null, WindowsOnly: true),
+        new("Policy management", ["policy management", "policy state", "active", "missing", "invalid", "configured path"], typeof(AgentPolicyInspector), "PolicyManagementHeading", WindowsOnly: true),
+        new("Edit the active policy", ["edit policy", "policy editor"], typeof(AgentPolicyInspector), "EditPolicyButton", WindowsOnly: true),
+        new("Create a new policy", ["create policy", "new policy"], typeof(AgentPolicyInspector), "CreatePolicyButton", WindowsOnly: true),
+        new("Replace the active policy identity", ["replace identity", "replace policy"], typeof(AgentPolicyInspector), "ReplaceIdentityButton", WindowsOnly: true),
         new("Allow custom command-line arguments", ["command line arguments", "cli arguments"], typeof(Administrator), "AdminRestrictionsOpsCard"),
         new("Ignore custom pre-install and post-install commands when importing packages from a bundle", ["pre-install commands", "post-install commands"], typeof(Administrator), "PrePostCommandCard"),
         new("Allow changing the paths for package manager executables", ["manager paths", "executable path"], typeof(Administrator), "AdminManagerPathsCard"),
@@ -129,6 +141,7 @@ public static class SettingsSearchIndex
         new("Administrator rights and other dangerous settings", ["administrator", "dangerous"], typeof(Administrator), null),
 
         // ── Experimental ─────────────────────────────────────────────────────
+        new("Enable Software Catalog", ["catalog", "software catalog"], typeof(Experimental), "SoftwareCatalogCard"),
         new("Show UniGetUI's version and build number on the titlebar.", ["version number", "titlebar", "build number"], typeof(Experimental), "ShowVersionNumberOnTitlebar"),
         new("Enable background api (UniGetUI Widgets and Sharing, port 7058)", ["api", "widgets", "sharing", "port"], typeof(Experimental), "BackgroundApiCard"),
         new("Disable the 1-minute timeout for package-related operations", ["timeout"], typeof(Experimental), "DisableTimeoutCard"),
@@ -145,6 +158,11 @@ public static class SettingsSearchIndex
 
     public static IReadOnlyList<SettingsSearchResult> Search(string query, int limit = 8)
     {
+        return Search(query, limit, OperatingSystem.IsWindows());
+    }
+
+    internal static IReadOnlyList<SettingsSearchResult> Search(string query, int limit, bool isWindows)
+    {
         var queryWords = Tokenize(query);
         if (queryWords.Count == 0) return [];
 
@@ -152,6 +170,8 @@ public static class SettingsSearchIndex
 
         foreach (var e in Entries)
         {
+            if (e.WindowsOnly && !isWindows) continue;
+
             int score = Rank(queryWords, CoreTools.Translate(e.Title), e.Title, e.Keywords);
             if (score < NoMatch)
                 scored.Add((score, new SettingsSearchResult
@@ -276,6 +296,7 @@ public static class SettingsSearchIndex
         nameof(Internet) => "Internet connection settings",
         nameof(Backup) => "Package backup",
         nameof(Administrator) => "Administrator rights and other dangerous settings",
+        nameof(AgentPolicyInspector) => "Active package broker policy",
         nameof(Experimental) => "Experimental settings and developer options",
         _ => "UniGetUI Settings",
     });

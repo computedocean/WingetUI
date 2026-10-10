@@ -5,6 +5,7 @@ using UniGetUI.PackageEngine.Classes.Packages.Classes;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.PackageEngine.Operations;
+using UniGetUI.PackageEngine.Operations.Reboot;
 using UniGetUI.PackageEngine.PackageClasses;
 using UniGetUI.PackageEngine.PackageLoader;
 using UniGetUI.PackageEngine.Serializable;
@@ -21,6 +22,7 @@ public sealed class IpcPackageInfo
     public string Source { get; set; } = "";
     public string Manager { get; set; } = "";
     public bool IsUpgradable { get; set; }
+    public bool SystemRestartPending { get; set; }
 }
 
 public sealed class IpcPackageActionRequest
@@ -128,10 +130,11 @@ public static class IpcPackageApi
         if (safeQuery.Length is 0)
             return [];
 
+        var pendingRestartKeys = PendingRebootStore.GetPendingKeys();
         return GetManagers(managerName)
             .SelectMany(manager => manager.FindPackages(safeQuery))
             .DistinctBy(GetPackageIdentity)
-            .Select(ToIpcPackageInfo)
+            .Select(package => ToIpcPackageInfo(package, pendingRestartKeys))
             .OrderBy(package => package.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(package => package.Id, StringComparer.OrdinalIgnoreCase)
             .Take(maxResults)
@@ -140,9 +143,10 @@ public static class IpcPackageApi
 
     public static IReadOnlyList<IpcPackageInfo> ListInstalledPackages(string? managerName = null)
     {
+        var pendingRestartKeys = PendingRebootStore.GetPendingKeys();
         return GetInstalledPackagesSnapshot(managerName)
             .DistinctBy(GetPackageIdentity)
-            .Select(ToIpcPackageInfo)
+            .Select(package => ToIpcPackageInfo(package, pendingRestartKeys))
             .OrderBy(package => package.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(package => package.Id, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -150,9 +154,10 @@ public static class IpcPackageApi
 
     public static IReadOnlyList<IpcPackageInfo> ListUpgradablePackages(string? managerName = null)
     {
+        var pendingRestartKeys = PendingRebootStore.GetPendingKeys();
         return GetUpgradablePackagesSnapshot(managerName)
             .DistinctBy(GetPackageIdentity)
-            .Select(ToIpcPackageInfo)
+            .Select(package => ToIpcPackageInfo(package, pendingRestartKeys))
             .OrderBy(package => package.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(package => package.Id, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -209,13 +214,6 @@ public static class IpcPackageApi
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (string.IsNullOrWhiteSpace(request.OutputPath))
-        {
-            throw new InvalidOperationException(
-                "The outputPath parameter is required when downloading a package."
-            );
-        }
-
         var package = FindAnyPackage(request);
         if (!package.Manager.Capabilities.CanDownloadInstaller)
         {
@@ -224,7 +222,20 @@ public static class IpcPackageApi
             );
         }
 
-        var operation = new DownloadOperation(package, request.OutputPath);
+        string outputPath = request.OutputPath ?? "";
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            outputPath = InstallerDownloadLocation.ResolveExistingDirectory();
+            if (!Directory.Exists(outputPath))
+            {
+                throw new InvalidOperationException(
+                    "The outputPath parameter is required when downloading a package: the "
+                        + $"configured download location \"{outputPath}\" could not be created."
+                );
+            }
+        }
+
+        var operation = new DownloadOperation(package, outputPath);
         string operationId = IpcOperationApi.Track(operation);
 
         if (request.WaitForCompletion == false)
@@ -794,6 +805,12 @@ public static class IpcPackageApi
     }
 
     private static IpcPackageInfo ToIpcPackageInfo(IPackage package)
+        => ToIpcPackageInfo(package, null);
+
+    private static IpcPackageInfo ToIpcPackageInfo(
+        IPackage package,
+        IReadOnlySet<string>? pendingRestartKeys
+    )
     {
         return new IpcPackageInfo
         {
@@ -804,6 +821,10 @@ public static class IpcPackageApi
             Source = package.Source.AsString_DisplayName,
             Manager = IpcManagerSettingsApi.GetPublicManagerId(package.Manager),
             IsUpgradable = package.IsUpgradable,
+            SystemRestartPending = pendingRestartKeys is null
+                ? PendingRebootStore.IsPending(package.Manager.Id, package.Id)
+                : pendingRestartKeys.Contains(
+                    PendingRebootStore.KeyFor(package.Manager.Id, package.Id)),
         };
     }
 }

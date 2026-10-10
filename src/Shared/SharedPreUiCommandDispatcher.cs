@@ -2,6 +2,7 @@ using UniGetUI.Core.Logging;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.SettingsEngine.SecureSettings;
 using UniGetUI.Core.Tools;
+using UniGetUI.Interface;
 
 namespace UniGetUI.Shared;
 
@@ -31,7 +32,6 @@ internal static class SharedPreUiCommandDispatcher
         UnknownSettingsKey: 4
     );
 
-    internal const string HelpArgument = "--help";
     internal const string ImportSettingsArgument = "--import-settings";
     internal const string ExportSettingsArgument = "--export-settings";
     internal const string EnableSettingArgument = "--enable-setting";
@@ -71,9 +71,9 @@ internal static class SharedPreUiCommandDispatcher
 
     public static int? TryHandle(IReadOnlyList<string> args, SharedPreUiCommandExitCodes exitCodes)
     {
-        if (args.Contains(HelpArgument))
+        if (IpcCliSyntax.IsHelpRequest(args))
         {
-            return Help();
+            return null;
         }
 
         if (args.Contains(ImportSettingsArgument))
@@ -137,14 +137,6 @@ internal static class SharedPreUiCommandDispatcher
         }
 
         return null;
-    }
-
-    public static int Help()
-    {
-        CoreTools.Launch(
-            "https://github.com/Devolutions/UniGetUI/blob/main/docs/CLI.md#unigetui-command-line-interface"
-        );
-        return 0;
     }
 
     public static int ImportSettings(IReadOnlyList<string> args, SharedPreUiCommandExitCodes exitCodes)

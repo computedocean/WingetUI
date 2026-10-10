@@ -29,7 +29,10 @@ public sealed record OperationBadgeVm(
     string IconPath,
     string Primary,
     string Secondary
-);
+)
+{
+    public bool HasSecondary => !string.IsNullOrEmpty(Secondary);
+}
 
 public sealed partial class OperationViewModel : ViewModelBase
 {
@@ -50,12 +53,24 @@ public sealed partial class OperationViewModel : ViewModelBase
     [ObservableProperty] private string _buttonText;
     [ObservableProperty] private bool _progressIndeterminate;
     [ObservableProperty] private double _progressValue;
-    [ObservableProperty] private IBrush _progressBrush;
-    [ObservableProperty] private IBrush _backgroundBrush;
     [ObservableProperty] private IImage? _packageIcon;
+
+    private OperationStatus _visualStatus;
+    public bool IsInQueue => _visualStatus is OperationStatus.InQueue;
+    public bool IsRunning => _visualStatus is OperationStatus.Running;
+    public bool IsSucceeded => _visualStatus is OperationStatus.Succeeded;
+    public bool IsFailed => _visualStatus is OperationStatus.Failed;
+    public bool IsCanceled => _visualStatus is OperationStatus.Canceled;
 
     private static readonly Uri _fallbackIconUri =
         new("avares://UniGetUI/Assets/package_color.png");
+
+    // Progress display state machine; the only UI-thread-owned copy.
+    // All event handlers below run on the UI thread via Dispatcher.UIThread.Post,
+    // which is FIFO at the same priority. That ordering is load-bearing on the
+    // failure path: Status=Failed clears determinate ownership before the failure
+    // line arrives, so the failure message is never swallowed.
+    private readonly OperationCardController _controller = new();
 
     public OperationViewModel(AbstractOperation operation)
     {
@@ -68,14 +83,34 @@ public sealed partial class OperationViewModel : ViewModelBase
             ? operation.GetOutput()[^1].Item1
             : CoreTools.Translate("Please wait...");
         _buttonText = CoreTools.Translate("Cancel");
-        _progressBrush = new SolidColorBrush(Color.Parse("#888888"));
-        _backgroundBrush = Brushes.Transparent;
+        _visualStatus = operation.Status;
 
         _ = LoadIconAsync();
 
         // Route all background-thread events to the UI thread
         operation.LogLineAdded += (_, ev) =>
-            Dispatcher.UIThread.Post(() => LiveLine = ev.Item1);
+            Dispatcher.UIThread.Post(() =>
+            {
+                // Structured determinate progress owns the status line: raw per-frame
+                // progress text must not clobber it. (History already excludes
+                // ProgressIndicator lines, so this changes display only.)
+                if (_controller.TryApplyLogLine(ev.Item1, ev.Item2, out string liveLine))
+                {
+                    LiveLine = liveLine;
+                }
+            });
+
+        operation.ProgressChanged += (_, progress) =>
+            Dispatcher.UIThread.Post(() =>
+            {
+                var (isIndeterminate, value, liveLine) = _controller.ApplyProgress(
+                    Operation.Status,
+                    progress
+                );
+                ProgressIndeterminate = isIndeterminate;
+                ProgressValue = value;
+                LiveLine = liveLine;
+            });
 
         operation.StatusChanged += (_, status) =>
             Dispatcher.UIThread.Post(() => ApplyStatus(status));
@@ -107,8 +142,17 @@ public sealed partial class OperationViewModel : ViewModelBase
                     ));
             });
 
-        // Sync with current status in case the operation already started
-        ApplyStatus(operation.Status);
+        // Sync with current status in case the operation already started. The
+        // controller derives card, last log line, and determinate ownership from the
+        // same snapshot so a mid-download card starts in the formatted state.
+        // Note: SyncInitial already applies the status to the controller, so only
+        // the brush/menu visuals still need syncing here (a second ApplyStatus would
+        // flip a determinate Running card back to indeterminate).
+        _controller.SyncInitial(_liveLine, operation.Status, operation.CurrentProgress);
+        ProgressIndeterminate = _controller.Card.IsIndeterminate;
+        ProgressValue = _controller.Card.Value;
+        LiveLine = _controller.Card.LiveLine;
+        ApplyStatusVisuals(operation.Status);
     }
 
     // ── Icon loading ──────────────────────────────────────────────────────────
@@ -151,44 +195,42 @@ public sealed partial class OperationViewModel : ViewModelBase
     // ── Status → visual properties ────────────────────────────────────────────
     private void ApplyStatus(OperationStatus status)
     {
+        // Determinate ownership ends with the running phase; afterwards log lines
+        // (e.g. the success/failure message) own the status line again.
+        _controller.ApplyStatus(status);
+        ProgressIndeterminate = _controller.Card.IsIndeterminate;
+        ProgressValue = _controller.Card.Value;
+        ApplyStatusVisuals(status);
+    }
+
+    private void ApplyStatusVisuals(OperationStatus status)
+    {
+        _visualStatus = status;
+        OnPropertyChanged(nameof(IsInQueue));
+        OnPropertyChanged(nameof(IsRunning));
+        OnPropertyChanged(nameof(IsSucceeded));
+        OnPropertyChanged(nameof(IsFailed));
+        OnPropertyChanged(nameof(IsCanceled));
+
         switch (status)
         {
             case OperationStatus.InQueue:
-                ProgressIndeterminate = false;
-                ProgressValue = 0;
-                ProgressBrush = new SolidColorBrush(Color.Parse("#888888"));
-                BackgroundBrush = Brushes.Transparent;
                 ButtonText = CoreTools.Translate("Cancel");
                 break;
 
             case OperationStatus.Running:
-                ProgressIndeterminate = true;
-                ProgressBrush = new SolidColorBrush(Color.Parse("#F0A500"));
-                BackgroundBrush = new SolidColorBrush(Color.FromArgb(30, 240, 165, 0));
                 ButtonText = CoreTools.Translate("Cancel");
                 break;
 
             case OperationStatus.Succeeded:
-                ProgressIndeterminate = false;
-                ProgressValue = 100;
-                ProgressBrush = new SolidColorBrush(Color.Parse("#0F7B0F"));
-                BackgroundBrush = new SolidColorBrush(Color.FromArgb(30, 15, 123, 15));
                 ButtonText = CoreTools.Translate("Close");
                 break;
 
             case OperationStatus.Failed:
-                ProgressIndeterminate = false;
-                ProgressValue = 100;
-                ProgressBrush = new SolidColorBrush(Color.Parse("#BC0000"));
-                BackgroundBrush = new SolidColorBrush(Color.FromArgb(40, 188, 0, 0));
                 ButtonText = CoreTools.Translate("Close");
                 break;
 
             case OperationStatus.Canceled:
-                ProgressIndeterminate = false;
-                ProgressValue = 100;
-                ProgressBrush = new SolidColorBrush(Color.Parse("#9D5D00"));
-                BackgroundBrush = Brushes.Transparent;
                 ButtonText = CoreTools.Translate("Close");
                 break;
         }

@@ -4,6 +4,9 @@ using UniGetUI.Core.SettingsEngine;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Managers.Choco;
 using UniGetUI.PackageEngine.Managers.ChocolateyManager;
+using UniGetUI.PackageEngine.Classes.Manager.Providers;
+using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.PackageClasses;
 using UniGetUI.PackageEngine.Serializable;
 using UniGetUI.PackageEngine.Structs;
 using UniGetUI.PackageEngine.Tests.Infrastructure.Assertions;
@@ -135,6 +138,26 @@ public sealed class ChocolateyManagerTests : IDisposable
             {
                 Assert.Equal("internal repo", source.Name);
                 Assert.Equal(new Uri("https://packages.example.test/api/v2/"), source.Url);
+            },
+            source =>
+            {
+                Assert.Equal("local folder", source.Name);
+                Assert.True(source.Url.IsFile);
+                Assert.Equal(@"C:\Shared Packages", source.Url.LocalPath);
+            },
+            source =>
+            {
+                Assert.Equal("network share", source.Name);
+                Assert.True(source.Url.IsUnc);
+                Assert.Equal(@"\\files\nuget\server", source.Url.LocalPath);
+            },
+            source =>
+            {
+                Assert.Equal("private feed", source.Name);
+                Assert.Equal(
+                    new Uri("https://packages.example.test/private/api/v2/"),
+                    source.Url
+                );
             }
         );
     }
@@ -210,8 +233,6 @@ public sealed class ChocolateyManagerTests : IDisposable
 
     [Theory]
     [InlineData(0)]
-    [InlineData(3010)]
-    [InlineData(1641)]
     [InlineData(1614)]
     [InlineData(1605)]
     public void OperationResultTreatsChocolateySuccessCodesAsSuccess(int returnCode)
@@ -227,6 +248,24 @@ public sealed class ChocolateyManagerTests : IDisposable
         );
 
         OperationAssert.HasVeredict(veredict, OperationVeredict.Success);
+    }
+
+    [Theory]
+    [InlineData(3010)]
+    [InlineData(1641)]
+    public void OperationResultTreatsChocolateyRebootCodesAsRestartRequired(int returnCode)
+    {
+        var manager = new Chocolatey();
+        var package = new PackageBuilder().WithManager(manager).Build();
+
+        var veredict = manager.OperationHelper.GetResult(
+            package,
+            OperationType.Install,
+            ["completed"],
+            returnCode
+        );
+
+        OperationAssert.HasVeredict(veredict, OperationVeredict.RestartRequired);
     }
 
     [Fact]
@@ -247,6 +286,105 @@ public sealed class ChocolateyManagerTests : IDisposable
 
         OperationAssert.HasVeredict(veredict, OperationVeredict.AutoRetry);
         Assert.True(package.OverridenOptions.RunAsAdministrator);
+    }
+
+    private static readonly string[] NonElevatedBanner =
+    [
+        "Chocolatey v2.4.3",
+        "Chocolatey detected you are not running from an elevated command shell",
+        " (cmd/powershell).",
+        "",
+        " You may experience errors - many functions/packages",
+        " require admin rights. Only advanced users should run choco w/out an",
+        " elevated shell. When you open the command shell, you should ensure",
+        " that you do so with \"Run as Administrator\" selected. If you are",
+        " attempting to use Chocolatey in a non-administrator setting, you",
+        " must select a different location other than the default install",
+        " location. See",
+        " https://docs.chocolatey.org/en-us/choco/setup#non-administrative-install",
+        " for details.",
+        "For the question below, you have 20 seconds to make a selection.",
+        " Do you want to continue?([Y]es/[N]o): ",
+        "Timeout or your choice of '' is not a valid selection.",
+    ];
+
+    private const string PackageScriptAdminError =
+        "ERROR: Installation of python314 to default folder requires Administrative permissions. Please run from elevated prompt.";
+
+    private static string[] NonElevatedFailure(string errorLine) =>
+        [
+            .. NonElevatedBanner,
+            "Installing 64-bit python314...",
+            "python314 has been installed.",
+            errorLine,
+            "The upgrade of python314 was NOT successful.",
+            "Chocolatey upgraded 0/3 packages. 3 packages failed.",
+        ];
+
+    [Theory]
+    [InlineData(PackageScriptAdminError)]
+    [InlineData("ERROR: Installation of examplepkg requires Administrative permissions.")]
+    [InlineData("ERROR: examplepkg cannot be installed here. Please run from elevated prompt.")]
+    public void OperationResultPromotesPackageScriptAdminRequirementToAutoRetry(string errorLine)
+    {
+        var manager = new Chocolatey();
+        var package = new PackageBuilder()
+            .WithManager(manager)
+            .WithOptions(new OverridenInstallationOptions(runAsAdministrator: false))
+            .Build();
+
+        var veredict = manager.OperationHelper.GetResult(
+            package,
+            OperationType.Update,
+            NonElevatedFailure(errorLine),
+            -1
+        );
+
+        OperationAssert.HasVeredict(veredict, OperationVeredict.AutoRetry);
+        Assert.True(package.OverridenOptions.RunAsAdministrator);
+    }
+
+    [Fact]
+    public void OperationResultDoesNotElevateOnTheNonElevatedBannerAlone()
+    {
+        var manager = new Chocolatey();
+        var package = new PackageBuilder()
+            .WithManager(manager)
+            .WithOptions(new OverridenInstallationOptions(runAsAdministrator: false))
+            .Build();
+
+        var veredict = manager.OperationHelper.GetResult(
+            package,
+            OperationType.Update,
+            NonElevatedFailure(
+                "ERROR: The install script of examplepkg exited with an unexpected error."
+            ),
+            -1
+        );
+
+        OperationAssert.HasVeredict(veredict, OperationVeredict.Failure);
+        Assert.NotEqual(true, package.OverridenOptions.RunAsAdministrator);
+    }
+
+    [Fact]
+    public void OperationResultDoesNotRetryWhenElevationIsProhibited()
+    {
+        Settings.Set(Settings.K.ProhibitElevation, true);
+        var manager = new Chocolatey();
+        var package = new PackageBuilder()
+            .WithManager(manager)
+            .WithOptions(new OverridenInstallationOptions(runAsAdministrator: false))
+            .Build();
+
+        var veredict = manager.OperationHelper.GetResult(
+            package,
+            OperationType.Update,
+            NonElevatedFailure(PackageScriptAdminError),
+            -1
+        );
+
+        OperationAssert.HasVeredict(veredict, OperationVeredict.Failure);
+        Assert.NotEqual(true, package.OverridenOptions.RunAsAdministrator);
     }
 
     [Fact]
@@ -539,6 +677,71 @@ public sealed class ChocolateyManagerTests : IDisposable
                 EnvironmentVariableTarget.Process
             );
         }
+    }
+
+    [Fact]
+    public void SearchesALocalFolderSourceReportedByChocoSourceList()
+    {
+        using var feed = new LocalNuGetFeedBuilder();
+        feed.WritePackage("Contoso.Internal", "1.0.0");
+        feed.WritePackage("Contoso.Internal", "2.0.0");
+
+        var helper = Assert.IsType<ChocolateySourceHelper>(new Chocolatey().SourcesHelper);
+        var source = Assert.Single(
+            helper.ParseSources(
+                [
+                    $"internal feed - {feed.Directory} | Priority 0|Bypass Proxy - false|"
+                        + "Self-Service - false|Admin Only - false.",
+                ]
+            )
+        );
+
+        Assert.True(source.Url.IsFile);
+        Assert.Equal(feed.Directory, source.Url.LocalPath);
+
+        var manager = new LocalSourceChocolatey([source]);
+        var found = manager.FindLocalPackages("contoso");
+
+        Assert.Equal("Contoso.Internal", Assert.Single(found).Id);
+        Assert.Equal("2.0.0", found[0].VersionString);
+        Assert.Same(source, found[0].Source);
+    }
+
+    private sealed class LocalSourceChocolatey : Chocolatey
+    {
+        public LocalSourceChocolatey(IReadOnlyList<IManagerSource> sources)
+        {
+            SourcesHelper = new StubSourceHelper(this, sources);
+        }
+
+        public IReadOnlyList<Package> FindLocalPackages(string query) =>
+            FindPackages_UnSafe(query);
+    }
+
+    private sealed class StubSourceHelper(
+        IPackageManager manager,
+        IReadOnlyList<IManagerSource> sources
+    ) : BaseSourceHelper(manager)
+    {
+        public override IReadOnlyList<IManagerSource> GetSources() => sources;
+
+        public override string[] GetAddSourceParameters(IManagerSource source) => [];
+
+        public override string[] GetRemoveSourceParameters(IManagerSource source) => [];
+
+        protected override OperationVeredict _getAddSourceOperationVeredict(
+            IManagerSource source,
+            int ReturnCode,
+            string[] Output
+        ) => OperationVeredict.Success;
+
+        protected override OperationVeredict _getRemoveSourceOperationVeredict(
+            IManagerSource source,
+            int ReturnCode,
+            string[] Output
+        ) => OperationVeredict.Success;
+
+        protected override IReadOnlyList<IManagerSource> GetSources_UnSafe() => sources;
     }
 
     private static string[] ReadFixtureLines(string relativePath)

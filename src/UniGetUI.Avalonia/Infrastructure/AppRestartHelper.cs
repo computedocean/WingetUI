@@ -1,5 +1,6 @@
 using Avalonia.Controls.ApplicationLifetimes;
 using UniGetUI.Avalonia.Views;
+using UniGetUI.Core.Logging;
 using UniGetUI.Core.Tools;
 
 namespace UniGetUI.Avalonia.Infrastructure;
@@ -8,14 +9,36 @@ internal static class AppRestartHelper
 {
     private const string LauncherExecutableName = "UniGetUI.exe";
 
-    public static void Restart()
+    private sealed class RelaunchNotScheduledException : Exception;
+
+    public static void Restart() => _ = RestartAsync();
+
+    private static async Task RestartAsync()
     {
         string executablePath = ResolveRestartExecutablePath(AppContext.BaseDirectory);
-        CoreTools.ScheduleRelaunchAfterExit(executablePath);
 
         if (MainWindow.Instance is { } mainWindow)
         {
-            mainWindow.QuitApplication();
+            // A throw from the callback makes the coordinator cancel the shutdown, so the window stays open.
+            try
+            {
+                await mainWindow.RequestQuitApplicationAsync(() =>
+                {
+                    if (!CoreTools.TryScheduleRelaunchAfterExit(executablePath))
+                        throw new RelaunchNotScheduledException();
+                });
+            }
+            catch (RelaunchNotScheduledException)
+            {
+                Logger.Warn("Restart cancelled: the relaunch helper could not be started, UniGetUI stays open");
+            }
+
+            return;
+        }
+
+        if (!CoreTools.TryScheduleRelaunchAfterExit(executablePath))
+        {
+            Logger.Warn("Restart cancelled: the relaunch helper could not be started, UniGetUI stays open");
             return;
         }
 

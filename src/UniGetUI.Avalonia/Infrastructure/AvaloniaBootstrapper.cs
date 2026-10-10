@@ -16,6 +16,7 @@ using UniGetUI.PackageEngine.Classes.Packages.Classes;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
 using UniGetUI.PackageEngine.Operations;
+using UniGetUI.PackageEngine.Operations.Reboot;
 using UniGetUI.PackageOperations;
 
 namespace UniGetUI.Avalonia.Infrastructure;
@@ -136,7 +137,7 @@ internal static class AvaloniaBootstrapper
             Secrets.GetOpenSearchUsername(),
             Secrets.GetOpenSearchPassword());
         AbstractOperation.QueueDrained += (_, _) => _ = TelemetryHandler.FlushPackageEventsAsync();
-        PackageOperation.BrokerUnavailable += (_, message) =>
+        PackageOperation.BrokerUnavailable += (_, failure) =>
             Dispatcher.UIThread.Post(async void () =>
             {
                 // Runs on the UI thread, so the flag needs no synchronization.
@@ -145,8 +146,8 @@ internal static class AvaloniaBootstrapper
                 try
                 {
                     await new SimpleErrorDialog(
-                        CoreTools.Translate("Agent broker unavailable"),
-                        message).ShowDialog(owner);
+                        failure.Title,
+                        failure.Message).ShowDialog(owner);
                 }
                 catch (Exception ex)
                 {
@@ -254,7 +255,11 @@ internal static class AvaloniaBootstrapper
             CanNavigate = window is not null,
             CanQuit = true,
             CurrentPage = window is null ? "" : IpcAppPages.ToPageName(window.CurrentPage.ToString()),
-            SupportedPages = IpcAppPages.SupportedPages,
+            SupportedPages = window is { SoftwareCatalogEnabled: true }
+                ? IpcAppPages.SupportedPages
+                : IpcAppPages.SupportedPages.Where(page => page is not ("catalog" or "catalog-editor")).ToArray(),
+            SystemRestartPending = PendingRebootStore.HasPending,
+            SystemRestartPendingPackages = PendingRebootStore.PendingCount,
         };
     }
 
@@ -286,6 +291,12 @@ internal static class AvaloniaBootstrapper
                 break;
             case "bundles":
                 window.Navigate(PageType.Bundles);
+                break;
+            case "catalog":
+            case "catalog-editor":
+                if (!window.SoftwareCatalogEnabled)
+                    throw new InvalidOperationException("Software Catalog is disabled. Enable it in Experimental settings and developer options, then restart UniGetUI.");
+                window.Navigate(page == "catalog-editor" ? PageType.CatalogEditor : PageType.Catalog);
                 break;
             case "settings":
                 window.Navigate(PageType.Settings);

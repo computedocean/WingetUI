@@ -19,14 +19,10 @@
             <Setter Property="Background" Value="{DynamicResource InstallOptionsTabSelectedBackground}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource ComboBoxBorderBrushPointerOver}"/>
         </Style>
-        <Style Selector="ComboBox.install-option-input:focus-within">
-            <Setter Property="Background" Value="{DynamicResource InstallOptionsTabSelectedBackground}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource ComboBoxBorderBrushPressed}"/>
-        </Style>
 
         <!-- WinUI-style rich tabs: roomy headers that hold an icon + two text lines. -->
         <Style Selector="TabControl.install-options-tabs">
-            <Setter Property="Background" Value="{DynamicResource AppDialogDarkBackground}"/>
+            <Setter Property="Background" Value="{DynamicResource InstallOptionsTabBackground}"/>
             <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="ItemsPanel">
@@ -42,12 +38,36 @@
                             CornerRadius="{TemplateBinding CornerRadius}"
                             ClipToBounds="True">
                         <DockPanel>
-                            <ScrollViewer DockPanel.Dock="Top"
-                                          HorizontalScrollBarVisibility="Auto"
-                                          VerticalScrollBarVisibility="Disabled">
-                                <ItemsPresenter Name="PART_ItemsPresenter"
-                                                ItemsPanel="{TemplateBinding ItemsPanel}"/>
-                            </ScrollViewer>
+                            <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto">
+                                <Button x:Name="PreviousTabButton"
+                                        Classes="install-options-tab-scroll"
+                                        Margin="8,0,3,3"
+                                        IsVisible="False"
+                                        Click="PreviousTabButton_Click">
+                                    <Path Data="M 5,0 L 0,4 L 5,8 Z"
+                                          Width="5" Height="8"
+                                          Fill="{Binding $parent[Button].Foreground}"/>
+                                </Button>
+                                <ScrollViewer x:Name="TabHeadersScrollViewer"
+                                              Grid.Column="1"
+                                              HorizontalScrollBarVisibility="Hidden"
+                                              VerticalScrollBarVisibility="Disabled"
+                                              HorizontalContentAlignment="Center">
+                                    <ItemsPresenter Name="PART_ItemsPresenter"
+                                                    ItemsPanel="{TemplateBinding ItemsPanel}"
+                                                    HorizontalAlignment="Center"/>
+                                </ScrollViewer>
+                                <Button x:Name="NextTabButton"
+                                        Grid.Column="2"
+                                        Classes="install-options-tab-scroll"
+                                        Margin="3,0,8,3"
+                                        IsVisible="False"
+                                        Click="NextTabButton_Click">
+                                    <Path Data="M 0,0 L 5,4 L 0,8 Z"
+                                          Width="5" Height="8"
+                                          Fill="{Binding $parent[Button].Foreground}"/>
+                                </Button>
+                            </Grid>
                             <Panel ClipToBounds="True">
                                 <ContentPresenter Name="PART_SelectedContentHost2"
                                                   Margin="{TemplateBinding Padding}"
@@ -64,29 +84,58 @@
                 </ControlTemplate>
             </Setter>
         </Style>
+        <Style Selector="Button.install-options-tab-scroll">
+            <!-- Match WinUI TabViewItemScrollButtonWidth/Height. -->
+            <Setter Property="Width" Value="32"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.install-options-tab-scroll:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
+        </Style>
+        <Style Selector="Button.install-options-tab-scroll:disabled">
+            <Setter Property="Opacity" Value="0.35"/>
+        </Style>
         <Style Selector="TabControl.install-options-tabs TabItem">
             <Setter Property="Padding" Value="12,6"/>
             <Setter Property="MinHeight" Value="0"/>
-            <Setter Property="Margin" Value="0,4,0,0"/>
+            <Setter Property="Margin" Value="0,4"/>
             <Setter Property="VerticalAlignment" Value="Stretch"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="CornerRadius" Value="8,8,0,0"/>
+            <Setter Property="CornerRadius" Value="8"/>
         </Style>
         <Style Selector="TabControl.install-options-tabs TabItem:pointerover">
             <Setter Property="Background" Value="{DynamicResource InstallOptionsTabHoverBackground}"/>
         </Style>
         <Style Selector="TabControl.install-options-tabs TabItem:pointerover /template/ Border#PART_LayoutRoot">
             <Setter Property="Background" Value="{DynamicResource InstallOptionsTabHoverBackground}"/>
+            <Setter Property="CornerRadius" Value="8"/>
+        </Style>
+        <Style Selector="TabControl.install-options-tabs TabItem:pressed /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="{DynamicResource InstallOptionsTabPressedBackground}"/>
+            <Setter Property="CornerRadius" Value="8"/>
         </Style>
         <Style Selector="TabControl.install-options-tabs TabItem:selected">
             <Setter Property="Background" Value="{DynamicResource InstallOptionsTabSelectedBackground}"/>
+            <Setter Property="CornerRadius" Value="8"/>
         </Style>
         <Style Selector="TabControl.install-options-tabs TabItem:selected /template/ Border#PART_LayoutRoot">
             <Setter Property="Background" Value="{DynamicResource InstallOptionsTabSelectedBackground}"/>
+            <Setter Property="CornerRadius" Value="8"/>
         </Style>
         <Style Selector="TabControl.install-options-tabs TabItem:selected:pointerover /template/ Border#PART_LayoutRoot">
-            <Setter Property="Background" Value="{DynamicResource InstallOptionsTabSelectedBackground}"/>
+            <Setter Property="Background" Value="{DynamicResource InstallOptionsTabSelectedHoverBackground}"/>
+        </Style>
+        <Style Selector="TabControl.install-options-tabs TabItem:selected:pressed /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="{DynamicResource InstallOptionsTabSelectedPressedBackground}"/>
         </Style>
         <!-- WinUI tabs have no accent underline; the selected tab is shown by its background. -->
         <Style Selector="TabItem /template/ #PART_SelectedPipe" x:SetterTargetType="Control">
@@ -96,7 +145,7 @@
             <Setter Property="IsVisible" Value="False"/>
         </Style>
         <!-- Blur the locked options themselves; the overlay remains sharp above them. -->
-        <Style Selector="StackPanel.lockable-options.locked">
+        <Style Selector="Border.lockable-options.locked">
             <Setter Property="Effect">
                 <BlurEffect Radius="6"/>
             </Setter>
@@ -113,7 +162,8 @@
             <Image Source="{Binding PackageIcon}"
                    Width="32" Height="32"
                    automation:AutomationProperties.AccessibilityView="Raw"
-                   VerticalAlignment="Center"/>
+                   VerticalAlignment="Center"
+                   RenderOptions.BitmapInterpolationMode="HighQuality"/>
 
             <TextBlock Grid.Column="1"
                        automation:AutomationProperties.Name="{Binding DialogTitle}"
@@ -135,7 +185,7 @@
             </StackPanel>
         </Grid>
 
-        <Border Background="{DynamicResource AppDialogDarkBackground}" CornerRadius="8" Padding="16,8">
+        <Border Background="{DynamicResource InstallOptionsTabBackground}" CornerRadius="8" Padding="16,8">
             <StackPanel Orientation="Vertical" Spacing="4">
                 <CheckBox Content="{Binding IgnoreUpdatesCheckBox_Content, FallbackValue='Ignore future updates for this package'}"
                           IsChecked="{Binding IgnoreUpdatesChecked}"
@@ -154,7 +204,7 @@
         </Border>
 
         <!-- ── Follow-global-options card ── -->
-        <Border Background="{DynamicResource AppDialogDarkBackground}" CornerRadius="8" Padding="16,8">
+        <Border Background="{DynamicResource InstallOptionsTabBackground}" CornerRadius="8" Padding="16,8">
             <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8">
                 <TextBlock x:Name="FollowGlobalLabelBlock"
                            Grid.Row="0" Grid.Column="0"
@@ -175,11 +225,34 @@
             </Grid>
         </Border>
 
+        <!-- ── Package broker notices (only when the operation goes through the Devolutions Agent) ── -->
+        <Border Background="{DynamicResource InstallOptionsTabBackground}" CornerRadius="8" Padding="16,8"
+                IsVisible="{Binding BrokerIssuesVisible}">
+            <StackPanel Spacing="4">
+                <TextBlock Text="{Binding BrokerIssuesHeaderLabel}"
+                           Foreground="{DynamicResource StatusErrorForeground}"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap"/>
+                <SelectableTextBlock Text="{Binding BrokerIssuesText}"
+                                     automation:AutomationProperties.Name="{Binding BrokerIssuesText}"
+                                     TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <Border Background="{DynamicResource InstallOptionsTabBackground}" CornerRadius="8" Padding="16,8"
+                IsVisible="{Binding BrokerCustomArgumentsWarningVisible}">
+            <TextBlock Text="{Binding BrokerCustomArgumentsWarning}"
+                       Foreground="{DynamicResource StatusWarningForeground}"
+                       TextWrapping="Wrap"/>
+        </Border>
+
         <!-- ── Options area + lock overlay ── -->
         <Grid>
-          <StackPanel Spacing="12"
-                      Classes="lockable-options"
-                      Classes.locked="{Binding FollowGlobal}">
+          <Border Margin="-6"
+                  Padding="6"
+                  Classes="lockable-options"
+                  Classes.locked="{Binding FollowGlobal}">
+          <StackPanel Spacing="12">
 
             <!-- Explainer (applies to every tab, like WinUI) -->
             <TextBlock Text="{Binding GeneralInfoLabel}"
@@ -187,8 +260,10 @@
                        TextWrapping="Wrap"
                        Margin="4,0"/>
 
-            <TabControl Classes="install-options-tabs"
-                        IsEnabled="{Binding IsCustomMode}">
+            <TabControl x:Name="InstallOptionsTabs"
+                        Classes="install-options-tabs"
+                        IsEnabled="{Binding IsCustomMode}"
+                        LayoutUpdated="InstallOptionsTabs_LayoutUpdated">
 
             <!-- Tab 0: General -->
             <TabItem>
@@ -202,7 +277,7 @@
                         </StackPanel>
                     </StackPanel>
                 </TabItem.Header>
-                <Border Background="{DynamicResource AppDialogDarkBackground}" Padding="16">
+                <Border Background="{DynamicResource InstallOptionsTabBackground}" Padding="16">
                     <StackPanel Spacing="8">
 
                         <WrapPanel Orientation="Horizontal">
@@ -283,7 +358,7 @@
                         </StackPanel>
                     </StackPanel>
                 </TabItem.Header>
-                <Border Background="{DynamicResource AppDialogDarkBackground}" Padding="16">
+                <Border Background="{DynamicResource InstallOptionsTabBackground}" Padding="16">
                     <StackPanel Spacing="8">
 
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
@@ -379,7 +454,7 @@
                         </StackPanel>
                     </StackPanel>
                 </TabItem.Header>
-                <Border Background="{DynamicResource AppDialogDarkBackground}" Padding="16">
+                <Border Background="{DynamicResource InstallOptionsTabBackground}" Padding="16">
                     <StackPanel Spacing="8">
 
                       <!-- Security warning shown when custom CLI arguments are disabled -->
@@ -473,7 +548,7 @@
                         </StackPanel>
                     </StackPanel>
                 </TabItem.Header>
-                <Border Background="{DynamicResource AppDialogDarkBackground}" Padding="16">
+                <Border Background="{DynamicResource InstallOptionsTabBackground}" Padding="16">
                     <StackPanel Spacing="8">
 
                         <TextBlock Text="{Binding KillProcessesDescriptionLabel}"
@@ -529,7 +604,7 @@
                         </StackPanel>
                     </StackPanel>
                 </TabItem.Header>
-                <Border Background="{DynamicResource AppDialogDarkBackground}" Padding="16">
+                <Border Background="{DynamicResource InstallOptionsTabBackground}" Padding="16">
                     <StackPanel Spacing="10">
 
                         <!-- Security warning shown when pre/post scripts are disabled -->
@@ -640,6 +715,7 @@
             </TabControl>
 
           </StackPanel>
+          </Border>
 
           <!-- Lock overlay shown while following the default options. The options content
                beneath it is Gaussian-blurred by the conditional style above. -->
@@ -660,7 +736,7 @@
         </Grid>
 
         <!-- ── Command-line preview ── -->
-        <Border Background="{DynamicResource AppDialogDarkBackground}" CornerRadius="8" Padding="12">
+        <Border Background="{DynamicResource InstallOptionsTabBackground}" CornerRadius="8" Padding="12">
             <StackPanel Spacing="6">
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                     <TextBlock Grid.Column="0" Text="{Binding CommandPreviewLabel}" Opacity="0.7"
@@ -672,7 +748,7 @@
                             Padding="10,4" CornerRadius="4"
                             Click="Manual_Click"/>
                 </Grid>
-                <Border Background="{DynamicResource AppDialogDarkBackground}" CornerRadius="4" Padding="8">
+                <Border Background="{DynamicResource InstallOptionsTabSelectedBackground}" CornerRadius="4" Padding="8">
                     <SelectableTextBlock Text="{Binding CommandPreview}"
                                automation:AutomationProperties.Name="{Binding CommandPreviewLabel}"
                                FontFamily="Consolas,Cascadia Mono,Menlo,monospace"

@@ -157,9 +157,95 @@
         />
     </Target>
 
+    <!--
+        The elevated policy-write helper is a separate NativeAOT executable. It is published on
+        its own and staged at the exact protected packaged path both peers authenticate against
+        (<install root>\Assets\Utilities\UniGetUI.PolicyElevator.exe). Staging happens during
+        publish, before the release pipeline code-signs the output tree and before the integrity
+        tree is regenerated, so the helper is signed and hashed like every other shipped binary.
+    -->
     <Target
-        Name="EnsureBundledElevatorFromNuGet"
-        BeforeTargets="PrepareForBuild"
+        Name="PublishElevatedPolicyHelper"
+        AfterTargets="Publish"
+        Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipElevatedPolicyHelper)' != 'true' and $([MSBuild]::IsOSPlatform('Windows')) and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))"
+    >
+        <PropertyGroup>
+            <_PolicyHelperProject>$(MSBuildThisFileDirectory)..\UniGetUI.AgentPolicy.ElevatedHelper\UniGetUI.AgentPolicy.ElevatedHelper.csproj</_PolicyHelperProject>
+            <_PolicyHelperPlatform Condition="'$(RuntimeIdentifier)' == 'win-x64'">x64</_PolicyHelperPlatform>
+            <_PolicyHelperPlatform Condition="'$(RuntimeIdentifier)' == 'win-arm64'">arm64</_PolicyHelperPlatform>
+            <!--
+                PublishDir is resolved relative to the helper project, not to this one, so it has to
+                be absolute. It is also passed without a trailing separator: a trailing backslash in
+                front of a quote is consumed as an escape by the command line parser.
+            -->
+            <_PolicyHelperIntermediateDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)$(BaseIntermediateOutputPath)policy-elevator\$(Configuration)\$(RuntimeIdentifier)'))</_PolicyHelperIntermediateDir>
+            <_PolicyHelperExecutable>$(_PolicyHelperIntermediateDir)\UniGetUI.PolicyElevator.exe</_PolicyHelperExecutable>
+            <_PolicyHelperDestination>$(PublishDir)Assets\Utilities\</_PolicyHelperDestination>
+        </PropertyGroup>
+        <Error
+            Condition="'$(_PolicyHelperPlatform)' == ''"
+            Text="The elevated policy helper only supports the win-x64 and win-arm64 runtime identifiers, but '$(RuntimeIdentifier)' was requested."
+        />
+        <!--
+            The framework must be named explicitly: Directory.Build.props seeds TargetFrameworks for
+            every project, so a publish without -f resolves to an outer build that silently skips
+            NativeAOT and emits a framework-dependent layout instead of the native executable.
+        -->
+        <Exec
+            Command="dotnet publish &quot;$(_PolicyHelperProject)&quot; --configuration $(Configuration) --framework $(WindowsTargetFramework) --runtime $(RuntimeIdentifier) --self-contained true --nologo /p:Platform=$(_PolicyHelperPlatform) /p:PublishAot=true /p:PublishReadyToRun=false /p:PublishDir=&quot;$(_PolicyHelperIntermediateDir)&quot;"
+            WorkingDirectory="$(MSBuildThisFileDirectory)"
+        />
+        <Error
+            Condition="!Exists('$(_PolicyHelperExecutable)')"
+            Text="The elevated policy helper was not produced at '$(_PolicyHelperExecutable)'."
+        />
+        <MakeDir Directories="$(_PolicyHelperDestination)" />
+        <Copy
+            SourceFiles="$(_PolicyHelperExecutable)"
+            DestinationFolder="$(_PolicyHelperDestination)"
+            SkipUnchangedFiles="true"
+        />
+        <Error
+            Condition="!Exists('$(_PolicyHelperDestination)UniGetUI.PolicyElevator.exe')"
+            Text="The elevated policy helper was not staged at '$(_PolicyHelperDestination)UniGetUI.PolicyElevator.exe'."
+        />
+    </Target>
+
+    <Target
+        Name="PublishCliLauncher"
+        AfterTargets="Publish"
+        Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipCliLauncher)' != 'true' and '$(RuntimeIdentifier)' != ''"
+    >
+        <PropertyGroup>
+            <_CliLauncherProject>$([System.IO.Path]::Combine('$(MSBuildThisFileDirectory)', '..', 'UniGetUI.CliLauncher', 'UniGetUI.CliLauncher.csproj'))</_CliLauncherProject>
+            <_CliLauncherTargetFramework Condition="'$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'">$(WindowsTargetFramework)</_CliLauncherTargetFramework>
+            <_CliLauncherTargetFramework Condition="'$(RuntimeIdentifier)' == 'linux-x64' or '$(RuntimeIdentifier)' == 'linux-arm64' or '$(RuntimeIdentifier)' == 'osx-x64' or '$(RuntimeIdentifier)' == 'osx-arm64'">$(PortableTargetFramework)</_CliLauncherTargetFramework>
+            <_CliLauncherPlatform Condition="'$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'linux-x64' or '$(RuntimeIdentifier)' == 'osx-x64'">x64</_CliLauncherPlatform>
+            <_CliLauncherPlatform Condition="'$(RuntimeIdentifier)' == 'win-arm64' or '$(RuntimeIdentifier)' == 'linux-arm64' or '$(RuntimeIdentifier)' == 'osx-arm64'">arm64</_CliLauncherPlatform>
+            <_CliLauncherExecutableName Condition="$([MSBuild]::IsOSPlatform('Windows'))">uniget.exe</_CliLauncherExecutableName>
+            <_CliLauncherExecutableName Condition="!$([MSBuild]::IsOSPlatform('Windows'))">uniget</_CliLauncherExecutableName>
+            <_CliLauncherIntermediateDir>$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine('$(MSBuildThisFileDirectory)', '$(BaseIntermediateOutputPath)', 'cli-launcher', '$(Configuration)', '$(RuntimeIdentifier)'))))</_CliLauncherIntermediateDir>
+            <_CliLauncherExecutable>$([System.IO.Path]::Combine('$(_CliLauncherIntermediateDir)', '$(_CliLauncherExecutableName)'))</_CliLauncherExecutable>
+            <_CliLauncherSysRootArg Condition="'$(SysRoot)' != ''">/p:SysRoot=&quot;$(SysRoot)&quot;</_CliLauncherSysRootArg>
+            <_CliLauncherLinkerFlavorArg Condition="'$(LinkerFlavor)' != ''">/p:LinkerFlavor=$(LinkerFlavor)</_CliLauncherLinkerFlavorArg>
+        </PropertyGroup>
+        <Error Condition="'$(_CliLauncherPlatform)' == ''"
+               Text="The CLI launcher does not support runtime identifier '$(RuntimeIdentifier)'." />
+        <Exec
+            Command="dotnet publish &quot;$(_CliLauncherProject)&quot; --configuration $(Configuration) --framework $(_CliLauncherTargetFramework) --runtime $(RuntimeIdentifier) --self-contained true --nologo /p:Platform=$(_CliLauncherPlatform) /p:PublishAot=true /p:PublishReadyToRun=false /p:PublishDir=&quot;$(_CliLauncherIntermediateDir)&quot; $(_CliLauncherSysRootArg) $(_CliLauncherLinkerFlavorArg)"
+            WorkingDirectory="$(MSBuildThisFileDirectory)"
+        />
+        <Error Condition="!Exists('$(_CliLauncherExecutable)')"
+               Text="The CLI launcher was not produced at '$(_CliLauncherExecutable)'." />
+        <Copy SourceFiles="$(_CliLauncherExecutable)"
+              DestinationFolder="$(PublishDir)"
+              SkipUnchangedFiles="true" />
+        <Error Condition="!Exists('$(PublishDir)$(_CliLauncherExecutableName)')"
+               Text="The CLI launcher was not staged at '$(PublishDir)$(_CliLauncherExecutableName)'." />
+    </Target>
+
+    <Target
+        Name="EnsureBundledElevatorFromNuGet"        BeforeTargets="PrepareForBuild"
         Condition="'$(DesignTimeBuild)' != 'true' and $([MSBuild]::IsOSPlatform('Windows')) and '$(Configuration)' != 'Debug'"
     >
         <Error
@@ -190,6 +276,7 @@
         <PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
         <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.0" />
         <PackageReference Include="Avalonia.Desktop" Version="12.0.4" />
+        <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.4" />
         <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.4" />
         <PackageReference Include="Devolutions.AvaloniaTheme.MacOS" Version="2026.3.13" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
         <PackageReference Include="Devolutions.AvaloniaTheme.Linux" Version="2026.3.11" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
@@ -198,7 +285,7 @@
         <PackageReference Include="Avalonia.Controls.WebView" Version="12.0.0" />
         <PackageReference Include="Tmds.DBus.Protocol" Version="0.92.0" />
         <PackageReference Include="Devolutions.UniGetUI.Elevator" Version="2.6.1.3" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive;native" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
-        <PackageReference Include="Devolutions.Pinget.Cli.Rust" Version="0.12.0" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive;native" />
+        <PackageReference Include="Devolutions.Pinget.Cli.Rust" Version="0.13.0" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive;native" />
     </ItemGroup>
 
     <ItemGroup>
@@ -211,7 +298,9 @@
         <ProjectReference Include="..\UniGetUI.Interface.Enums\UniGetUI.Interface.Enums.csproj" />
         <ProjectReference Include="..\UniGetUI.Interface.IpcApi\UniGetUI.Interface.IpcApi.csproj" />
         <ProjectReference Include="..\UniGetUI.Interface.Telemetry\UniGetUI.Interface.Telemetry.csproj" />
+        <ProjectReference Include="..\UniGetUI.PackageEngine.AgentBroker\UniGetUI.PackageEngine.AgentBroker.csproj" />
         <ProjectReference Include="..\UniGetUI.PackageEngine.PackageEngine\UniGetUI.PackageEngine.PEInterface.csproj" />
+        <ProjectReference Include="..\UniGetUI.Tui\UniGetUI.Tui.csproj" />
     </ItemGroup>
 
     <ItemGroup>

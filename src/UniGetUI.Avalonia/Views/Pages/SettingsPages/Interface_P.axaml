@@ -29,7 +29,7 @@
                                    StateChangedCommand="{Binding ShowRestartRequiredCommand}"
                                    CornerRadius="0"
                                    BorderThickness="1,0,1,1"
-                                   IsVisible="{Binding IsWindows}"/>
+                                   IsVisible="{Binding !IsMacOS}"/>
 
              <settings:ComboboxCard x:Name="StartupPageSelector"
                                     CornerRadius="0"
@@ -103,6 +103,14 @@
             <settings:CheckboxCard x:Name="InstallerHostColumnCard"
                                    SettingName="ShowInstallerHostColumn"
                                    Text="{t:Translate Show the installer host on package lists}"
+                                   WarningText="{t:Translate Restart UniGetUI to apply this change}"
+                                   StateChangedCommand="{Binding ShowRestartRequiredCommand}"
+                                   CornerRadius="0"
+                                   BorderThickness="1,0,1,1"/>
+
+            <settings:CheckboxCard x:Name="DownloadSizeColumnCard"
+                                   SettingName="ShowDownloadSizeColumn"
+                                   Text="{t:Translate Show the download size on package lists}"
                                    WarningText="{t:Translate Restart UniGetUI to apply this change}"
                                    StateChangedCommand="{Binding ShowRestartRequiredCommand}"
                                    CornerRadius="0"

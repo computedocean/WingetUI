@@ -1,0 +1,538 @@
+using System.Diagnostics;
+using System.Net;
+using System.Security.Cryptography;
+using UniGetUI.PackageEngine.Enums;
+using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.Operations;
+using UniGetUI.PackageEngine.Tests.Infrastructure.Builders;
+using UniGetUI.PackageOperations;
+
+namespace UniGetUI.PackageEngine.Tests;
+
+/// <summary>
+/// Proves <see cref="DownloadOperation"/> reports bounded determinate progress:
+/// one structured report per integer percent (not per socket read), with 0→100
+/// propagation and usable throughput under the reduced sampling rate.
+/// Uses an in-memory HTTP handler so no loopback server is needed.
+/// </summary>
+public sealed class DownloadOperationProgressTests
+{
+    private sealed class ManualTimestampClock
+    {
+        private long _ticks;
+
+        public long Now() => _ticks;
+
+        public void Advance(TimeSpan delta) =>
+            _ticks += (long)(delta.TotalSeconds * Stopwatch.Frequency);
+    }
+
+    private sealed class FragmentedReadStream(byte[] payload, int maxChunk, ManualTimestampClock? clock, TimeSpan perRead)
+        : MemoryStream(payload, writable: false)
+    {
+        private readonly ManualTimestampClock? _clock = clock;
+        public int ReadCalls;
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default
+        )
+        {
+            int count = await base.ReadAsync(
+                buffer[..Math.Min(buffer.Length, maxChunk)],
+                cancellationToken
+            );
+            if (count > 0)
+            {
+                ReadCalls++;
+                _clock?.Advance(perRead);
+            }
+
+            return count;
+        }
+    }
+
+    private sealed class FakeDownloadHandler(
+        byte[] payload,
+        int maxChunk,
+        ManualTimestampClock? clock,
+        TimeSpan perRead,
+        FragmentedReadStream? streamSink
+    ) : HttpMessageHandler
+    {
+        public int StreamReadCalls => _stream?.ReadCalls ?? 0;
+        private FragmentedReadStream? _stream = streamSink;
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        )
+        {
+            var stream = new FragmentedReadStream(payload, maxChunk, clock, perRead);
+            _stream = stream;
+            var content = new StreamContent(stream);
+            content.Headers.ContentLength = payload.Length;
+            var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+            return Task.FromResult(response);
+        }
+    }
+
+    private sealed class ProbeDownloadOperation(
+        IPackage package,
+        string downloadPath,
+        HttpMessageHandler handler
+    ) : DownloadOperation(package, downloadPath)
+    {
+        private readonly HttpMessageHandler _handler = handler;
+
+        protected override HttpClient CreateHttpClient() =>
+            new(_handler, disposeHandler: false);
+
+        public Task<OperationVeredict> InvokePerformOperationForTests() =>
+            PerformOperation();
+    }
+
+    private static (IPackage Package, ManualTimestampClock Clock) CreatePackage(
+        out ManualTimestampClock clock
+    )
+    {
+        clock = new ManualTimestampClock();
+        var manager = new PackageManagerBuilder()
+            .ConfigureDetails(helper =>
+            {
+                helper.PopulateDetails = details =>
+                {
+                    details.InstallerUrl = new Uri("http://127.0.0.1/payload.bin");
+                    details.InstallerType = "exe";
+                };
+            })
+            .Build();
+        IPackage package = new PackageBuilder().WithManager(manager).Build();
+        return (package, clock);
+    }
+
+    [Fact]
+    public async Task ProgressEvents_BoundedByIntegerPercent_NotPerRead()
+    {
+        const int TotalBytes = 1024 * 1024;
+        const int ChunkBytes = 1024;
+        byte[] payload = new byte[TotalBytes];
+        new Random(42).NextBytes(payload);
+
+        var (package, clock) = CreatePackage(out _);
+        var handler = new FakeDownloadHandler(payload, ChunkBytes, clock, TimeSpan.FromMilliseconds(5), null);
+        string downloadPath = Path.Join(
+            Path.GetTempPath(),
+            $"unigetui-bounded-{Guid.NewGuid():N}.bin"
+        );
+        try
+        {
+            using var operation = new ProbeDownloadOperation(package, downloadPath, handler);
+            operation.SetTimestampProviderForTests(clock.Now);
+            var seen = new List<OperationProgress>();
+            operation.ProgressChanged += (_, p) => seen.Add(p);
+
+            OperationVeredict verdict = await operation.InvokePerformOperationForTests();
+
+            Assert.Equal(OperationVeredict.Success, verdict);
+            int readCalls = handler.StreamReadCalls;
+            Assert.True(readCalls > 500, $"expected many small reads, got {readCalls}");
+
+            // One stage marker + at most one report per integer percent.
+            var determinate = seen.Where(static p => p.IsDeterminate).ToArray();
+            Assert.True(seen.Count <= 102, $"expected bounded reports, got {seen.Count}");
+            Assert.True(seen.Count < readCalls);
+            Assert.Equal(
+                determinate.Select(static p => Math.Round(p.Percentage!.Value)).Distinct().Count(),
+                determinate.Length
+            );
+        }
+        finally
+        {
+            if (File.Exists(downloadPath))
+                File.Delete(downloadPath);
+        }
+    }
+
+    [Fact]
+    public async Task ProgressEvents_PropagateZeroAndHundred()
+    {
+        const int TotalBytes = 1024 * 1024;
+        byte[] payload = new byte[TotalBytes];
+        new Random(7).NextBytes(payload);
+
+        var (package, clock) = CreatePackage(out _);
+        var handler = new FakeDownloadHandler(payload, 1024, clock, TimeSpan.FromMilliseconds(5), null);
+        string downloadPath = Path.Join(
+            Path.GetTempPath(),
+            $"unigetui-zero-hundred-{Guid.NewGuid():N}.bin"
+        );
+        try
+        {
+            using var operation = new ProbeDownloadOperation(package, downloadPath, handler);
+            operation.SetTimestampProviderForTests(clock.Now);
+            var seen = new List<OperationProgress>();
+            operation.ProgressChanged += (_, p) => seen.Add(p);
+
+            Assert.Equal(
+                OperationVeredict.Success,
+                await operation.InvokePerformOperationForTests()
+            );
+
+            var determinate = seen.Where(static p => p.IsDeterminate).ToArray();
+            Assert.NotEmpty(determinate);
+            Assert.Equal(0, Math.Round(determinate.First().Percentage!.Value));
+            Assert.Equal(100, Math.Round(determinate.Last().Percentage!.Value));
+            Assert.Equal(100, Math.Round(operation.CurrentProgress.Percentage!.Value));
+        }
+        finally
+        {
+            if (File.Exists(downloadPath))
+                File.Delete(downloadPath);
+        }
+    }
+
+    [Fact]
+    public async Task Throughput_RemainsUsable_UnderReducedSampling()
+    {
+        const int TotalBytes = 1024 * 1024;
+        byte[] payload = new byte[TotalBytes];
+        new Random(11).NextBytes(payload);
+
+        var (package, clock) = CreatePackage(out _);
+        var handler = new FakeDownloadHandler(payload, 1024, clock, TimeSpan.FromMilliseconds(5), null);
+        string downloadPath = Path.Join(
+            Path.GetTempPath(),
+            $"unigetui-throughput-{Guid.NewGuid():N}.bin"
+        );
+        try
+        {
+            using var operation = new ProbeDownloadOperation(package, downloadPath, handler);
+            operation.SetTimestampProviderForTests(clock.Now);
+
+            Assert.Equal(
+                OperationVeredict.Success,
+                await operation.InvokePerformOperationForTests()
+            );
+
+            Assert.True(operation.CurrentProgress.HasThroughput);
+            Assert.Contains("/s", OperationProgressFormatter.Format(operation.CurrentProgress));
+        }
+        finally
+        {
+            if (File.Exists(downloadPath))
+                File.Delete(downloadPath);
+        }
+    }
+
+    [Fact]
+    public async Task LocalFeedInstallers_AreCopiedFromDiskWithoutHttp()
+    {
+        byte[] payload = new byte[64 * 1024];
+        new Random(23).NextBytes(payload);
+
+        string sourcePath = Path.Join(
+            Path.GetTempPath(),
+            $"unigetui-local-source-{Guid.NewGuid():N}.nupkg"
+        );
+        string downloadPath = Path.Join(
+            Path.GetTempPath(),
+            $"unigetui-local-copy-{Guid.NewGuid():N}.nupkg"
+        );
+        File.WriteAllBytes(sourcePath, payload);
+
+        var manager = new PackageManagerBuilder()
+            .ConfigureDetails(helper =>
+            {
+                helper.PopulateDetails = details =>
+                {
+                    details.InstallerUrl = new Uri(sourcePath);
+                    details.InstallerType = "nupkg";
+                };
+            })
+            .Build();
+        IPackage package = new PackageBuilder()
+            .WithManager(manager)
+            .WithSource(
+                new SourceBuilder()
+                    .WithManager(manager)
+                    .WithUrl(new Uri(Path.GetDirectoryName(sourcePath)!).AbsoluteUri)
+                    .Build()
+            )
+            .Build();
+
+        try
+        {
+            using var operation = new ProbeDownloadOperation(
+                package,
+                downloadPath,
+                new UnreachableHandler()
+            );
+
+            Assert.Equal(
+                OperationVeredict.Success,
+                await operation.InvokePerformOperationForTests()
+            );
+            Assert.Equal(payload, File.ReadAllBytes(downloadPath));
+            Assert.Equal(100, Math.Round(operation.CurrentProgress.Percentage!.Value));
+        }
+        finally
+        {
+            File.Delete(sourcePath);
+            if (File.Exists(downloadPath))
+                File.Delete(downloadPath);
+        }
+    }
+
+    [Fact]
+    public async Task LocalFeedInstallers_RefuseToOverwriteTheSourceFile()
+    {
+        byte[] payload = new byte[2048];
+        new Random(31).NextBytes(payload);
+
+        string sourcePath = Path.Join(
+            Path.GetTempPath(),
+            $"unigetui-same-file-{Guid.NewGuid():N}.nupkg"
+        );
+        File.WriteAllBytes(sourcePath, payload);
+
+        var manager = new PackageManagerBuilder()
+            .ConfigureDetails(helper =>
+            {
+                helper.PopulateDetails = details =>
+                {
+                    details.InstallerUrl = new Uri(sourcePath);
+                    details.InstallerType = "nupkg";
+                };
+            })
+            .Build();
+        IPackage package = new PackageBuilder()
+            .WithManager(manager)
+            .WithSource(
+                new SourceBuilder()
+                    .WithManager(manager)
+                    .WithUrl(new Uri(Path.GetDirectoryName(sourcePath)!).AbsoluteUri)
+                    .Build()
+            )
+            .Build();
+
+        try
+        {
+            using var operation = new ProbeDownloadOperation(
+                package,
+                sourcePath,
+                new UnreachableHandler()
+            );
+
+            Assert.Equal(
+                OperationVeredict.Failure,
+                await operation.InvokePerformOperationForTests()
+            );
+            Assert.Equal(payload, File.ReadAllBytes(sourcePath));
+            Assert.Contains(
+                operation.GetOutput(),
+                line => line.Item1.Contains("is the package file itself")
+            );
+            Assert.DoesNotContain(
+                operation.GetOutput(),
+                line => line.Item1.Contains("System.IO.IOException")
+            );
+        }
+        finally
+        {
+            File.Delete(sourcePath);
+        }
+    }
+
+    [Fact]
+    public async Task AFileInstallerUrlIsRefusedWhenTheSourceIsNotTheFolderHoldingIt()
+    {
+        string secretPath = Path.Join(
+            Path.GetTempPath(),
+            $"unigetui-secret-{Guid.NewGuid():N}.bin"
+        );
+        string downloadPath = Path.Join(
+            Path.GetTempPath(),
+            $"unigetui-stolen-{Guid.NewGuid():N}.bin"
+        );
+        File.WriteAllBytes(secretPath, [1, 2, 3, 4]);
+
+        var manager = new PackageManagerBuilder()
+            .ConfigureDetails(helper =>
+            {
+                helper.PopulateDetails = details =>
+                {
+                    details.InstallerUrl = new Uri(secretPath);
+                    details.InstallerType = "exe";
+                };
+            })
+            .Build();
+        var remoteSource = new SourceBuilder()
+            .WithManager(manager)
+            .WithUrl("https://packages.example.test/api/v2/")
+            .Build();
+        IPackage package = new PackageBuilder()
+            .WithManager(manager)
+            .WithSource(remoteSource)
+            .Build();
+
+        try
+        {
+            using var operation = new ProbeDownloadOperation(
+                package,
+                downloadPath,
+                new UnreachableHandler()
+            );
+
+            Assert.Equal(
+                OperationVeredict.Failure,
+                await operation.InvokePerformOperationForTests()
+            );
+            Assert.False(File.Exists(downloadPath));
+            Assert.Contains(
+                operation.GetOutput(),
+                line => line.Item1.Contains("is not a local folder holding it")
+            );
+        }
+        finally
+        {
+            File.Delete(secretPath);
+            if (File.Exists(downloadPath))
+                File.Delete(downloadPath);
+        }
+    }
+
+    private static IPackage CreatePackageWithHash(string installerHash)
+    {
+        var manager = new PackageManagerBuilder()
+            .ConfigureDetails(helper =>
+            {
+                helper.PopulateDetails = details =>
+                {
+                    details.InstallerUrl = new Uri("http://127.0.0.1/payload.bin");
+                    details.InstallerType = "exe";
+                    details.InstallerHash = installerHash;
+                };
+            })
+            .Build();
+        return new PackageBuilder().WithManager(manager).Build();
+    }
+
+    [Fact]
+    public async Task AnExistingFileMatchingThePublishedHashIsNotDownloadedAgain()
+    {
+        byte[] payload = new byte[64 * 1024];
+        new Random(53).NextBytes(payload);
+
+        IPackage package = CreatePackageWithHash(
+            Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant()
+        );
+        string downloadPath = Path.Join(
+            Path.GetTempPath(),
+            $"unigetui-already-there-{Guid.NewGuid():N}.bin"
+        );
+        File.WriteAllBytes(downloadPath, payload);
+
+        try
+        {
+            using var operation = new ProbeDownloadOperation(
+                package,
+                downloadPath,
+                new UnreachableHandler()
+            );
+
+            Assert.Equal(
+                OperationVeredict.Success,
+                await operation.InvokePerformOperationForTests()
+            );
+            Assert.Equal(payload, File.ReadAllBytes(downloadPath));
+            Assert.Contains(
+                operation.GetOutput(),
+                line => line.Item1.Contains("the download was skipped")
+            );
+            Assert.Equal(100, Math.Round(operation.CurrentProgress.Percentage!.Value));
+        }
+        finally
+        {
+            File.Delete(downloadPath);
+        }
+    }
+
+    [Fact]
+    public async Task AnExistingFileThatDoesNotMatchThePublishedHashIsDownloadedAgain()
+    {
+        byte[] payload = new byte[64 * 1024];
+        new Random(59).NextBytes(payload);
+        byte[] stale = new byte[64 * 1024];
+        new Random(61).NextBytes(stale);
+
+        IPackage package = CreatePackageWithHash(Convert.ToHexString(SHA256.HashData(payload)));
+        var handler = new FakeDownloadHandler(payload, 4096, null, TimeSpan.Zero, null);
+        string downloadPath = Path.Join(
+            Path.GetTempPath(),
+            $"unigetui-stale-{Guid.NewGuid():N}.bin"
+        );
+        File.WriteAllBytes(downloadPath, stale);
+
+        try
+        {
+            using var operation = new ProbeDownloadOperation(package, downloadPath, handler);
+
+            Assert.Equal(
+                OperationVeredict.Success,
+                await operation.InvokePerformOperationForTests()
+            );
+            Assert.Equal(payload, File.ReadAllBytes(downloadPath));
+        }
+        finally
+        {
+            File.Delete(downloadPath);
+        }
+    }
+
+    [Fact]
+    public async Task AnIntegrityHashFromANonSha256ManagerAlsoSkipsTheDownload()
+    {
+        byte[] payload = new byte[64 * 1024];
+        new Random(67).NextBytes(payload);
+
+        IPackage package = CreatePackageWithHash(
+            "sha512-" + Convert.ToBase64String(SHA512.HashData(payload))
+        );
+        string downloadPath = Path.Join(
+            Path.GetTempPath(),
+            $"unigetui-integrity-{Guid.NewGuid():N}.bin"
+        );
+        File.WriteAllBytes(downloadPath, payload);
+
+        try
+        {
+            using var operation = new ProbeDownloadOperation(
+                package,
+                downloadPath,
+                new UnreachableHandler()
+            );
+
+            Assert.Equal(
+                OperationVeredict.Success,
+                await operation.InvokePerformOperationForTests()
+            );
+            Assert.Contains(
+                operation.GetOutput(),
+                line => line.Item1.Contains("the download was skipped")
+            );
+        }
+        finally
+        {
+            File.Delete(downloadPath);
+        }
+    }
+
+    private sealed class UnreachableHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        ) => throw new InvalidOperationException("No HTTP request was expected");
+    }
+}

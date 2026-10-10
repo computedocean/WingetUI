@@ -67,9 +67,12 @@ public static class AvaloniaAppHost
 
         ProcessEnvironmentConfigurator.ConfigurePingetStorage();
 
-        if (ShouldPrepareCliConsole(args))
+        bool cliConsoleReady = ShouldPrepareCliConsole(args) && WindowsConsoleHost.PrepareCliIO();
+
+        if (OperatingSystem.IsWindows() && !cliConsoleReady && IpcCliSyntax.IsHelpRequest(args))
         {
-            WindowsConsoleHost.PrepareCliIO();
+            CoreTools.Launch(CliDocumentationUrl);
+            return;
         }
 
         if (AvaloniaCliHandler.HandlePreUiArgs(args) is { } exitCode)
@@ -111,6 +114,10 @@ public static class AvaloniaAppHost
         Logger.ImportantInfo($"OS: {RuntimeInformation.OSDescription}");
         Logger.ImportantInfo($"Process arch: {RuntimeInformation.ProcessArchitecture} (OS: {RuntimeInformation.OSArchitecture})");
         Logger.ImportantInfo($"Runtime: {RuntimeInformation.FrameworkDescription}");
+        Logger.ImportantInfo($"UI font: {UiFontPolicy.ResolveDefaultFamilyName() ?? "(platform default)"}");
+        Logger.ImportantInfo($"UI font fallbacks: {(UiFontPolicy.ResolveFontFallbacks() is { } fallbacks
+            ? string.Join(", ", fallbacks.Select(f => f.FontFamily.Name))
+            : "(none)")}");
         Logger.ImportantInfo($"Elevated: {CoreTools.IsAdministrator()}");
         Logger.ImportantInfo($"Packaged (MSIX): {CoreTools.IsPackagedApp()}");
         Logger.ImportantInfo($"Args: {(args.Length > 0 ? string.Join(" ", args) : "(none)")}");
@@ -130,14 +137,32 @@ public static class AvaloniaAppHost
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
+    /// <summary>
+    /// Builds the font options the app builder is configured with, so the policy's output and the
+    /// options it is carried in can be exercised without standing up Avalonia.
+    /// </summary>
+    public static FontManagerOptions BuildFontManagerOptions()
+        => new()
+        {
+            DefaultFamilyName = UiFontPolicy.ResolveDefaultFamilyName(),
+            FontFallbacks = UiFontPolicy.ResolveFontFallbacks(),
+        };
+
     public static AppBuilder BuildAvaloniaApp()
     {
         AppBuilder builder = AppBuilder.Configure<App>()
             .UsePlatformDetect();
 
-        if (UiFontPolicy.ResolveDefaultFamilyName() is { } fontFamily)
+        FontManagerOptions fontOptions = BuildFontManagerOptions();
+
+        if (fontOptions.DefaultFamilyName is { } fontFamily && UiFontPolicy.RequiresBundledFont(fontFamily))
         {
-            builder = builder.With(new FontManagerOptions { DefaultFamilyName = fontFamily });
+            builder = builder.WithInterFont();
+        }
+
+        if (fontOptions.DefaultFamilyName is not null || fontOptions.FontFallbacks is not null)
+        {
+            builder = builder.With(fontOptions);
         }
 
 #if WINDOWS
@@ -153,9 +178,12 @@ public static class AvaloniaAppHost
         return builder.LogToTrace();
     }
 
+    private const string CliDocumentationUrl =
+        "https://github.com/Devolutions/UniGetUI/blob/main/docs/CLI.md#unigetui-command-line-interface";
+
     private static bool ShouldPrepareCliConsole(IReadOnlyList<string> args)
     {
-        return IpcCliSyntax.HasVerbCommand(args);
+        return IpcCliSyntax.HasVerbCommand(args) || IpcCliSyntax.IsHelpRequest(args);
     }
 
     private static bool TryRegisterSingleInstance(string[] args)

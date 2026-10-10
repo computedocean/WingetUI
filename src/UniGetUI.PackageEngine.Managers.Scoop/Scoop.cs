@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text.RegularExpressions;
 using UniGetUI.Core.Classes;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.Logging;
@@ -49,6 +48,9 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
             "removed",
             "removed,",
         ];
+
+        internal const string UntruncatedTableOutput =
+            " | Format-Table -AutoSize | Out-String -Width 4096";
 
         private const int VersionProbeTimeout = 20_000;
         private const int StreamDrainTimeout = 5_000;
@@ -249,42 +251,35 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
             }
 
             List<Package> packages = [];
-            bool dashesPassed = false;
-            foreach (string line in lines)
+            IReadOnlyList<int>? columns = null;
+            foreach (string rawLine in lines)
             {
-                if (!dashesPassed)
-                {
-                    if (line.Contains("---"))
-                    {
-                        dashesPassed = true;
-                    }
+                string line = ScoopTable.StripAnsiSequences(rawLine);
 
+                if (columns is null)
+                {
+                    columns = ScoopTable.ReadColumnStarts(line);
                     continue;
                 }
 
-                if (string.IsNullOrWhiteSpace(line))
-                {
-                    continue;
-                }
-
-                string[] elements = Regex
-                    .Replace(line, " {2,}", " ")
-                    .Trim()
-                    .Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (elements.Length < 3)
+                if (columns.Count < 3 || string.IsNullOrWhiteSpace(line))
                 {
                     continue;
                 }
 
-                for (int i = 0; i < elements.Length; i++)
+                string id = ScoopTable.ReadColumn(line, columns, 0);
+                string version = ScoopTable.ReadColumn(line, columns, 1);
+                string newVersion = ScoopTable.ReadColumn(line, columns, 2);
+
+                if (id.Length is 0 || version.Length is 0 || newVersion.Length is 0)
                 {
-                    elements[i] = elements[i].Trim();
+                    continue;
                 }
 
                 if (
-                    FALSE_PACKAGE_IDS.Contains(elements[0])
-                    || FALSE_PACKAGE_VERSIONS.Contains(elements[1])
-                    || FALSE_PACKAGE_VERSIONS.Contains(elements[2])
+                    FALSE_PACKAGE_IDS.Contains(id)
+                    || FALSE_PACKAGE_VERSIONS.Contains(version)
+                    || FALSE_PACKAGE_VERSIONS.Contains(newVersion)
                 )
                 {
                     continue;
@@ -292,7 +287,7 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
 
                 if (
                     installedPackageMap.TryGetValue(
-                        elements[0] + "." + elements[1],
+                        id + "." + version,
                         out IPackage? installedPackage
                     )
                 )
@@ -300,10 +295,10 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
                     OverridenInstallationOptions options = new(installedPackage.OverridenOptions.Scope);
                     packages.Add(
                         new Package(
-                            CoreTools.FormatAsName(elements[0]),
-                            elements[0],
-                            elements[1],
-                            elements[2],
+                            CoreTools.FormatAsName(id),
+                            id,
+                            version,
+                            newVersion,
                             installedPackage.Source,
                             this,
                             options
@@ -318,68 +313,49 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
         internal IReadOnlyList<Package> ParseInstalledPackages(IEnumerable<string> lines)
         {
             List<Package> packages = [];
-            bool dashesPassed = false;
-            foreach (string line in lines)
+            IReadOnlyList<int>? columns = null;
+            foreach (string rawLine in lines)
             {
-                if (!dashesPassed)
-                {
-                    if (line.Contains("---"))
-                    {
-                        dashesPassed = true;
-                    }
+                string line = ScoopTable.StripAnsiSequences(rawLine);
 
+                if (columns is null)
+                {
+                    columns = ScoopTable.ReadColumnStarts(line);
                     continue;
                 }
 
-                if (string.IsNullOrWhiteSpace(line))
-                {
-                    continue;
-                }
-
-                string[] elements = Regex
-                    .Replace(line, " {2,}", " ")
-                    .Trim()
-                    .Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (elements.Length < 3)
+                if (columns.Count < 3 || string.IsNullOrWhiteSpace(line))
                 {
                     continue;
                 }
 
-                if (elements[2].Contains(":\\"))
+                string id = ScoopTable.ReadColumn(line, columns, 0);
+                string version = ScoopTable.ReadColumn(line, columns, 1);
+                string source = ScoopTable.ReadColumn(line, columns, 2);
+                string info = columns.Count > 4 ? ScoopTable.ReadColumn(line, columns, 4) : "";
+
+                if (id.Length is 0 || version.Length is 0)
                 {
-                    var path = Regex.Match(
-                        line,
-                        "[A-Za-z]:(?:[\\\\\\/][^\\\\\\/\\n]+)+(?:.json|…)"
-                    );
-                    if (!string.IsNullOrEmpty(path.Value))
-                    {
-                        elements[2] = path.Value;
-                    }
+                    continue;
                 }
 
-                for (int i = 0; i < elements.Length; i++)
-                {
-                    elements[i] = elements[i].Trim();
-                }
-
-                if (
-                    FALSE_PACKAGE_IDS.Contains(elements[0])
-                    || FALSE_PACKAGE_VERSIONS.Contains(elements[1])
-                )
+                if (FALSE_PACKAGE_IDS.Contains(id) || FALSE_PACKAGE_VERSIONS.Contains(version))
                 {
                     continue;
                 }
 
                 OverridenInstallationOptions options = new(
-                    line.Contains("Global install") ? PackageScope.Global : PackageScope.User
+                    info.Contains("Global install") ? PackageScope.Global : PackageScope.User
                 );
 
                 packages.Add(
                     new Package(
-                        CoreTools.FormatAsName(elements[0]),
-                        elements[0],
-                        elements[1],
-                        SourcesHelper.Factory.GetSourceOrDefault(elements[2]),
+                        CoreTools.FormatAsName(id),
+                        id,
+                        version,
+                        source.Length is 0
+                            ? Properties.DefaultSource
+                            : SourcesHelper.Factory.GetSourceOrDefault(source),
                         this,
                         options
                     )
@@ -446,7 +422,8 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = Status.ExecutablePath,
-                    Arguments = Status.ExecutableCallArgs + " status -l",
+                    Arguments =
+                        Status.ExecutableCallArgs + " status -l" + UntruncatedTableOutput,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -472,7 +449,8 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = Status.ExecutablePath,
-                    Arguments = Status.ExecutableCallArgs + " list",
+                    Arguments =
+                        Status.ExecutableCallArgs + " list" + UntruncatedTableOutput,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,

@@ -4,6 +4,7 @@
         xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
         xmlns:vm="using:UniGetUI.Avalonia.ViewModels"
         xmlns:controls="using:UniGetUI.Avalonia.Views.Controls"
+        xmlns:infrastructure="using:UniGetUI.Avalonia.Infrastructure"
         xmlns:t="using:UniGetUI.Avalonia.MarkupExtensions"
         x:Class="UniGetUI.Avalonia.Views.PackageDetailsWindow"
         x:DataType="vm:PackageDetailsViewModel"
@@ -14,23 +15,55 @@
         Background="{DynamicResource AppDialogBackground}"
         Title="{t:Translate Package details}">
 
+    <dialogs:ImmersiveDialog.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="PackageDetailsExpanderBorderBrush" Color="#0F000000"/>
+                    <SolidColorBrush x:Key="PackageDetailsExpanderChevronHoverBackground" Color="#09000000"/>
+                    <SolidColorBrush x:Key="PackageDetailsExpanderChevronPressedBackground" Color="#06000000"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="PackageDetailsExpanderBorderBrush" Color="#19000000"/>
+                    <SolidColorBrush x:Key="PackageDetailsExpanderChevronHoverBackground" Color="#0FFFFFFF"/>
+                    <SolidColorBrush x:Key="PackageDetailsExpanderChevronPressedBackground" Color="#0AFFFFFF"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </dialogs:ImmersiveDialog.Resources>
+
     <dialogs:ImmersiveDialog.Styles>
+        <!-- The WinUI package-details page used an ordinary Expander here. Recreate its
+             standard card surfaces while preserving this port's existing geometry. -->
         <Style Selector="Expander#InstallOptionsExpander /template/ ToggleButton#ExpanderHeader">
             <Setter Property="Background" Value="{DynamicResource InstallOptionsSectionBackground}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-        </Style>
-        <!-- Fluent's Expander template applies direction-specific content borders to its own
-             template borders.  Clear every border owned by this Expander template; borders in
-             the hosted installation-options control are outside this template scope. -->
-        <Style Selector="Expander#InstallOptionsExpander /template/ Border">
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource PackageDetailsExpanderBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
         </Style>
         <Style Selector="Expander#InstallOptionsExpander /template/ ToggleButton#ExpanderHeader:pointerover /template/ Border#ToggleButtonBackground">
             <Setter Property="Background" Value="{DynamicResource InstallOptionsSectionBackground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource PackageDetailsExpanderBorderBrush}"/>
+        </Style>
+        <Style Selector="Expander#InstallOptionsExpander /template/ ToggleButton#ExpanderHeader:pressed /template/ Border#ToggleButtonBackground">
+            <Setter Property="Background" Value="{DynamicResource InstallOptionsSectionBackground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource PackageDetailsExpanderBorderBrush}"/>
+        </Style>
+        <Style Selector="Expander#InstallOptionsExpander /template/ Border#ExpanderContent">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource PackageDetailsExpanderBorderBrush}"/>
+        </Style>
+        <Style Selector="Expander#InstallOptionsExpander /template/ Border#ExpandCollapseChevronBorder">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
         </Style>
         <Style Selector="Expander#InstallOptionsExpander /template/ ToggleButton#ExpanderHeader:pointerover /template/ Border#ExpandCollapseChevronBorder">
-            <Setter Property="Background" Value="{DynamicResource SettingsCardHoverBackground}"/>
+            <Setter Property="Background" Value="{DynamicResource PackageDetailsExpanderChevronHoverBackground}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        <Style Selector="Expander#InstallOptionsExpander /template/ ToggleButton#ExpanderHeader:pressed /template/ Border#ExpandCollapseChevronBorder">
+            <Setter Property="Background" Value="{DynamicResource PackageDetailsExpanderChevronPressedBackground}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
         </Style>
 
         <!-- Tag pill -->
@@ -56,10 +89,12 @@
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="14"/>
         </Style>
         <Style Selector="Button.action-chevron">
-            <Setter Property="Width" Value="34"/>
+            <Setter Property="Width" Value="30"/>
             <Setter Property="Height" Value="40"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Margin" Value="0"/>
@@ -68,13 +103,6 @@
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
-        <Style Selector="Button.action-main:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource PackageActionHoverBackground}"/>
-        </Style>
-        <Style Selector="Button.action-chevron:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource PackageActionHoverBackground}"/>
-        </Style>
-
         <!-- Screenshot pip dots (Button hosting an Ellipse) -->
         <Style Selector="Button.pip">
             <Setter Property="Background" Value="Transparent"/>
@@ -87,26 +115,28 @@
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
         <Style Selector="Ellipse.pip">
-            <Setter Property="Width" Value="8"/>
-            <Setter Property="Height" Value="8"/>
+            <!-- WinUI carousel indicators use a compact 2:1 inactive/active diameter ratio. -->
+            <Setter Property="Width" Value="5"/>
+            <Setter Property="Height" Value="5"/>
             <Setter Property="Fill" Value="{DynamicResource TextFillColorTertiaryBrush}"/>
         </Style>
         <Style Selector="Ellipse.pip.active">
-            <Setter Property="Fill" Value="{DynamicResource AccentFillColorDefaultBrush}"/>
+            <Setter Property="Fill" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
             <Setter Property="Width" Value="10"/>
             <Setter Property="Height" Value="10"/>
         </Style>
 
         <!-- Screenshot prev/next chevrons (overlay on hover) -->
         <Style Selector="Button.carousel-nav">
-            <Setter Property="Width" Value="32"/>
-            <Setter Property="Height" Value="48"/>
+            <!-- Match the WinUI FlipView navigation button used by the former Windows UI. -->
+            <Setter Property="Width" Value="16"/>
+            <Setter Property="Height" Value="38"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Background" Value="#80000000"/>
+            <Setter Property="Background" Value="{DynamicResource CarouselNavigationBackground}"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Foreground" Value="{DynamicResource CarouselNavigationForeground}"/>
+            <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="Opacity" Value="0"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
@@ -115,6 +145,10 @@
                     <DoubleTransition Property="Opacity" Duration="0:0:0.15"/>
                 </Transitions>
             </Setter>
+        </Style>
+        <Style Selector="Button.carousel-nav:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource CarouselNavigationHoverBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CarouselNavigationHoverForeground}"/>
         </Style>
         <Style Selector="Border#ScreenshotsBorder:pointerover Button.carousel-nav">
             <Setter Property="Opacity" Value="0.9"/>
@@ -201,6 +235,7 @@
 
                     <!-- ── Action button (split: main + chevron dropdown) ── -->
                     <Grid x:Name="ActionsPanel"
+                          Width="250"
                           VerticalAlignment="Top"
                           HorizontalAlignment="Left"
                           ColumnSpacing="0">
@@ -219,7 +254,7 @@
                             <Button x:Name="ActionVariantsButton"
                                     Grid.Column="2"
                                     Classes="accent action-chevron"
-                                    automation:AutomationProperties.Name="{Binding MainActionLabel}">
+                                    automation:AutomationProperties.Name="{t:Translate More options}">
                                 <Path Data="M 0,0 L 4,4 L 8,0"
                                       Stroke="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
                                       StrokeThickness="1.5"
@@ -244,8 +279,8 @@
                                   IsExpanded="False"
                                   CornerRadius="8"
                                   Padding="0"
-                                  BorderThickness="0"
-                                  Background="Transparent">
+                                  Background="Transparent"
+                                  automation:AutomationProperties.Name="{Binding LabelInstallationOptions}">
                             <Expander.Header>
                                 <Grid ColumnDefinitions="Auto,*,Auto"
                                       ColumnSpacing="12">
@@ -284,32 +319,29 @@
                                 Spacing="8">
                         <Border CornerRadius="8" ClipToBounds="True"
                                 x:Name="ScreenshotsBorder"
-                                Height="320">
+                                MinHeight="130"
+                                controls:SmoothScrollManager.HandlesPrecisionWheelInput="True">
                             <Panel>
                                 <!-- Neutral WinUI fallback only behind actual screenshots; the empty-state
                                      banner below composites over the themed window background instead. -->
                                 <Border Background="{DynamicResource ScreenshotLetterboxBackground}"
                                         IsVisible="{Binding HasScreenshots}"/>
-                                <Carousel x:Name="ScreenshotsCarousel"
-                                          IsVisible="{Binding HasScreenshots}"
-                                          ItemsSource="{Binding Screenshots}"
-                                          SelectedIndex="{Binding SelectedScreenshotIndex, Mode=TwoWay}">
-                                    <Carousel.PageTransition>
-                                        <PageSlide Duration="0:0:0.25" Orientation="Horizontal"/>
-                                    </Carousel.PageTransition>
-                                    <Carousel.ItemTemplate>
-                                        <DataTemplate>
-                                            <Image Source="{Binding}"
-                                                   Stretch="Uniform"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"/>
-                                        </DataTemplate>
-                                    </Carousel.ItemTemplate>
-                                </Carousel>
+                                <!-- Render screenshots as one continuous horizontal strip. The
+                                     strip itself owns the physical position; touchpad input and
+                                     snap animations both manipulate that same coordinate. -->
+                                <Grid x:Name="ScreenshotViewport"
+                                      IsVisible="{Binding HasScreenshots}"
+                                      ClipToBounds="True">
+                                    <StackPanel x:Name="ScreenshotStrip"
+                                                Orientation="Horizontal"
+                                                HorizontalAlignment="Left"
+                                                VerticalAlignment="Stretch"
+                                                IsHitTestVisible="True"/>
+                                </Grid>
 
                                 <!-- Contributor banner shown when no screenshots -->
                                 <Grid IsVisible="{Binding !HasScreenshots}"
-                                      Background="{DynamicResource AppDialogDarkBackground}"
+                                      Background="{DynamicResource ScreenshotEmptyBackground}"
                                       ColumnDefinitions="*,Auto"
                                       Margin="0"
                                       ColumnSpacing="12">
@@ -331,14 +363,25 @@
                                         Classes="carousel-nav"
                                         HorizontalAlignment="Left"
                                         Margin="6,0,0,0"
-                                        Content="‹"
-                                        IsVisible="{Binding HasScreenshots}"/>
+                                        IsVisible="{Binding HasScreenshots}"
+                                        automation:AutomationProperties.Name="{t:Translate Previous screenshot}">
+                                    <!-- WinUI FlipView's EDD9 CaretLeftSolid8, expressed as geometry so it
+                                         stays identical on systems without Segoe Fluent Icons. -->
+                                    <Path Data="M 5,0 L 0,4 L 5,8 Z"
+                                          Width="5" Height="8"
+                                          Fill="{Binding $parent[Button].Foreground}"/>
+                                </Button>
                                 <Button x:Name="NextScreenshotButton"
                                         Classes="carousel-nav"
                                         HorizontalAlignment="Right"
                                         Margin="0,0,6,0"
-                                        Content="›"
-                                        IsVisible="{Binding HasScreenshots}"/>
+                                        IsVisible="{Binding HasScreenshots}"
+                                        automation:AutomationProperties.Name="{t:Translate Next screenshot}">
+                                    <!-- WinUI FlipView's EDDA CaretRightSolid8 glyph. -->
+                                    <Path Data="M 0,0 L 5,4 L 0,8 Z"
+                                          Width="5" Height="8"
+                                          Fill="{Binding $parent[Button].Foreground}"/>
+                                </Button>
                             </Panel>
                         </Border>
 

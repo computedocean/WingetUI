@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text;
 using UniGetUI.Core.Classes;
 using UniGetUI.Core.Data;
@@ -9,6 +11,7 @@ using UniGetUI.PackageEngine.AgentBroker;
 using UniGetUI.PackageEngine.Classes.Packages.Classes;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.Operations.Reboot;
 using UniGetUI.PackageEngine.PackageClasses;
 using UniGetUI.PackageEngine.PackageLoader;
 using UniGetUI.PackageEngine.Serializable;
@@ -16,7 +19,6 @@ using UniGetUI.PackageOperations;
 using BrokerClient = Devolutions.Now.Policy.Client.BrokerClient;
 using BrokerClientErrorKind = Devolutions.Now.Policy.Client.BrokerClientErrorKind;
 using BrokerClientException = Devolutions.Now.Policy.Client.BrokerClientException;
-using BrokerClientOptions = Devolutions.Now.Policy.Client.BrokerClientOptions;
 using BrokerDecision = Devolutions.Now.Policy.Api.Decision;
 using BrokerElevation = Devolutions.Now.Policy.Api.Elevation;
 using BrokerEventFrame = Devolutions.Now.Policy.Api.EventFrame;
@@ -27,6 +29,7 @@ using BrokerOperationStatus = Devolutions.Now.Policy.Api.OperationStatus;
 using BrokerStatusResponse = Devolutions.Now.Policy.Api.StatusResponse;
 using OperationCancelQuery = Devolutions.Now.Policy.Client.OperationCancelQuery;
 using OperationStatusQuery = Devolutions.Now.Policy.Client.OperationStatusQuery;
+using PackageOperationRequest = Devolutions.Now.Policy.Client.PackageOperationRequest;
 #if WINDOWS
 using UniGetUI.PackageEngine.Managers.WingetManager;
 #endif
@@ -37,10 +40,11 @@ namespace UniGetUI.PackageEngine.Operations
     {
         /// <summary>
         /// Raised when an operation that must be routed through the Devolutions Agent broker
-        /// cannot proceed because the broker is not available. The payload is a user-facing
-        /// error message. The UI layer subscribes to this to show an error message box.
+        /// cannot proceed because the broker is not available, or does not accept this client.
+        /// The payload is the user-facing title and message. The UI layer subscribes to this to
+        /// show an error message box.
         /// </summary>
-        public static event EventHandler<string>? BrokerUnavailable;
+        public static event EventHandler<BrokerFailureDescription>? BrokerUnavailable;
 
         /// <summary>
         /// Test seam: substitutes the transport used to reach the agent broker so tests can
@@ -76,6 +80,9 @@ namespace UniGetUI.PackageEngine.Operations
         public readonly IPackage Package;
         public readonly InstallOptions Options;
         public readonly OperationType Role;
+        public bool FailedBecauseApplicationRunning { get; private set; }
+        private IReadOnlyList<string> _closeRunningAppProcessNames = [];
+        private readonly List<string> _brokerKillBeforeOperationAdded = [];
 
         protected abstract Task HandleSuccess();
         protected abstract Task HandleFailure();
@@ -129,8 +136,25 @@ namespace UniGetUI.PackageEngine.Operations
                 if (status is OperationStatus.Canceled)
                     Package.SetTag(PackageTag.Default);
             };
+            OperationSucceeded += (_, _) => RecordPendingRebootState();
             OperationSucceeded += (_, _) => HandleSuccess();
             OperationFailed += (_, _) => HandleFailure();
+        }
+
+        private void RecordPendingRebootState()
+        {
+            try
+            {
+                if (SystemRestartRequired)
+                    PendingRebootStore.Record(Package, Role);
+                else if (Role is OperationType.Uninstall)
+                    PendingRebootStore.Clear(Package.Manager.Id, Package.Id);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Failed to update the pending-reboot store");
+                Logger.Warn(ex);
+            }
         }
 
         public static bool HasPendingOperation(IPackage package, OperationType role)
@@ -145,8 +169,7 @@ namespace UniGetUI.PackageEngine.Operations
         }
 
         private bool RequiresAdminRights() =>
-            !Settings.Get(Settings.K.ProhibitElevation)
-            && (Package.OverridenOptions.RunAsAdministrator is true || Options.RunAsAdministrator);
+            BrokerRequestValidator.RequestsElevation(Package, Options);
 
         private volatile int _ranElevated = -1;
 
@@ -187,6 +210,7 @@ namespace UniGetUI.PackageEngine.Operations
 
         protected override void ApplyRetryAction(string retryMode)
         {
+            ClearCloseRunningAppAttempt();
             switch (retryMode)
             {
                 case RetryMode.Retry_AsAdmin:
@@ -197,6 +221,9 @@ namespace UniGetUI.PackageEngine.Operations
                     break;
                 case RetryMode.Retry_SkipIntegrity:
                     Options.SkipHashCheck = true;
+                    break;
+                case RetryMode.Retry_CloseRunningApp:
+                    QueueCloseRunningAppAttempt();
                     break;
                 case RetryMode.Retry:
                     break;
@@ -296,13 +323,74 @@ namespace UniGetUI.PackageEngine.Operations
         /// </summary>
         protected override async Task<OperationVeredict> PerformOperation()
         {
+            // Observational stage marker only: structured progress starts as indeterminate
+            // with the role's stage label (e.g. "Installing..."). Re-reported on every
+            // attempt, so AutoRetry restarts also reset any previous speed. This changes
+            // nothing about execution, retries, elevation, proxy, or result handling.
+            ReportProgress(
+                Role switch
+                {
+                    OperationType.Install => OperationProgress.ForStage(
+                        OperationProgressStage.Installing
+                    ),
+                    OperationType.Update => OperationProgress.ForStage(
+                        OperationProgressStage.Updating
+                    ),
+                    OperationType.Uninstall => OperationProgress.ForStage(
+                        OperationProgressStage.Uninstalling
+                    ),
+                    _ => OperationProgress.Unknown,
+                }
+            );
+
             if (!ShouldUseAgentBroker())
             {
-                return await base.PerformOperation();
+                if (!Package.Manager.Capabilities.SerializesOperations)
+                    return await base.PerformOperation();
+
+                SemaphoreSlim gate = ManagerOperationGates.GetOrAdd(
+                    Package.Manager.Name,
+                    _ => new SemaphoreSlim(1, 1)
+                );
+                if (!await gate.WaitAsync(0))
+                {
+                    Line(
+                        CoreTools.Translate(
+                            "Waiting for another {0} operation to finish...",
+                            Package.Manager.DisplayName
+                        ),
+                        LineType.ProgressIndicator
+                    );
+                    IsWaitingForManager = true;
+                    try
+                    {
+                        await gate.WaitAsync(CancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return OperationVeredict.Canceled;
+                    }
+                    finally
+                    {
+                        IsWaitingForManager = false;
+                    }
+                }
+
+                try
+                {
+                    return await base.PerformOperation();
+                }
+                finally
+                {
+                    gate.Release();
+                }
             }
 
             return await PerformBrokerOperation();
         }
+
+        private static readonly ConcurrentDictionary<string, SemaphoreSlim> ManagerOperationGates =
+            new();
 
         /// <summary>
         /// Determines whether this operation should be routed through the agent broker.
@@ -343,6 +431,16 @@ namespace UniGetUI.PackageEngine.Operations
             _brokerStreamedOutput = null;
             Line("Routing operation through Devolutions Agent broker...", LineType.Information);
 
+            if (BrokerRequestBuilder.IsUnsupportedAllowClobberRetry(Package, Role))
+            {
+                Line("The module conflicts with commands that are already installed; the broker cannot retry with -AllowClobber.", LineType.Error);
+                return FailWith(new BrokerFailureDescription(
+                    CoreTools.Translate("The module conflicts with installed commands"),
+                    CoreTools.Translate(
+                        "{0} provides commands that another installed module already provides. Installing it anyway requires the -AllowClobber option, which cannot be used through the Devolutions Agent.",
+                        Package.Name)));
+            }
+
             // Apply manager-specific elevation requirements (e.g. WinGet's detection of
             // machine-scope or elevation-requiring installers) before deciding the requested
             // elevation, mirroring the local execution path where this runs as part of
@@ -360,12 +458,42 @@ namespace UniGetUI.PackageEngine.Operations
                 return HandleBrokerUnavailable();
             }
 
+            // Fetch the capabilities up front: the broker requires an authenticated client for
+            // them, so this is where an unsigned or modified build is turned away. The client
+            // caches the response for the request below.
+            if (await ProbeBrokerCapabilities(client) is { } capabilitiesFailure)
+            {
+                return capabilitiesFailure;
+            }
+
             // Resolve the install location the same way the local WinGet path does, so the
             // portable-install safeguard (registry-detected location) is not bypassed.
             string? effectiveInstallLocation = GetBrokerEffectiveInstallLocation();
 
             // Build the broker request.
-            var request = BrokerRequestBuilder.Build(Package, Options, Role, effectiveInstallLocation);
+            PackageOperationRequest request;
+            try
+            {
+                request = BrokerRequestBuilder.Build(Package, Options, Role, effectiveInstallLocation);
+            }
+            catch (BrokerRequestValidationException ex)
+            {
+                foreach (string issue in ex.Issues)
+                {
+                    Line(issue, LineType.Error);
+                }
+
+                Logger.Warn($"[AgentBroker] Request for {Package.Id} not sent: {ex.Message}");
+                return FailWith(BrokerFailureDescriber.DescribeValidation(ex.Issues));
+            }
+            catch (InvalidOperationException ex)
+            {
+                // A value that would be read as a command-line option or split into further
+                // arguments; the broker would reject it as well.
+                Line(ex.Message, LineType.Error);
+                Logger.Warn($"[AgentBroker] Request for {Package.Id} not sent: {ex.Message}");
+                return FailWith(BrokerFailureDescriber.DescribeValidation([ex.Message]));
+            }
 
             Line($"Sending request to broker: {request.RequestId}", LineType.VerboseDetails);
             Line($"  Package: {request.Package.Id} ({request.Operation})", LineType.VerboseDetails);
@@ -381,11 +509,10 @@ namespace UniGetUI.PackageEngine.Operations
 
                 if (execution.Decision.Decision != BrokerDecision.Allow)
                 {
-                    string denialReason = execution.Decision.Reason ?? CoreTools.Translate("No reason provided");
-                    Line($"Operation denied by policy: {denialReason}", LineType.Error);
-                    Metadata.FailureTitle = CoreTools.Translate("Operation denied by policy");
-                    Metadata.FailureMessage = denialReason;
-                    return OperationVeredict.Failure;
+                    Line(
+                        $"Operation denied by policy: rule={execution.Decision.RuleId}, reason={execution.Decision.Reason}",
+                        LineType.Error);
+                    return FailWith(BrokerFailureDescriber.DescribeDenial(execution.Decision));
                 }
 
                 if (execution.Operation is null)
@@ -458,10 +585,55 @@ namespace UniGetUI.PackageEngine.Operations
             {
                 Line($"Broker operation failed: {ex.Message}", LineType.Error);
                 Logger.Error($"[AgentBroker] Broker operation failed: {ex}");
-                Metadata.FailureTitle = CoreTools.Translate(GetBrokerFailureTitle(ex.Kind));
-                Metadata.FailureMessage = ex.Message;
+                return FailWith(BrokerFailureDescriber.Describe(ex));
+            }
+        }
+
+        /// <summary>
+        /// Fetches the broker capabilities before the request is built. Returns the failure
+        /// veredict when the broker cannot be used, or null to continue.
+        /// </summary>
+        private async Task<OperationVeredict?> ProbeBrokerCapabilities(BrokerClient client)
+        {
+            try
+            {
+                await client.GetCapabilities(CancellationToken);
+                return null;
+            }
+            catch (OperationCanceledException) when (CancellationToken.IsCancellationRequested)
+            {
+                Line("Broker operation was canceled.", LineType.Information);
+                return OperationVeredict.Canceled;
+            }
+            catch (BrokerClientException ex) when (BrokerFailureDescriber.DescribeCapabilitiesAccessFailure(ex) is { } accessFailure)
+            {
+                // The broker is running but does not accept this client: report it as
+                // unavailable for this copy of UniGetUI, with the reason, instead of a
+                // generic failure on the operation request.
+                Line($"The agent broker did not accept this client: {ex.Message}", LineType.Error);
+                Logger.Error($"[AgentBroker] Capabilities request was refused (HTTP {ex.StatusCode}, {ex.BrokerError?.Code}): {ex.Message}");
+                FailWith(accessFailure);
+                BrokerUnavailable?.Invoke(this, accessFailure);
                 return OperationVeredict.Failure;
             }
+            catch (BrokerClientException ex) when (ex.Kind is BrokerClientErrorKind.BrokerUnavailable)
+            {
+                Logger.Error($"[AgentBroker] Broker became unavailable while reading its capabilities: {ex}");
+                return HandleBrokerUnavailable();
+            }
+            catch (BrokerClientException ex)
+            {
+                Line($"Could not read the broker capabilities: {ex.Message}", LineType.Error);
+                Logger.Error($"[AgentBroker] Capabilities request failed: {ex}");
+                return FailWith(BrokerFailureDescriber.Describe(ex));
+            }
+        }
+
+        private OperationVeredict FailWith(BrokerFailureDescription description)
+        {
+            Metadata.FailureTitle = description.Title;
+            Metadata.FailureMessage = description.Message;
+            return OperationVeredict.Failure;
         }
 
         /// <summary>
@@ -762,7 +934,7 @@ namespace UniGetUI.PackageEngine.Operations
                 // the manager's result parser, like the local process path does. Only
                 // real process output is passed; internal informational lines are not.
                 var veredict = await GetProcessVeredict(status.ExitCode ?? -1, _brokerStreamedOutput ?? []);
-                if (veredict is OperationVeredict.Success)
+                if (veredict is OperationVeredict.Success or OperationVeredict.RestartRequired)
                 {
                     Line("Operation completed successfully via agent broker.", LineType.Information);
                 }
@@ -775,9 +947,13 @@ namespace UniGetUI.PackageEngine.Operations
             }
 
             // Operation failed — surface a user-visible error.
-            string reason = status.Message ?? $"Exit code: {status.ExitCode}";
+            string reason = string.IsNullOrWhiteSpace(status.Message)
+                ? CoreTools.Translate(
+                    "The package manager run by the Devolutions Agent reported an error (exit code {0}).",
+                    status.ExitCode?.ToString() ?? "?")
+                : status.Message;
             Line($"Operation failed via broker: {reason}", LineType.Error);
-            Metadata.FailureTitle = CoreTools.Translate("Operation denied or failed via broker");
+            Metadata.FailureTitle = CoreTools.Translate("Operation failed via broker");
             Metadata.FailureMessage = reason;
             return OperationVeredict.Failure;
         }
@@ -796,7 +972,7 @@ namespace UniGetUI.PackageEngine.Operations
                 "The Devolutions Agent broker is not available. The operation cannot be performed. Please ensure the Devolutions Agent is installed and running.");
             Metadata.FailureTitle = CoreTools.Translate("Agent broker unavailable");
             Metadata.FailureMessage = message;
-            BrokerUnavailable?.Invoke(this, message);
+            BrokerUnavailable?.Invoke(this, new BrokerFailureDescription(Metadata.FailureTitle, message));
             return OperationVeredict.Failure;
         }
 
@@ -891,23 +1067,9 @@ namespace UniGetUI.PackageEngine.Operations
         }
 
         private static BrokerClient CreateBrokerClient(bool requestedElevation) =>
-            new(
-                new BrokerClientOptions
-                {
-                    Transport = BrokerTransportFactory?.Invoke(),
-                    RequestedElevation = requestedElevation
-                        ? BrokerElevation.Elevated
-                        : BrokerElevation.Standard,
-                    EffectiveUser = GetEffectiveUser(),
-                    ClientExecutablePath = Environment.ProcessPath,
-                    ClientVersion =
-                        System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString()
-                        ?? "0.0.0",
-                }
-            )
-            {
-                Trace = message => Logger.Info($"[AgentBroker] {message}"),
-            };
+            BrokerClientFactory.Create(
+                requestedElevation ? BrokerElevation.Elevated : BrokerElevation.Standard,
+                BrokerTransportFactory?.Invoke());
 
         private static string GetEffectiveUser()
         {
@@ -918,15 +1080,6 @@ namespace UniGetUI.PackageEngine.Operations
 
             return $"{Environment.UserDomainName}\\{Environment.UserName}";
         }
-
-        private static string GetBrokerFailureTitle(BrokerClientErrorKind kind) =>
-            kind switch
-            {
-                BrokerClientErrorKind.PolicyDenied => "Operation denied by policy",
-                BrokerClientErrorKind.UnsupportedCapability => "Operation unsupported by broker",
-                BrokerClientErrorKind.Timeout => "Broker communication error",
-                _ => "Operation failed via broker",
-            };
 
         protected sealed override Task<OperationVeredict> GetProcessVeredict(
             int ReturnCode,
@@ -940,14 +1093,162 @@ namespace UniGetUI.PackageEngine.Operations
                 ReturnCode
             );
 
+            FailedBecauseApplicationRunning = false;
             if (veredict is OperationVeredict.Failure)
             {
                 if (Role is OperationType.Update)
                     ExplainNotApplicableUpdate(Output, ReturnCode);
                 ExplainInstallerHashMismatch(ReturnCode);
+                ExplainApplicationCurrentlyRunning(Output, ReturnCode);
+                ExplainFileInUse(Output);
             }
 
             return Task.FromResult(veredict);
+        }
+
+        public static bool CanRetryClosingRunningApp(PackageOperation operation)
+        {
+            if (!operation.FailedBecauseApplicationRunning)
+                return false;
+            return GetRunningCloseProcessNames(operation.Package).Count > 0;
+        }
+
+        internal static IReadOnlyList<string> GuessCloseProcessNames(IPackage package)
+        {
+            var names = new List<string>();
+            AddProcessName(names, package.Name);
+            int separator = package.Id.LastIndexOf('.');
+            string idTail = separator >= 0 ? package.Id[(separator + 1)..] : package.Id;
+            AddProcessName(names, idTail);
+            return names;
+        }
+
+        internal static IReadOnlyList<string> GetRunningCloseProcessNames(IPackage package)
+        {
+            var running = new List<string>();
+            foreach (var name in GuessCloseProcessNames(package))
+            {
+                if (HasRunningProcess(name))
+                    running.Add(name);
+            }
+            return running;
+        }
+
+        private static void AddProcessName(List<string> names, string? candidate)
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+                return;
+            string name = candidate.Trim();
+            if (name.IndexOfAny([' ', '\\', '/', ':']) >= 0)
+                return;
+            if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                name = name[..^4];
+            if (IsCurrentProcessName(name))
+                return;
+            if (names.Exists(existing => existing.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                return;
+            names.Add(name);
+        }
+
+        private static bool IsCurrentProcessName(string name)
+        {
+            using Process currentProcess = Process.GetCurrentProcess();
+            return name.Equals(currentProcess.ProcessName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool HasRunningProcess(string name)
+        {
+            var processes = Process.GetProcessesByName(name);
+            try
+            {
+                return processes.Length > 0;
+            }
+            finally
+            {
+                foreach (var process in processes)
+                    process.Dispose();
+            }
+        }
+
+        private void QueueCloseRunningAppAttempt()
+        {
+            var names = GetRunningCloseProcessNames(Package);
+            if (names.Count == 0)
+                return;
+
+            if (IsBrokerEligible(Package))
+            {
+                AddBrokerKillBeforeOperation(names);
+                return;
+            }
+
+            _closeRunningAppProcessNames = names;
+        }
+
+        private void AddBrokerKillBeforeOperation(IReadOnlyList<string> names)
+        {
+            foreach (var processName in names)
+            {
+                if (
+                    Options.KillBeforeOperation.Exists(existing =>
+                        existing.Equals(processName, StringComparison.OrdinalIgnoreCase)
+                    )
+                )
+                    continue;
+
+                Options.KillBeforeOperation.Add(processName);
+                _brokerKillBeforeOperationAdded.Add(processName);
+            }
+        }
+
+        private void ClearCloseRunningAppAttempt()
+        {
+            _closeRunningAppProcessNames = [];
+            foreach (var processName in _brokerKillBeforeOperationAdded)
+                Options.KillBeforeOperation.Remove(processName);
+            _brokerKillBeforeOperationAdded.Clear();
+        }
+
+        protected override IReadOnlyList<InnerOperation> GetAttemptPreOperations()
+        {
+            var ops = new List<InnerOperation>(_closeRunningAppProcessNames.Count);
+            foreach (var processName in _closeRunningAppProcessNames)
+            {
+                ops.Add(
+                    new InnerOperation(
+                        new KillProcessOperation(processName, forceKill: true),
+                        mustSucceed: false
+                    )
+                );
+            }
+            return ops;
+        }
+
+        private void ExplainApplicationCurrentlyRunning(List<string> output, int returnCode)
+        {
+#if WINDOWS
+            if (Package.Manager is not WinGet winget)
+                return;
+            if (!winget.ReportedApplicationCurrentlyRunning(returnCode))
+                return;
+
+            FailedBecauseApplicationRunning = true;
+            Metadata.FailureMessage = CoreTools.Translate(
+                "{package} is currently running. Close it and try again",
+                new Dictionary<string, object?> { { "package", Package.Name } }
+            );
+#endif
+        }
+
+        private void ExplainFileInUse(List<string> output)
+        {
+            if (!output.Any(line => line.Contains("[WinError 32]", StringComparison.Ordinal)))
+                return;
+
+            Metadata.FailureMessage = CoreTools.Translate(
+                "A file of {package} is in use by another program. Close any program that may be using it, then try again",
+                new Dictionary<string, object?> { { "package", Package.Name } }
+            );
         }
 
         private void ExplainNotApplicableUpdate(List<string> output, int returnCode)
@@ -1009,22 +1310,29 @@ namespace UniGetUI.PackageEngine.Operations
         /// for installs (and non-WinGet updates) the configured custom location; for
         /// uninstalls nothing.
         /// </summary>
-        private string? GetBrokerEffectiveInstallLocation()
+        private string? GetBrokerEffectiveInstallLocation() =>
+            GetBrokerInstallLocation(Package, Options, Role);
+
+        /// <summary>
+        /// The install location a brokered operation sends for the given package, options and role.
+        /// Shared with the installation options dialog so that it checks the same value.
+        /// </summary>
+        public static string? GetBrokerInstallLocation(IPackage package, InstallOptions options, OperationType role)
         {
-            switch (Role)
+            switch (role)
             {
                 case OperationType.Update:
 #if WINDOWS
-                    if (IsWinGetManager(Package.Manager))
+                    if (IsWinGetManager(package.Manager))
                     {
-                        return WinGetPkgOperationHelper.GetEffectiveUpdateLocation(Package, Options);
+                        return WinGetPkgOperationHelper.GetEffectiveUpdateLocation(package, options);
                     }
 #endif
                     goto case OperationType.Install;
                 case OperationType.Install:
-                    return string.IsNullOrWhiteSpace(Options.CustomInstallLocation)
+                    return string.IsNullOrWhiteSpace(options.CustomInstallLocation)
                         ? null
-                        : Options.CustomInstallLocation;
+                        : options.CustomInstallLocation;
                 default:
                     return null;
             }
@@ -1163,8 +1471,22 @@ namespace UniGetUI.PackageEngine.Operations
 
             if (role is OperationType.Update && opts.UninstallPreviousVersionsOnUpdate)
             {
+                var capabilities = package.Manager.Capabilities;
+                string? updatedScope =
+                    capabilities.SupportsCustomScopes
+                    && capabilities.SupportsCustomScopesOnUpdate
+                    && opts.InstallationScope.Length > 0
+                        ? opts.InstallationScope
+                        : package.OverridenOptions.Scope;
+
                 var matches = InstalledPackagesLoader.Instance.Packages.Where(p =>
-                    p.IsEquivalentTo(package) && IsSupersededBy(p, package)
+                    p.IsEquivalentTo(package)
+                    && (
+                        string.IsNullOrEmpty(p.OverridenOptions.Scope)
+                        || string.IsNullOrEmpty(updatedScope)
+                        || p.OverridenOptions.Scope == updatedScope
+                    )
+                    && IsSupersededBy(p, package)
                 );
                 foreach (var match in matches)
                 {

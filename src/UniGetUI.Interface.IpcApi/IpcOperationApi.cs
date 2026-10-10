@@ -30,6 +30,7 @@ public class IpcOperationInfo
     public IpcPackageInfo? Package { get; set; }
     public string ManagerName { get; set; } = "";
     public string SourceName { get; set; } = "";
+    public bool SystemRestartRequired { get; set; }
 }
 
 public sealed class IpcOperationDetails : IpcOperationInfo
@@ -170,6 +171,7 @@ public static class IpcOperationApi
             Package = info.Package,
             ManagerName = info.ManagerName,
             SourceName = info.SourceName,
+            SystemRestartRequired = info.SystemRestartRequired,
             Output = tracked.GetOutputSnapshot(),
         };
     }
@@ -311,6 +313,7 @@ public static class IpcOperationApi
             Package = GetOperationPackage(operation),
             ManagerName = GetManagerName(operation),
             SourceName = GetSourceName(operation),
+            SystemRestartRequired = operation.SystemRestartRequired,
         };
     }
 
@@ -371,7 +374,7 @@ public static class IpcOperationApi
             return null;
         }
 
-        int index = AbstractOperation.OperationQueue.IndexOf(operation);
+        int index = AbstractOperation.IndexInQueue(operation);
         if (index < 0)
         {
             return null;
@@ -415,6 +418,11 @@ public static class IpcOperationApi
                     retryModes.Add("retry-no-hash-check");
                 }
 
+                if (PackageOperation.CanRetryClosingRunningApp(packageOperation))
+                {
+                    retryModes.Add("retry-close-running-app");
+                }
+
                 break;
             case SourceOperation sourceOperation when !sourceOperation.ForceAsAdministrator:
                 retryModes.Add("retry-as-admin");
@@ -437,6 +445,7 @@ public static class IpcOperationApi
             "retry-as-admin" => AbstractOperation.RetryMode.Retry_AsAdmin,
             "retry-interactive" => AbstractOperation.RetryMode.Retry_Interactive,
             "retry-no-hash-check" => AbstractOperation.RetryMode.Retry_SkipIntegrity,
+            "retry-close-running-app" => AbstractOperation.RetryMode.Retry_CloseRunningApp,
             _ => throw new InvalidOperationException(
                 $"Unsupported retry mode \"{retryMode}\"."
             ),
@@ -453,6 +462,8 @@ public static class IpcOperationApi
                 => "retry-interactive",
             var mode when mode == AbstractOperation.RetryMode.Retry_SkipIntegrity
                 => "retry-no-hash-check",
+            var mode when mode == AbstractOperation.RetryMode.Retry_CloseRunningApp
+                => "retry-close-running-app",
             _ => retryMode,
         };
     }

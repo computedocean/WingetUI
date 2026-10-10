@@ -5,15 +5,15 @@ using UniGetUI.PackageEngine.PackageClasses;
 
 namespace UniGetUI.Avalonia.Views.Controls;
 
-public static class PackageInstallerHostLoader
+public static class PackageRowValueLoader
 {
     public static readonly AttachedProperty<bool> TrackProperty =
-        AvaloniaProperty.RegisterAttached<Control, bool>("Track", typeof(PackageInstallerHostLoader));
+        AvaloniaProperty.RegisterAttached<Control, bool>("Track", typeof(PackageRowValueLoader));
 
     public static void SetTrack(Control control, bool value) => control.SetValue(TrackProperty, value);
     public static bool GetTrack(Control control) => control.GetValue(TrackProperty);
 
-    static PackageInstallerHostLoader()
+    static PackageRowValueLoader()
     {
         TrackProperty.Changed.AddClassHandler<Control>((control, e) =>
         {
@@ -42,6 +42,9 @@ public static class PackageInstallerHostLoader
 
     private static void TryLoad(Control control)
     {
-        if (control.DataContext is PackageWrapper wrapper) wrapper.EnsureInstallerHostLoaded();
+        if (control.DataContext is not PackageWrapper wrapper) return;
+
+        wrapper.EnsureInstallerHostLoaded();
+        wrapper.EnsureDownloadSizeLoaded();
     }
 }

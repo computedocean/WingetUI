@@ -49,7 +49,10 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = Manager.Status.ExecutablePath,
-                    Arguments = Manager.Status.ExecutableCallArgs + " bucket list",
+                    Arguments =
+                        Manager.Status.ExecutableCallArgs
+                        + " bucket list"
+                        + Scoop.UntruncatedTableOutput,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     RedirectStandardInput = true,
@@ -74,81 +77,48 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
         internal IReadOnlyList<IManagerSource> ParseSources(IEnumerable<string> lines)
         {
             List<ManagerSource> sources = [];
-            bool dashesPassed = false;
+            IReadOnlyList<int>? columns = null;
 
-            foreach (string line in lines)
+            foreach (string rawLine in lines)
             {
+                string line = ScoopTable.StripAnsiSequences(rawLine);
+
+                if (columns is null)
+                {
+                    columns = ScoopTable.ReadColumnStarts(line);
+                    continue;
+                }
+
+                if (columns.Count < 4 || string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                string name = ScoopTable.ReadColumn(line, columns, 0);
+                string source = ScoopTable.ReadColumn(line, columns, 1);
+                string updated = ScoopTable.ReadColumn(line, columns, 2);
+                string manifests = ScoopTable.ReadColumn(line, columns, 3);
+
+                if (name.Length is 0 || source.Length is 0 || manifests.Length is 0)
+                {
+                    continue;
+                }
+
                 try
                 {
-                    if (!dashesPassed)
-                    {
-                        if (line.Contains("---"))
-                        {
-                            dashesPassed = true;
-                        }
+                    Uri url = BuildSourceUrl(name, source);
 
-                        continue;
-                    }
-
-                    if (string.IsNullOrWhiteSpace(line))
-                    {
-                        continue;
-                    }
-
-                    string[] elements = Regex
-                        .Replace(
-                            Regex.Replace(line, "[1234567890 :.-][AaPp][Mm][\\W]", "").Trim(),
-                            " {2,}",
-                            " "
-                        )
-                        .Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                    if (elements.Length < 5)
-                    {
-                        continue;
-                    }
-
-                    if (
-                        !elements[1].Contains("https://")
-                        && !elements[1].Contains("http://")
-                    )
-                    {
-                        elements[1] = Path.Join(
-                            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                            "scoop",
-                            "buckets",
-                            elements[0].Trim()
-                        );
-                    }
-                    else
-                    {
-                        elements[1] = Regex.Replace(elements[1], @"^(.*)\.git$", "$1");
-                    }
-
-                    try
-                    {
-                        sources.Add(
-                            new ManagerSource(
+                    sources.Add(
+                        int.TryParse(manifests, out int packageCount)
+                            ? new ManagerSource(
                                 Manager,
-                                elements[0].Trim(),
-                                new Uri(elements[1]),
-                                int.Parse(elements[4].Trim()),
-                                elements[2].Trim() + " " + elements[3].Trim()
+                                name,
+                                url,
+                                packageCount,
+                                Regex.Replace(updated, @"\s+[AaPp][Mm]$", "")
                             )
-                        );
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Warn(ex);
-                        sources.Add(
-                            new ManagerSource(
-                                Manager,
-                                elements[0].Trim(),
-                                new Uri(elements[1]),
-                                -1,
-                                "1/1/1970"
-                            )
-                        );
-                    }
+                            : new ManagerSource(Manager, name, url, -1, "1/1/1970")
+                    );
                 }
                 catch (Exception e)
                 {
@@ -157,6 +127,26 @@ namespace UniGetUI.PackageEngine.Managers.ScoopManager
             }
 
             return sources;
+        }
+
+        private static Uri BuildSourceUrl(string name, string source)
+        {
+            if (source.Contains("https://") || source.Contains("http://"))
+            {
+                return new Uri(Regex.Replace(source, @"^(.*)\.git$", "$1"));
+            }
+
+            string userProfile = Environment.GetFolderPath(
+                Environment.SpecialFolder.UserProfile
+            );
+            string path =
+                source.StartsWith("~/") || source.StartsWith(@"~\")
+                    ? Path.Join(userProfile, source[2..])
+                    : source;
+
+            return Path.IsPathFullyQualified(path)
+                ? new Uri(path)
+                : new Uri(Path.Join(userProfile, "scoop", "buckets", name));
         }
     }
 }

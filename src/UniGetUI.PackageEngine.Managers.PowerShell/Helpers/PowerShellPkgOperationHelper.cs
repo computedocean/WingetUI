@@ -25,17 +25,35 @@ internal sealed class PowerShellPkgOperationHelper : BasePkgOperationHelper
         bool standalone
     )
     {
+        bool updatesThroughInstall =
+            operation is OperationType.Update && options.SkipHashCheck;
+        bool usesInstallVerb = operation is OperationType.Install || updatesThroughInstall;
+
         List<string> parameters =
         [
-            operation switch
-            {
-                OperationType.Install => Manager.Properties.InstallVerb,
-                OperationType.Update => Manager.Properties.UpdateVerb,
-                OperationType.Uninstall => Manager.Properties.UninstallVerb,
-                _ => throw new InvalidDataException("Invalid package operation"),
-            },
+            usesInstallVerb
+                ? Manager.Properties.InstallVerb
+                : operation switch
+                {
+                    OperationType.Update => Manager.Properties.UpdateVerb,
+                    OperationType.Uninstall => Manager.Properties.UninstallVerb,
+                    _ => throw new InvalidDataException("Invalid package operation"),
+                },
         ];
         parameters.AddRange(["-Name", package.Id, "-Confirm:$false", "-Force"]);
+
+        if (!standalone)
+            package.OverridenOptions.PowerShell_UpdateThroughInstall = updatesThroughInstall;
+
+        bool shellInterpreted = standalone || Manager.Status.OperationCallArgs.Count is 0;
+
+        if (updatesThroughInstall && package.Source.Name.Length > 0)
+            parameters.AddRange(
+                [
+                    "-Repository",
+                    shellInterpreted ? QuoteForPowerShell(package.Source.Name) : package.Source.Name,
+                ]
+            );
 
         if (operation is not OperationType.Uninstall)
         {
@@ -43,22 +61,29 @@ internal sealed class PowerShellPkgOperationHelper : BasePkgOperationHelper
                 parameters.Add("-AllowPrerelease");
 
             // Update-Module (PowerShellGet) has no -Scope parameter; only Install-Module accepts it
-            if (operation is OperationType.Install && !package.OverridenOptions.PowerShell_DoNotSetScopeParameter)
+            if (usesInstallVerb && !package.OverridenOptions.PowerShell_DoNotSetScopeParameter)
             {
                 // The scope chosen in the options dialog wins; fall back to the auto-detected install scope
                 string scope = options.InstallationScope.Length > 0
                     ? options.InstallationScope
                     : package.OverridenOptions.Scope ?? "";
-                parameters.AddRange(["-Scope", scope == PackageScope.Global ? "AllUsers" : "CurrentUser"]);
+
+                if (operation is OperationType.Install || scope.Length > 0)
+                    parameters.AddRange(
+                        ["-Scope", scope == PackageScope.Global ? "AllUsers" : "CurrentUser"]
+                    );
             }
         }
 
-        if (operation is OperationType.Install)
+        if (usesInstallVerb)
         {
+            if (package.OverridenOptions.PowerShell_AllowClobber)
+                parameters.Add("-AllowClobber");
+
             if (options.SkipHashCheck)
                 parameters.Add("-SkipPublisherCheck");
 
-            if (options.Version != "")
+            if (operation is OperationType.Install && options.Version != "")
                 parameters.AddRange(["-RequiredVersion", options.Version]);
         }
 
@@ -97,6 +122,9 @@ internal sealed class PowerShellPkgOperationHelper : BasePkgOperationHelper
         return parameters;
     }
 
+    private static string QuoteForPowerShell(string value) =>
+        $"'{value.Replace("'", "''")}'";
+
     protected override OperationVeredict _getOperationResult(
         IPackage package,
         OperationType operation,
@@ -105,6 +133,9 @@ internal sealed class PowerShellPkgOperationHelper : BasePkgOperationHelper
     )
     {
         string output_string = string.Join("\n", processOutput);
+
+        bool routedThroughInstall = package.OverridenOptions.PowerShell_UpdateThroughInstall;
+        package.OverridenOptions.PowerShell_UpdateThroughInstall = false;
 
         if (
             package.OverridenOptions.RunAsAdministrator is not true
@@ -125,6 +156,16 @@ internal sealed class PowerShellPkgOperationHelper : BasePkgOperationHelper
         )
         {
             package.OverridenOptions.PowerShell_DoNotSetScopeParameter = true;
+            return OperationVeredict.AutoRetry;
+        }
+
+        if (
+            (operation is OperationType.Install || routedThroughInstall)
+            && output_string.Contains("CommandAlreadyAvailable")
+            && !package.OverridenOptions.PowerShell_AllowClobber
+        )
+        {
+            package.OverridenOptions.PowerShell_AllowClobber = true;
             return OperationVeredict.AutoRetry;
         }
 

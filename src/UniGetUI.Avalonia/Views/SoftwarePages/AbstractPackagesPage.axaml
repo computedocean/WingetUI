@@ -25,6 +25,17 @@
       <Style Selector="DataGridCell:current">
          <Setter Property="BorderBrush" Value="Transparent"/>
       </Style>
+
+      <!-- Package-row hover uses the same rounded RowBorder surface as selection.
+           Avalonia's default hover paints the inner BackgroundRectangle instead, which can
+           reach the viewport edge without the row's outer corner geometry. -->
+      <Style Selector="DataGrid#PackageList DataGridRow:pointerover">
+         <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
+      </Style>
+      <Style Selector="DataGrid#PackageList DataGridRow:pointerover /template/ Rectangle#BackgroundRectangle">
+         <Setter Property="Fill" Value="Transparent"/>
+      </Style>
+
       <!-- Remove the DataGrid's built-in line between the header and the rows -->
       <Style Selector="DataGrid /template/ Rectangle#PART_ColumnHeadersAndRowsSeparator">
          <Setter Property="IsVisible" Value="False"/>
@@ -34,20 +45,59 @@
          <Setter Property="Background" Value="{DynamicResource PackageListHeaderBackground}"/>
          <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
          <Setter Property="HorizontalContentAlignment" Value="Center"/>
-         <Setter Property="AreSeparatorsVisible" Value="False"/>
          <Setter Property="SeparatorBrush" Value="Transparent"/>
          <Setter Property="BorderThickness" Value="0"/>
          <Setter Property="CornerRadius" Value="0"/>
+         <!-- Keep the whole 44-DIP header row interactive. -->
+         <Setter Property="MinHeight" Value="44"/>
+         <Setter Property="Margin" Value="0"/>
+      </Style>
+      <Style Selector="DataGrid#PackageList DataGridColumnHeader /template/ Border#HeaderBorder">
          <Setter Property="Margin" Value="0,6,0,6"/>
       </Style>
-      <Style Selector="DataGridColumnHeader:nth-child(1)">
+      <!-- Keep DataGrid's separator visibility state for right-edge detection, but don't let
+           the stock 1-DIP separator reserve a transparent gap between adjacent headers. -->
+      <Style Selector="DataGrid#PackageList DataGridColumnHeader /template/ Rectangle#VerticalSeparator">
+         <Setter Property="Width" Value="0"/>
+      </Style>
+      <Style Selector="DataGrid#PackageList DataGridColumnHeader:nth-child(1)">
          <Setter Property="CornerRadius" Value="4,0,0,4"/>
       </Style>
-      <Style Selector="DataGridColumnHeader:nth-last-child(1)">
+      <!-- DataGrid itself marks the actual visible right-edge header by hiding its separator. -->
+      <Style Selector="DataGrid#PackageList DataGridColumnHeader[AreSeparatorsVisible=False]">
          <Setter Property="CornerRadius" Value="0,4,4,0"/>
+      </Style>
+      <Style Selector="DataGrid#PackageList DataGridColumnHeader:pointerover">
+         <Setter Property="Background" Value="{DynamicResource DataGridColumnHeaderHoveredBackgroundBrush}"/>
+      </Style>
+      <Style Selector="DataGrid#PackageList DataGridColumnHeader:pointerover /template/ Grid#PART_ColumnHeaderRoot">
+         <Setter Property="Background" Value="Transparent"/>
+      </Style>
+      <Style Selector="DataGrid#PackageList DataGridColumnHeader:pressed">
+         <Setter Property="Background" Value="{DynamicResource DataGridColumnHeaderPressedBackgroundBrush}"/>
+      </Style>
+      <Style Selector="DataGrid#PackageList DataGridColumnHeader:pressed /template/ Grid#PART_ColumnHeaderRoot">
+         <Setter Property="Background" Value="Transparent"/>
       </Style>
       <Style Selector="Expander /template/ ToggleButton#ExpanderHeader">
          <Setter Property="Background" Value="{DynamicResource SettingsCardBackground}"/>
+      </Style>
+      <!-- All package-page filter cards share this class. Override Fluent's flyout-derived
+           minimum width so the cards can contract to any saved pane width without overflowing. -->
+      <Style Selector="Expander.filter-pane-expander">
+         <Setter Property="MinWidth" Value="0"/>
+         <Setter Property="HorizontalAlignment" Value="Stretch"/>
+         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      </Style>
+      <!-- Search-mode options must shrink with the filter pane just like the checkbox rows.
+           A fixed RadioButton height makes wrapped labels prefer extra width and then clip. -->
+      <Style Selector="RadioButton.filter-radio">
+         <Setter Property="HorizontalAlignment" Value="Stretch"/>
+         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+         <Setter Property="MinHeight" Value="30"/>
+      </Style>
+      <Style Selector="RadioButton.filter-radio /template/ ContentPresenter#PART_ContentPresenter">
+         <Setter Property="TextWrapping" Value="Wrap"/>
       </Style>
       <!-- Toolbar buttons: flat, no background/border in normal state (WinUI AppBarButton style) -->
       <Style Selector="#ToolbarRow Button">
@@ -58,14 +108,15 @@
          <Setter Property="Background" Value="Transparent"/>
          <Setter Property="BorderThickness" Value="0"/>
       </Style>
-      <!-- Main action button: card background with border -->
+      <!-- Main package action: filled but intentionally borderless, matching the old
+           WinUI toolbar treatment. The two halves still read as one fused control. -->
       <Style Selector="Button#MainToolbarButton">
          <Setter Property="Background" Value="{DynamicResource SettingsCardBackground}"/>
-         <Setter Property="BorderThickness" Value="1"/>
+         <Setter Property="BorderThickness" Value="0"/>
       </Style>
       <Style Selector="Button#MainToolbarButtonDropdown">
          <Setter Property="Background" Value="{DynamicResource SettingsCardBackground}"/>
-         <Setter Property="BorderThickness" Value="1"/>
+         <Setter Property="BorderThickness" Value="0"/>
       </Style>
       <!-- Render the three-state "Select all" checkbox's indeterminate glyph as a dash instead of a square -->
       <Style Selector="CheckBox:indeterminate /template/ Path#CheckGlyph">
@@ -101,10 +152,55 @@
    </UserControl.Styles>
 
    <UserControl.Resources>
-      <conv:ScaleClampConverter x:Key="ScaleClampConverter"/>
+       <ResourceDictionary>
+          <!-- Match WinUI Expander interaction states inside the filter pane.
+               The card/header stays visually stable; only the chevron button reacts. -->
+          <SolidColorBrush x:Key="ExpanderChevronBackground" Color="Transparent"/>
+          <SolidColorBrush x:Key="ExpanderChevronBackgroundDisabled" Color="Transparent"/>
+          <SolidColorBrush x:Key="ExpanderChevronBorderBrush" Color="Transparent"/>
+          <SolidColorBrush x:Key="ExpanderChevronBorderBrushPointerOver" Color="Transparent"/>
+          <SolidColorBrush x:Key="ExpanderChevronBorderBrushPressed" Color="Transparent"/>
+          <SolidColorBrush x:Key="ExpanderChevronBorderBrushDisabled" Color="Transparent"/>
+
+          <!-- The slide-in pane shell keeps its original outline; these are only the
+               equivalent controls hosted inside the pane. -->
+          <ResourceDictionary.ThemeDictionaries>
+             <ResourceDictionary x:Key="Light">
+                <SolidColorBrush x:Key="FilterPaneOutlineBrush" Color="#ECECEC"/>
+                <SolidColorBrush x:Key="FilterExpanderContentBackground" Color="#06000000"/>
+                <!-- CardBackgroundFillColorDefaultBrush / CardStrokeColorDefaultBrush -->
+                <SolidColorBrush x:Key="ExpanderHeaderBackgroundPointerOver" Color="#B3FFFFFF"/>
+                <SolidColorBrush x:Key="ExpanderHeaderBackgroundPressed" Color="#B3FFFFFF"/>
+                <SolidColorBrush x:Key="ExpanderHeaderBackgroundDisabled" Color="#B3FFFFFF"/>
+                <SolidColorBrush x:Key="ExpanderHeaderBorderBrush" Color="#0F000000"/>
+                <SolidColorBrush x:Key="ExpanderHeaderBorderBrushPointerOver" Color="#0F000000"/>
+                <SolidColorBrush x:Key="ExpanderHeaderBorderBrushPressed" Color="#0F000000"/>
+                <SolidColorBrush x:Key="ExpanderHeaderBorderBrushDisabled" Color="#0F000000"/>
+                <SolidColorBrush x:Key="ExpanderContentBorderBrush" Color="#0F000000"/>
+                <!-- SubtleFillColorSecondaryBrush / SubtleFillColorTertiaryBrush -->
+                <SolidColorBrush x:Key="ExpanderChevronBackgroundPointerOver" Color="#09000000"/>
+                <SolidColorBrush x:Key="ExpanderChevronBackgroundPressed" Color="#06000000"/>
+             </ResourceDictionary>
+             <ResourceDictionary x:Key="Dark">
+                <SolidColorBrush x:Key="FilterPaneOutlineBrush" Color="#393939"/>
+                <SolidColorBrush x:Key="FilterExpanderContentBackground" Color="#08FFFFFF"/>
+                <SolidColorBrush x:Key="ExpanderHeaderBackgroundPointerOver" Color="#0DFFFFFF"/>
+                <SolidColorBrush x:Key="ExpanderHeaderBackgroundPressed" Color="#0DFFFFFF"/>
+                <SolidColorBrush x:Key="ExpanderHeaderBackgroundDisabled" Color="#0DFFFFFF"/>
+                <SolidColorBrush x:Key="ExpanderHeaderBorderBrush" Color="#19000000"/>
+                <SolidColorBrush x:Key="ExpanderHeaderBorderBrushPointerOver" Color="#19000000"/>
+                <SolidColorBrush x:Key="ExpanderHeaderBorderBrushPressed" Color="#19000000"/>
+                <SolidColorBrush x:Key="ExpanderHeaderBorderBrushDisabled" Color="#19000000"/>
+                <SolidColorBrush x:Key="ExpanderContentBorderBrush" Color="#19000000"/>
+                <SolidColorBrush x:Key="ExpanderChevronBackgroundPointerOver" Color="#0FFFFFFF"/>
+                <SolidColorBrush x:Key="ExpanderChevronBackgroundPressed" Color="#0AFFFFFF"/>
+             </ResourceDictionary>
+          </ResourceDictionary.ThemeDictionaries>
+         <conv:ScaleClampConverter x:Key="ScaleClampConverter"/>
+      </ResourceDictionary>
    </UserControl.Resources>
 
-   <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="8,6,8,8">
+   <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="8,6,8,8">
 
         <!-- ==================== HEADER ==================== -->
         <Grid Name="MainHeader"
@@ -227,37 +323,59 @@
         </Grid>
 
         <!-- ==================== MAIN CONTENT (filter pane + package list) ==================== -->
+        <ContentControl x:Name="PageOptions" Grid.Row="2"/>
+
         <Grid x:Name="FilteringPanel"
-              Grid.Row="2"
+              Grid.Row="3"
               ClipToBounds="True"
-              ColumnDefinitions="220,4,*">
+              ColumnDefinitions="220,12,*">
 
             <!-- Both presentations use this single content definition. Their containers remain
                  isolated so compact compositor state cannot leak into the inline pane. -->
             <Grid.Resources>
                 <DataTemplate x:Key="FilterPaneContentTemplate"
                               x:DataType="vm:PackagesPageViewModel">
-                    <ScrollViewer
-                              HorizontalScrollBarVisibility="Disabled"
-                              Padding="4,8,4,0"
-                              automation:AutomationProperties.AccessibilityView="Control"
-                              automation:AutomationProperties.Name="{t:Translate Filters}"
-                              automation:AutomationProperties.LandmarkType="{x:Static peers:AutomationLandmarkType.Search}"
-                              Background="{DynamicResource MicaPageBackground}">
-                    <StackPanel x:Name="SidePanelGrid" Spacing="8" Margin="0,0,0,8">
+                    <ScrollViewer x:Name="FilterPaneScrollViewer"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalContentAlignment="Left"
+                                  VerticalContentAlignment="Top"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Stretch"
+                                  Padding="0"
+                                  automation:AutomationProperties.AccessibilityView="Control"
+                                  automation:AutomationProperties.Name="{t:Translate Filters}"
+                                  automation:AutomationProperties.LandmarkType="{x:Static peers:AutomationLandmarkType.Search}"
+                                  Background="{DynamicResource MicaPageBackground}">
+                       <Border Width="{Binding #FilterPaneScrollViewer.Viewport.Width}"
+                               Padding="4,3,4,4"
+                               HorizontalAlignment="Left"
+                               VerticalAlignment="Top">
+                          <StackPanel x:Name="SidePanelGrid"
+                                      Spacing="8"
+                                      HorizontalAlignment="Stretch"
+                                      VerticalAlignment="Top">
 
                         <!-- Sources expander -->
-                        <Expander HorizontalAlignment="Stretch"
-                                  HorizontalContentAlignment="Stretch"
+                        <Expander Classes="filter-pane-expander"
                                   IsExpanded="True"
                                   CornerRadius="8"
                                   Padding="16,8,16,8"
-                                  Background="{DynamicResource SettingsCardBackground}">
+                                  Background="{DynamicResource FilterExpanderContentBackground}"
+                                  automation:AutomationProperties.Name="{t:Translate Sources}">
                             <Expander.Header>
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/Sources.svg" Width="16" Height="16" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{t:Translate Sources}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                </StackPanel>
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                    <controls:SvgIcon Grid.Column="0"
+                                                      Path="avares://UniGetUI/Assets/Symbols/Sources.svg"
+                                                      Width="16" Height="16"
+                                                      VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="{t:Translate Sources}"
+                                               FontSize="14"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"
+                                               TextWrapping="Wrap"/>
+                                </Grid>
                             </Expander.Header>
                             <StackPanel Orientation="Vertical">
                                 <TextBlock x:Name="SourcesPlaceholderText"
@@ -277,28 +395,26 @@
                                       RowSpacing="4"
                                       ColumnSpacing="4">
                                     <Button x:Name="SelectAllSourcesButton"
+                                            Classes="filter-hyperlink"
                                             Grid.Column="0"
                                             HorizontalAlignment="Stretch"
                                             HorizontalContentAlignment="Center"
                                             Command="{Binding SelectAllSources_CmdCommand}"
                                             automation:AutomationProperties.Name="{t:Translate Select all}"
-                                            Padding="2"
-                                            Background="Transparent"
-                                            BorderThickness="0">
+                                            Padding="2">
                                         <TextBlock Text="{t:Translate Select all}" FontSize="12" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"/>
+                                                   TextWrapping="Wrap" TextAlignment="Center"/>
                                     </Button>
                                     <Button x:Name="ClearSourceSelectionButton"
+                                            Classes="filter-hyperlink"
                                             Grid.Column="1"
                                             HorizontalAlignment="Stretch"
                                             HorizontalContentAlignment="Center"
                                             Command="{Binding ClearSourceSelection_CmdCommand}"
                                             automation:AutomationProperties.Name="{t:Translate Clear selection}"
-                                            Padding="2"
-                                            Background="Transparent"
-                                            BorderThickness="0">
+                                            Padding="2">
                                         <TextBlock Text="{t:Translate Clear selection}" FontSize="12" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"/>
+                                                   TextWrapping="Wrap" TextAlignment="Center"/>
                                     </Button>
                                     <ItemsControl x:Name="SourcesTreeView"
                                               Grid.Row="1"
@@ -310,7 +426,8 @@
                                             <DataTemplate x:DataType="vm:SourceTreeNode">
                                                 <StackPanel>
                                                     <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                                              VerticalAlignment="Center">
+                                                              VerticalAlignment="Center"
+                                                              automation:AutomationProperties.Name="{Binding PackageName}">
                                                         <CheckBox.Content>
                                                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="4">
                                                         <ToggleButton Grid.Column="0" IsChecked="{Binding IsExpanded, Mode=TwoWay}"
@@ -341,7 +458,10 @@
                                                                       IsVisible="{Binding IsExpanded}"/>
                                                             </Grid>
                                                         </ToggleButton>
-                                                                <TextBlock Grid.Column="1" Text="{Binding PackageName}" VerticalAlignment="Center"/>
+                                                                <TextBlock Grid.Column="1"
+                                                                           Text="{Binding PackageName}"
+                                                                           VerticalAlignment="Center"
+                                                                           TextWrapping="Wrap"/>
                                                             </Grid>
                                                         </CheckBox.Content>
                                                     </CheckBox>
@@ -366,17 +486,25 @@
                         </Expander>
 
                         <!-- Filter options expander -->
-                        <Expander HorizontalAlignment="Stretch"
-                                  HorizontalContentAlignment="Stretch"
+                        <Expander Classes="filter-pane-expander"
                                   IsExpanded="False"
                                   CornerRadius="8"
                                   Padding="16,8,16,8"
-                                  Background="{DynamicResource SettingsCardBackground}">
+                                  Background="{DynamicResource FilterExpanderContentBackground}"
+                                  automation:AutomationProperties.Name="{t:Translate Filters}">
                             <Expander.Header>
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/Filter.svg" Width="16" Height="16" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{t:Translate Filters}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                </StackPanel>
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                    <controls:SvgIcon Grid.Column="0"
+                                                      Path="avares://UniGetUI/Assets/Symbols/Filter.svg"
+                                                      Width="16" Height="16"
+                                                      VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="{t:Translate Filters}"
+                                               FontSize="14"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"
+                                               TextWrapping="Wrap"/>
+                                </Grid>
                             </Expander.Header>
                             <StackPanel HorizontalAlignment="Stretch" Orientation="Vertical" Spacing="0">
                                 <CheckBox x:Name="InstantSearchCheckbox"
@@ -398,54 +526,53 @@
                         </Expander>
 
                         <!-- Search mode expander -->
-                        <Expander HorizontalAlignment="Stretch"
-                                  HorizontalContentAlignment="Stretch"
+                        <Expander Classes="filter-pane-expander"
                                   IsExpanded="True"
                                   CornerRadius="8"
                                   Padding="16,8,16,8"
-                                  Background="{DynamicResource SettingsCardBackground}">
+                                  Background="{DynamicResource FilterExpanderContentBackground}"
+                                  automation:AutomationProperties.Name="{t:Translate Search mode}">
                             <Expander.Header>
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/search_filled.svg" Width="16" Height="16" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{t:Translate Search mode}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                </StackPanel>
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                    <controls:SvgIcon Grid.Column="0"
+                                                      Path="avares://UniGetUI/Assets/Symbols/search_filled.svg"
+                                                      Width="16" Height="16"
+                                                      VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="{t:Translate Search mode}"
+                                               FontSize="14"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"
+                                               TextWrapping="Wrap"/>
+                                </Grid>
                             </Expander.Header>
                             <StackPanel HorizontalAlignment="Stretch" Orientation="Vertical" Spacing="0">
-                                <RadioButton Height="30"
-                                             Margin="0,-2,0,-2"
+                                <RadioButton Classes="filter-radio"
                                              IsChecked="{Binding SearchMode_Name, Mode=TwoWay}"
-                                             automation:AutomationProperties.Name="{t:Translate Package Name}">
-                                    <TextBlock Text="{t:Translate Package Name}" TextWrapping="Wrap"/>
-                                </RadioButton>
-                                <RadioButton Height="30"
-                                             Margin="0,-2,0,-2"
+                                             Content="{t:Translate Package Name}"
+                                             automation:AutomationProperties.Name="{t:Translate Package Name}"/>
+                                <RadioButton Classes="filter-radio"
                                              IsChecked="{Binding SearchMode_Id, Mode=TwoWay}"
-                                             automation:AutomationProperties.Name="{t:Translate Package ID}">
-                                    <TextBlock Text="{t:Translate Package ID}" TextWrapping="Wrap"/>
-                                </RadioButton>
-                                <RadioButton Height="30"
-                                             Margin="0,-2,0,-2"
+                                             Content="{t:Translate Package ID}"
+                                             automation:AutomationProperties.Name="{t:Translate Package ID}"/>
+                                <RadioButton Classes="filter-radio"
                                              IsChecked="{Binding SearchMode_Both, Mode=TwoWay}"
-                                             automation:AutomationProperties.Name="{t:Translate Both}">
-                                    <TextBlock Text="{t:Translate Both}" TextWrapping="Wrap"/>
-                                </RadioButton>
-                                <RadioButton Height="30"
-                                             Margin="0,-2,0,-2"
+                                             Content="{t:Translate Both}"
+                                             automation:AutomationProperties.Name="{t:Translate Both}"/>
+                                <RadioButton Classes="filter-radio"
                                              IsChecked="{Binding SearchMode_Exact, Mode=TwoWay}"
-                                             automation:AutomationProperties.Name="{t:Translate Exact match}">
-                                    <TextBlock Text="{t:Translate Exact match}" TextWrapping="Wrap"/>
-                                </RadioButton>
-                                <RadioButton Height="30"
-                                             Margin="0,-2,0,-2"
+                                             Content="{t:Translate Exact match}"
+                                             automation:AutomationProperties.Name="{t:Translate Exact match}"/>
+                                <RadioButton Classes="filter-radio"
                                              IsChecked="{Binding SearchMode_Similar, Mode=TwoWay}"
                                              IsEnabled="{Binding SimilarSearchEnabled}"
-                                             automation:AutomationProperties.Name="{t:Translate Show similar packages}">
-                                    <TextBlock Text="{t:Translate Show similar packages}" TextWrapping="Wrap"/>
-                                </RadioButton>
+                                             Content="{t:Translate Show similar packages}"
+                                             automation:AutomationProperties.Name="{t:Translate Show similar packages}"/>
                             </StackPanel>
                         </Expander>
 
-                    </StackPanel>
+                          </StackPanel>
+                       </Border>
                     </ScrollViewer>
                 </DataTemplate>
             </Grid.Resources>
@@ -453,27 +580,32 @@
             <!-- ===== INLINE FILTER PANE ===== -->
             <Border x:Name="InlineSidePanel"
                     Grid.Column="0"
+                    BorderBrush="{DynamicResource FilterPaneOutlineBrush}"
                     CornerRadius="8"
                     ClipToBounds="True">
                 <Border.CacheMode>
                     <BitmapCache RenderAtScale="1"/>
                 </Border.CacheMode>
                 <ContentControl Content="{Binding}"
+                                HorizontalContentAlignment="Stretch"
+                                VerticalContentAlignment="Stretch"
                                 ContentTemplate="{StaticResource FilterPaneContentTemplate}"/>
             </Border>
             <!-- ===== DRAG SPLITTER ===== -->
             <GridSplitter x:Name="FilterSplitter"
+                          Classes="winui-vertical-splitter"
                           Grid.Column="1"
+                          Margin="0,0,2,0"
                           IsVisible="{Binding IsFilterPaneOpen}"
                           HorizontalAlignment="Stretch"
-                          ResizeDirection="Columns"
-                          Background="{DynamicResource MicaPageBackground}"/>
+                          ResizeDirection="Columns"/>
 
             <!-- ===== OVERLAY BACKDROP (overlay mode only, dismisses pane on click) ===== -->
             <Border x:Name="FilterOverlayBackdrop"
                     Grid.Column="0"
                     Grid.ColumnSpan="3"
                     ZIndex="9"
+                    CornerRadius="8"
                     Background="#60000000"
                     IsVisible="False"
                     IsHitTestVisible="True"/>
@@ -487,7 +619,7 @@
                     HorizontalAlignment="Left"
                     CornerRadius="0,8,8,0"
                     BorderThickness="0,1,1,1"
-                    BorderBrush="{DynamicResource SettingsCardBorderBrush}"
+                    BorderBrush="{DynamicResource FilterPaneOutlineBrush}"
                     Background="{DynamicResource AppWindowBackground}"
                     ClipToBounds="True"
                     IsVisible="False">
@@ -495,6 +627,8 @@
                     <BitmapCache RenderAtScale="1"/>
                 </Border.CacheMode>
                 <ContentControl Content="{Binding}"
+                                HorizontalContentAlignment="Stretch"
+                                VerticalContentAlignment="Stretch"
                                 ContentTemplate="{StaticResource FilterPaneContentTemplate}"/>
             </Border>
 
@@ -517,14 +651,14 @@
                 <Border Margin="0,6,0,6"
                         IsVisible="{Binding !MegaQueryVisible}"
                         CornerRadius="8"
-                        BorderThickness="0"
+                        BorderBrush="{DynamicResource PackageListBorderBrush}"
+                        BorderThickness="1"
                         Background="{DynamicResource PackageListBackground}">
                 <Grid RowDefinitions="Auto,*">
                     <!-- Header bar for grid/icons views (select-all) — hidden in list mode, which has its own DataGrid header -->
                     <Border Grid.Row="0"
                             IsVisible="{Binding !IsListViewMode}"
-                            BorderBrush="{DynamicResource AppBorderBrush}"
-                            BorderThickness="0,0,0,1"
+                            BorderThickness="0"
                             Padding="10,0">
                         <CheckBox IsChecked="{Binding AllPackagesChecked, Mode=TwoWay}"
                                   Content="{t:Translate Select all}"
@@ -554,6 +688,7 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="pkg:PackageWrapper">
                                             <CheckBox IsChecked="{Binding IsChecked}"
+                                                      Classes="package-selector package-list-selector"
                                                       automation:AutomationProperties.Name="{Binding Package.AutomationName}"
                                                       HorizontalAlignment="Center"
                                                       VerticalAlignment="Center"
@@ -572,18 +707,19 @@
                                                 <Panel Grid.Column="0" Width="24" Height="24" VerticalAlignment="Center"
                                                        controls:PackageIconLoader.Track="True">
                                                     <Image Source="{Binding IconBitmap}" Width="24" Height="24"
-                                                           Stretch="Uniform" IsVisible="{Binding HasCustomIcon}"/>
+                                                           Stretch="Uniform" IsVisible="{Binding HasCustomIcon}"
+                                                           RenderOptions.BitmapInterpolationMode="HighQuality"/>
                                                     <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/package.svg"
                                                                       Width="24" Height="24" IsVisible="{Binding !HasCustomIcon}"/>
                                                     <controls:SvgIcon Path="{Binding TagBackdropIconPath}"
-                                                                      Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                                                      Foreground="{DynamicResource PackageTagBadgeBackgroundBrush}"
                                                                       Width="20" Height="20"
                                                                       Margin="0,0,-3,-3"
                                                                       IsVisible="{Binding TagIconVisible}"
                                                                       HorizontalAlignment="Right"
                                                                       VerticalAlignment="Bottom"/>
                                                     <controls:SvgIcon Path="{Binding TagSymbolIconPath}"
-                                                                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                                      Foreground="{DynamicResource PackageTagBadgeForegroundBrush}"
                                                                       Width="20" Height="20"
                                                                       Margin="0,0,-3,-3"
                                                                       IsVisible="{Binding TagIconVisible}"
@@ -601,7 +737,8 @@
                                                         Width="*">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="pkg:PackageWrapper">
-                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center" Margin="4,0">
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center" Margin="4,0"
+                                                  automation:AutomationProperties.Name="{Binding Package.Id}">
                                                 <controls:SvgIcon Grid.Column="0" Path="avares://UniGetUI/Assets/Symbols/id.svg"
                                                                   Width="24" Height="24" VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="1" Text="{Binding Package.Id}" VerticalAlignment="Center"
@@ -615,7 +752,8 @@
                                                         Width="*">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="pkg:PackageWrapper">
-                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center" Margin="4,0">
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center" Margin="4,0"
+                                                  automation:AutomationProperties.Name="{Binding VersionAutomationName}">
                                                 <controls:SvgIcon Grid.Column="0" Path="avares://UniGetUI/Assets/Symbols/version.svg"
                                                                   Width="24" Height="24" VerticalAlignment="Center"
                                                                   IsVisible="{Binding !InstalledVersionIsUnverified}"/>
@@ -637,7 +775,8 @@
                                                         IsVisible="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).NewVersionHeaderVisible}">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="pkg:PackageWrapper">
-                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center" Margin="4,0">
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center" Margin="4,0"
+                                                  automation:AutomationProperties.Name="{Binding NewVersionAutomationName}">
                                                 <controls:SvgIcon Grid.Column="0" Path="avares://UniGetUI/Assets/Symbols/download.svg"
                                                                   Width="24" Height="24" VerticalAlignment="Center"
                                                                   IsVisible="{Binding !InstallerHostChanged}"/>
@@ -657,7 +796,8 @@
                                                         Width="*">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="pkg:PackageWrapper">
-                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center" Margin="4,0">
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center" Margin="4,0"
+                                                  automation:AutomationProperties.Name="{Binding Package.Source.AsString_DisplayName}">
                                                 <controls:SvgIcon Grid.Column="0" Path="{Binding SourceIconPath}"
                                                                   Width="24" Height="24" VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="1" Text="{Binding Package.Source.AsString_DisplayName}" VerticalAlignment="Center"
@@ -673,7 +813,8 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="pkg:PackageWrapper">
                                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center" Margin="4,0"
-                                                  controls:PackageInstallerHostLoader.Track="True">
+                                                  controls:PackageRowValueLoader.Track="True"
+                                                  automation:AutomationProperties.Name="{Binding InstallerHostAutomationName}">
                                                 <controls:SvgIcon Grid.Column="0" Path="avares://UniGetUI/Assets/Symbols/launch.svg"
                                                                   Width="24" Height="24" VerticalAlignment="Center"
                                                                   IsVisible="{Binding !InstallerHostChanged}"/>
@@ -685,6 +826,23 @@
                                                 <TextBlock Grid.Column="1" Text="{Binding InstallerHostText}" VerticalAlignment="Center"
                                                            TextTrimming="CharacterEllipsis"
                                                            ToolTip.Tip="{Binding InstallerHostTooltip}"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn CanUserSort="False"
+                                                        Header="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).DownloadSizeHeaderText}"
+                                                        Width="*"
+                                                        IsVisible="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).DownloadSizeColumnVisible}">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate x:DataType="pkg:PackageWrapper">
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center" Margin="4,0"
+                                                  controls:PackageRowValueLoader.Track="True"
+                                                  automation:AutomationProperties.Name="{Binding DownloadSizeText}">
+                                                <controls:SvgIcon Grid.Column="0" Path="avares://UniGetUI/Assets/Symbols/disk.svg"
+                                                                  Width="24" Height="24" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding DownloadSizeText}" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis"/>
                                             </Grid>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -702,6 +860,7 @@
                                 HorizontalAlignment="Left" VerticalAlignment="Top"
                                 Background="Transparent" ZIndex="10">
                             <CheckBox IsChecked="{Binding AllPackagesChecked, Mode=TwoWay}"
+                                      Classes="package-selector package-list-selector"
                                       automation:AutomationProperties.Name="{t:Translate Select all}"
                                       HorizontalAlignment="Center"
                                       VerticalAlignment="Center"
@@ -724,25 +883,26 @@
                                             HorizontalAlignment="Stretch"
                                             automation:AutomationProperties.Name="{Binding Package.AutomationName}"
                                             automation:AutomationProperties.ItemType="{t:Translate Package}"
-                                                Background="{DynamicResource SettingsCardBackground}"
-                                                BorderBrush="{DynamicResource SettingsCardBorderBrush}" BorderThickness="1" Padding="4">
+                                                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                                BorderBrush="Transparent" BorderThickness="1" Padding="4">
                                             <Grid ColumnDefinitions="48,*,28" ColumnSpacing="4">
                                                 <Panel Grid.Column="0" Width="44" Height="44"
                                                        VerticalAlignment="Center" HorizontalAlignment="Center"
                                                        controls:PackageIconLoader.Track="True">
                                                     <Image Source="{Binding IconBitmap}" Width="44" Height="44"
-                                                           Stretch="Uniform" IsVisible="{Binding HasCustomIcon}"/>
+                                                           Stretch="Uniform" IsVisible="{Binding HasCustomIcon}"
+                                                           RenderOptions.BitmapInterpolationMode="HighQuality"/>
                                                     <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/package.svg"
                                                                       Width="44" Height="44" IsVisible="{Binding !HasCustomIcon}"/>
                                                     <controls:SvgIcon Path="{Binding TagBackdropIconPath}"
-                                                                      Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                                                      Foreground="{DynamicResource PackageTagBadgeBackgroundBrush}"
                                                                       Width="28" Height="28"
                                                                       Margin="0,0,-4,-4"
                                                                       IsVisible="{Binding TagIconVisible}"
                                                                       HorizontalAlignment="Right"
                                                                       VerticalAlignment="Bottom"/>
                                                     <controls:SvgIcon Path="{Binding TagSymbolIconPath}"
-                                                                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                                      Foreground="{DynamicResource PackageTagBadgeForegroundBrush}"
                                                                       Width="28" Height="28"
                                                                       Margin="0,0,-4,-4"
                                                                       IsVisible="{Binding TagIconVisible}"
@@ -772,6 +932,7 @@
                                                      room to stack them without overlap. -->
                                                 <Panel Grid.Column="2">
                                                     <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                                              Classes="package-selector"
                                                               automation:AutomationProperties.Name="{Binding Package.AutomationName}"
                                                               VerticalAlignment="Top"
                                                               HorizontalAlignment="Center"
@@ -812,10 +973,11 @@
                                             HorizontalAlignment="Stretch"
                                             automation:AutomationProperties.Name="{Binding Package.AutomationName}"
                                             automation:AutomationProperties.ItemType="{t:Translate Package}"
-                                                Background="{DynamicResource SettingsCardBackground}"
-                                                BorderBrush="{DynamicResource SettingsCardBorderBrush}" BorderThickness="1" Padding="4">
+                                                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                                BorderBrush="Transparent" BorderThickness="1" Padding="4">
                                             <Grid RowDefinitions="30,57,30,15">
                                                 <CheckBox Grid.Row="0"
+                                                          Classes="package-selector"
                                                           IsChecked="{Binding IsChecked, Mode=TwoWay}"
                                                           automation:AutomationProperties.Name="{Binding Package.AutomationName}"
                                                           HorizontalAlignment="Left"
@@ -842,18 +1004,19 @@
                                                        VerticalAlignment="Center" HorizontalAlignment="Center"
                                                        controls:PackageIconLoader.Track="True">
                                                     <Image Source="{Binding IconBitmap}" Width="64" Height="64"
-                                                           Stretch="Uniform" IsVisible="{Binding HasCustomIcon}"/>
+                                                           Stretch="Uniform" IsVisible="{Binding HasCustomIcon}"
+                                                           RenderOptions.BitmapInterpolationMode="HighQuality"/>
                                                     <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/package.svg"
                                                                       Width="64" Height="64" IsVisible="{Binding !HasCustomIcon}"/>
                                                     <controls:SvgIcon Path="{Binding TagBackdropIconPath}"
-                                                                      Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                                                      Foreground="{DynamicResource PackageTagBadgeBackgroundBrush}"
                                                                       Width="38" Height="38"
                                                                       Margin="0,0,-5,-5"
                                                                       IsVisible="{Binding TagIconVisible}"
                                                                       HorizontalAlignment="Right"
                                                                       VerticalAlignment="Bottom"/>
                                                     <controls:SvgIcon Path="{Binding TagSymbolIconPath}"
-                                                                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                                      Foreground="{DynamicResource PackageTagBadgeForegroundBrush}"
                                                                       Width="38" Height="38"
                                                                       Margin="0,0,-5,-5"
                                                                       IsVisible="{Binding TagIconVisible}"
@@ -896,12 +1059,14 @@
                                    MaxHeight="{Binding #PackageListHost.Bounds.Height, Converter={StaticResource ScaleClampConverter}, ConverterParameter=0.4|180}"
                                    Stretch="Uniform"
                                    HorizontalAlignment="Center"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality"
                                    IsVisible="{Binding LoadingImageVisible}"/>
                             <Image Source="{Binding NoPackagesImage}"
                                    MaxWidth="{Binding #PackageListHost.Bounds.Width, Converter={StaticResource ScaleClampConverter}, ConverterParameter=0.4|180}"
                                    MaxHeight="{Binding #PackageListHost.Bounds.Height, Converter={StaticResource ScaleClampConverter}, ConverterParameter=0.4|180}"
                                    Stretch="Uniform"
                                    HorizontalAlignment="Center"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality"
                                    IsVisible="{Binding NoPackagesImageVisible}"/>
                             <TextBlock x:Name="BackgroundText"
                                        HorizontalAlignment="Center"
@@ -983,7 +1148,7 @@
         </Grid>
 
     <!-- ==================== FOOTER STATUS BAR ==================== -->
-    <Border Grid.Row="3" Margin="0,-4,0,-8" VerticalAlignment="Center"
+    <Border Grid.Row="4" Margin="0,-4,0,-8" VerticalAlignment="Center"
             BorderThickness="0"
             Padding="0,4,0,0">
         <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -1014,6 +1179,7 @@
                             <MenuItem x:Name="OrderByVersion_Menu"    Header="{t:Translate Version}"     Command="{Binding SortByVersionCommand}"/>
                             <MenuItem x:Name="OrderByNewVersion_Menu" Header="{t:Translate New version}" Command="{Binding SortByNewVersionCommand}"/>
                             <MenuItem x:Name="OrderBySource_Menu"     Header="{t:Translate Source}"      Command="{Binding SortBySourceCommand}"/>
+                            <MenuItem x:Name="OrderByDownloadSize_Menu" Header="{t:Translate Download size}" Command="{Binding SortByDownloadSizeCommand}"/>
                             <Separator/>
                             <MenuItem x:Name="OrderByAscending_Menu"  Header="{t:Translate Ascendant}"   Command="{Binding SetSortAscendingCommand}"/>
                             <MenuItem x:Name="OrderByDescending_Menu" Header="{t:Translate Descendant}"  Command="{Binding SetSortDescendingCommand}"/>
@@ -1033,7 +1199,7 @@
                          SelectedIndex="{Binding ViewModeIndex, Mode=TwoWay}"
                          Background="Transparent"
                          BorderThickness="1"
-                         BorderBrush="{DynamicResource AppBorderBrush}"
+                         BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                          CornerRadius="4"
                          Padding="0">
                     <ListBox.ItemsPanel>

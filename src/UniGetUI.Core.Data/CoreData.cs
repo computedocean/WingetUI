@@ -109,6 +109,19 @@ namespace UniGetUI.Core.Data
         public static bool IsPortable => AppPaths.IsPortable;
 
         /// <summary>
+        /// Machine-wide configuration directory, independent of portable mode. Resolving this
+        /// path does not create it; administrators provision its contents and permissions.
+        /// </summary>
+        public static string UniGetUIGlobalDirectory =>
+            OperatingSystem.IsWindows()
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Devolutions", "UniGetUI")
+                : OperatingSystem.IsLinux()
+                    ? "/etc/UniGetUI"
+                    : OperatingSystem.IsMacOS()
+                        ? "/Library/Application Support/Devolutions/UniGetUI"
+                        : throw new PlatformNotSupportedException("No global UniGetUI directory is defined for this platform.");
+
+        /// <summary>
         /// Where the per-user data directory lives, regardless of whether portable mode is
         /// active. Unlike <see cref="UniGetUIDataDirectory"/> this creates and migrates nothing.
         /// </summary>
@@ -305,6 +318,15 @@ namespace UniGetUI.Core.Data
                 return path;
             }
         }
+
+        public static string? TEST_DownloadsDirectoryOverride { private get; set; }
+
+        /// <summary>
+        /// The directory where downloaded installers are saved when the user has not
+        /// chosen a default download location.
+        /// </summary>
+        public static string UniGetUI_DefaultInstallerDownloadDirectory =>
+            TEST_DownloadsDirectoryOverride ?? GetDownloadsRoot();
 
         /// <summary>
         /// The directory where package backups will be saved by default.
@@ -600,6 +622,123 @@ namespace UniGetUI.Core.Data
 
             return Path.Join(GetUserHomeDirectory(), ".local", "share");
         }
+
+        private static string GetDownloadsRoot()
+        {
+#if WINDOWS
+            const string downloadsKnownFolderId = "{374DE290-123F-4565-9164-39C4925E467B}";
+            try
+            {
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders"
+                );
+                if (key?.GetValue(downloadsKnownFolderId) is string knownFolder
+                    && !string.IsNullOrWhiteSpace(knownFolder))
+                {
+                    return Environment.ExpandEnvironmentVariables(knownFolder);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Could not read the Downloads known folder from the registry:");
+                Logger.Warn(ex);
+            }
+#else
+            string? xdgDownloadDir = Environment.GetEnvironmentVariable("XDG_DOWNLOAD_DIR");
+            if (string.IsNullOrWhiteSpace(xdgDownloadDir))
+            {
+                xdgDownloadDir = ReadXdgUserDirectory("XDG_DOWNLOAD_DIR");
+            }
+
+            if (!string.IsNullOrWhiteSpace(xdgDownloadDir))
+            {
+                return xdgDownloadDir;
+            }
+#endif
+
+            return Path.Join(GetUserHomeDirectory(), "Downloads");
+        }
+
+#if !WINDOWS
+        private static string? ReadXdgUserDirectory(string name)
+        {
+            try
+            {
+                string configHome =
+                    Environment.GetEnvironmentVariable("XDG_CONFIG_HOME") is { Length: > 0 } home
+                        ? home
+                        : Path.Join(GetUserHomeDirectory(), ".config");
+
+                string userDirsFile = Path.Join(configHome, "user-dirs.dirs");
+                if (!File.Exists(userDirsFile))
+                {
+                    return null;
+                }
+
+                foreach (string rawLine in File.ReadLines(userDirsFile))
+                {
+                    string line = rawLine.Trim();
+                    if (line.Length is 0 || line.StartsWith('#'))
+                    {
+                        continue;
+                    }
+
+                    int separator = line.IndexOf('=');
+                    if (separator < 0 || line[..separator].Trim() != name)
+                    {
+                        continue;
+                    }
+
+                    string value = DecodeXdgUserDirectoryValue(line[(separator + 1)..].Trim());
+                    if (value.Length is 0)
+                    {
+                        continue;
+                    }
+
+                    return value;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Could not read {name} from the XDG user directories file:");
+                Logger.Warn(ex);
+            }
+
+            return null;
+        }
+
+        private static string DecodeXdgUserDirectoryValue(string value)
+        {
+            string inner = value.Length >= 2 && value[0] is '"' && value[^1] is '"'
+                ? value[1..^1]
+                : value;
+
+            StringBuilder builder = new(inner.Length);
+            for (int index = 0; index < inner.Length; index++)
+            {
+                char character = inner[index];
+
+                if (character is '\\'
+                    && index + 1 < inner.Length
+                    && inner[index + 1] is '"' or '\\' or '$' or '`')
+                {
+                    builder.Append(inner[++index]);
+                    continue;
+                }
+
+                if (index is 0 && inner.StartsWith("$HOME", StringComparison.Ordinal))
+                {
+                    builder.Append(GetUserHomeDirectory());
+                    index += "$HOME".Length - 1;
+                    continue;
+                }
+
+                builder.Append(character);
+            }
+
+            return builder.ToString();
+        }
+#endif
 
         private static string GetDocumentsRoot()
         {

@@ -3,6 +3,7 @@ namespace UniGetUI.PackageOperations;
 public abstract partial class AbstractOperation
 {
     public static readonly List<AbstractOperation> OperationQueue = [];
+    private static readonly object QueueLock = new();
     public static int MAX_OPERATIONS;
 
     /// <summary>
@@ -18,6 +19,7 @@ public abstract partial class AbstractOperation
         public const string Retry_AsAdmin = "RetryAsAdmin";
         public const string Retry_Interactive = "RetryInteractive";
         public const string Retry_SkipIntegrity = "RetryNoHashCheck";
+        public const string Retry_CloseRunningApp = "RetryCloseRunningApp";
     }
 
     public class OperationMetadata
