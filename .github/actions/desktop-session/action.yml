@@ -1,0 +1,256 @@
+name: Desktop session
+description: >
+  Sets up a live interactive Windows desktop on this runner over localhost RDP, driven by
+  ironrdp-agent from the IronRDP repo, and leaves it up for later steps of the same job.
+  Exports DESKTOP_SESSION_* environment variables for DesktopSession.psm1. Run the
+  desktop-session-cleanup action with if: always() at the end of the job.
+
+inputs:
+  ironrdp-ref:
+    description: IronRDP commit providing ironrdp-agent and the testing/agentic-rdp harness
+    # IronRDP master at the merge of https://github.com/Devolutions/IronRDP/pull/2209, which
+    # fixed the DVC pipe proxy for the NOW channel. Pinned so the built agent can be cached by
+    # commit; changing it rebuilds ironrdp-agent once (about 9 minutes).
+    default: 10199db3b0aeca629adc02234ffdbb570bb77d43
+  desktop-size:
+    description: RDP desktop size, as WxH
+    default: 1920x1080
+  artifacts-dir:
+    description: Directory for screenshots, logs and session state; defaults to RUNNER_TEMP/desktop-session
+    default: ''
+  devolutions-agent-version:
+    description: >
+      Version of the Devolutions.Agent winget package to install with its RDP extension, which
+      serves the NOW protocol over an RDP virtual channel in the desktop session; empty skips it
+    default: 2026.3.1.0
+  now-channel:
+    description: >
+      Negotiate the NOW channel with Devolutions Agent right after connecting, and check that a
+      command runs over it (Invoke-DesktopNowCommand). Needs an ironrdp-ref that includes
+      IronRDP#2209; before it, the first NOW message dropped the RDP session
+    default: 'false'
+
+outputs:
+  agent-path:
+    description: Path to ironrdp-agent.exe (also DESKTOP_SESSION_AGENT)
+    value: ${{ steps.start.outputs.agent-path }}
+  endpoint:
+    description: Named pipe of the ironrdp-agent daemon (also DESKTOP_SESSION_ENDPOINT)
+    value: ${{ steps.start.outputs.endpoint }}
+  pshost-endpoint-path:
+    description: JSON file describing the interactive PSHost endpoint (also DESKTOP_SESSION_PSHOST_ENDPOINT)
+    value: ${{ steps.start.outputs.pshost-endpoint-path }}
+  ironrdp-root:
+    description: IronRDP checkout (also DESKTOP_SESSION_IRONRDP_ROOT)
+    value: ${{ steps.start.outputs.ironrdp-root }}
+  artifacts-dir:
+    description: Artifacts directory (also DESKTOP_SESSION_ARTIFACTS)
+    value: ${{ steps.start.outputs.artifacts-dir }}
+  module-path:
+    description: Path to DesktopSession.psm1 (also DESKTOP_SESSION_MODULE)
+    value: ${{ steps.start.outputs.module-path }}
+  session-id:
+    description: Windows session id of the interactive desktop
+    value: ${{ steps.start.outputs.session-id }}
+
+runs:
+  using: composite
+  steps:
+    # Cloned outside the workspace (actions/checkout can only write inside it), so the
+    # caller's checkout stays clean for agents, git and tests that scan the repository.
+    # ironrdp-patches can hold fixes not yet merged in IronRDP, applied on top of ironrdp-ref
+    # (none at the moment).
+    - name: Fetch IronRDP
+      id: fetch
+      shell: pwsh
+      env:
+        IRONRDP_REF: ${{ inputs.ironrdp-ref }}
+        IRONRDP_ROOT: ${{ runner.temp }}/ironrdp
+      run: |
+        git init --quiet $env:IRONRDP_ROOT
+        if ($LASTEXITCODE -ne 0) { throw "git init failed with exit code $LASTEXITCODE" }
+        git -C $env:IRONRDP_ROOT fetch --quiet --depth 1 https://github.com/Devolutions/IronRDP $env:IRONRDP_REF
+        if ($LASTEXITCODE -ne 0) { throw "Could not fetch IronRDP $env:IRONRDP_REF" }
+        git -C $env:IRONRDP_ROOT checkout --quiet --detach FETCH_HEAD
+        if ($LASTEXITCODE -ne 0) { throw "git checkout failed with exit code $LASTEXITCODE" }
+
+        $patches = @(Get-ChildItem -Path (Join-Path $env:GITHUB_ACTION_PATH 'ironrdp-patches') -Filter '*.patch' -File -ErrorAction SilentlyContinue | Sort-Object Name)
+        foreach ($patch in $patches) {
+          git -C $env:IRONRDP_ROOT apply $patch.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Could not apply $($patch.Name) to IronRDP $env:IRONRDP_REF" }
+          Write-Host "Applied $($patch.Name)"
+        }
+        $patchHash = if ($patches.Count -gt 0) {
+          (($patches | Get-FileHash -Algorithm SHA256 | ForEach-Object Hash) -join '').Substring(0, 12)
+        } else { 'none' }
+        "patches=$patchHash" | Add-Content -Path $env:GITHUB_OUTPUT -Encoding utf8
+
+    # The agent only changes with ironrdp-ref and the patches, so a cache hit skips the Rust
+    # build entirely.
+    - name: Restore ironrdp-agent
+      id: agent-cache
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ runner.temp }}/ironrdp/target/release/ironrdp-agent.exe
+        key: ironrdp-agent-${{ runner.os }}-${{ inputs.ironrdp-ref }}-${{ steps.fetch.outputs.patches }}
+
+    # No Rust build cache: it saved about 400 MB per branch, and the repository's 10 GB Actions
+    # cache then evicted this agent and the NuGet packages. A build from scratch is rare
+    # (a new ironrdp-ref, or an evicted agent) and takes about 9 minutes.
+    - name: Build ironrdp-agent
+      if: steps.agent-cache.outputs.cache-hit != 'true'
+      shell: pwsh
+      working-directory: ${{ runner.temp }}/ironrdp
+      env:
+        CARGO_INCREMENTAL: 0
+        CARGO_NET_RETRY: 10
+        RUSTUP_MAX_RETRIES: 10
+        RUST_BACKTRACE: short
+        CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+      run: |
+        cargo build -p ironrdp-agent --release
+        if ($LASTEXITCODE -ne 0) { throw "cargo build failed with exit code $LASTEXITCODE" }
+
+    # Saved right after the build rather than at job end, so a later failure in the job still
+    # leaves the agent cached for the next run.
+    - name: Save ironrdp-agent
+      if: steps.agent-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ runner.temp }}/ironrdp/target/release/ironrdp-agent.exe
+        key: ${{ steps.agent-cache.outputs.cache-primary-key }}
+
+    # The harness drives the interactive desktop through AwakeCoding.PSRemoting, and installs
+    # it with Install-Module when it is missing. ModuleFast installs it in about half the time,
+    # into the same CurrentUser folder, so the harness finds it and skips its own install.
+    - name: Install PowerShell modules
+      shell: pwsh
+      env:
+        MODULEFAST_RELEASE: v0.6.1
+        MODULES: AwakeCoding.PSRemoting=2026.10.21
+      run: |
+        # Created up front: ModuleFast asks before creating a destination folder.
+        $destination = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'PowerShell\Modules'
+        New-Item -Path $destination -ItemType Directory -Force | Out-Null
+        $bootstrap = Invoke-RestMethod "https://github.com/JustinGrote/ModuleFast/releases/download/$env:MODULEFAST_RELEASE/ModuleFast.ps1"
+        & ([scriptblock]::Create($bootstrap)) -Release $env:MODULEFAST_RELEASE `
+          -Specification ($env:MODULES -split ',') `
+          -Destination $destination `
+          -NoPSModulePathUpdate `
+          -NoProfileUpdate
+
+    # Devolutions Agent with its RDP extension (the F.Session feature, which sets Session.Enabled
+    # in agent.json): the agent starts DevolutionsSession in each RDP session, and it serves the
+    # NOW protocol over a virtual channel for remote execution. The agent only does that when an
+    # RDP session connects, so it is installed before the desktop session is. winget is not on
+    # the runner image, so the MSI comes from the package's winget manifest, checked against the
+    # manifest's hash.
+    - name: Install Devolutions Agent
+      if: inputs.devolutions-agent-version != ''
+      shell: pwsh
+      env:
+        AGENT_VERSION: ${{ inputs.devolutions-agent-version }}
+        ARTIFACTS_DIR: ${{ inputs.artifacts-dir }}
+      run: |
+        $artifactsDir = $env:ARTIFACTS_DIR
+        if ([string]::IsNullOrWhiteSpace($artifactsDir)) {
+          $artifactsDir = Join-Path $env:RUNNER_TEMP 'desktop-session'
+        }
+        New-Item -Path $artifactsDir -ItemType Directory -Force | Out-Null
+
+        $manifestUrl = "https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/d/Devolutions/Agent/$env:AGENT_VERSION/Devolutions.Agent.installer.yaml"
+        $manifest = Invoke-RestMethod -Uri $manifestUrl
+        $installer = [regex]::Match($manifest, '(?m)^- Architecture: x64\s*\r?\n\s+InstallerUrl: (?<url>\S+)\s*\r?\n\s+InstallerSha256: (?<sha>[0-9A-Fa-f]{64})')
+        if (-not $installer.Success) {
+          throw "No x64 installer in $manifestUrl"
+        }
+
+        $msiPath = Join-Path $env:RUNNER_TEMP 'DevolutionsAgent.msi'
+        Invoke-WebRequest -Uri $installer.Groups['url'].Value -OutFile $msiPath
+        $hash = (Get-FileHash -Path $msiPath -Algorithm SHA256).Hash
+        if ($hash -ne $installer.Groups['sha'].Value.ToUpperInvariant()) {
+          throw "$($installer.Groups['url'].Value) has SHA256 $hash, but the winget manifest expects $($installer.Groups['sha'].Value)"
+        }
+
+        $logPath = Join-Path $artifactsDir 'devolutions-agent-install.log'
+        $msiexec = Start-Process -FilePath 'msiexec.exe' -Wait -PassThru -ArgumentList @(
+          '/i', "`"$msiPath`"", '/qn', '/norestart', 'ADDLOCAL=F.Agent,F.Session', '/l*v', "`"$logPath`""
+        )
+        if ($msiexec.ExitCode -notin 0, 3010) {
+          throw "Devolutions Agent setup failed with exit code $($msiexec.ExitCode); log in $logPath"
+        }
+
+        $configPath = Join-Path $env:ProgramData 'Devolutions\Agent\agent.json'
+        $config = Get-Content -Path $configPath -Raw | ConvertFrom-Json
+        if (-not ($config.PSObject.Properties['Session'] -and $config.Session.Enabled)) {
+          throw "Session.Enabled is not set in $configPath after installing the RDP extension"
+        }
+        $service = Get-Service -Name 'DevolutionsAgent'
+        if ($service.Status -ne 'Running') {
+          Start-Service -Name 'DevolutionsAgent'
+        }
+        Write-Host "Devolutions Agent $env:AGENT_VERSION installed with its RDP extension; service $((Get-Service -Name 'DevolutionsAgent').Status)"
+
+    - name: Start desktop session
+      id: start
+      shell: pwsh
+      env:
+        IRONRDP_ROOT: ${{ runner.temp }}/ironrdp
+        DESKTOP_SIZE: ${{ inputs.desktop-size }}
+        ARTIFACTS_DIR: ${{ inputs.artifacts-dir }}
+        NOW_CHANNEL: ${{ inputs.devolutions-agent-version != '' && inputs.now-channel == 'true' }}
+      run: |
+        $artifactsDir = $env:ARTIFACTS_DIR
+        if ([string]::IsNullOrWhiteSpace($artifactsDir)) {
+          $artifactsDir = Join-Path $env:RUNNER_TEMP 'desktop-session'
+        }
+
+        & "$env:GITHUB_ACTION_PATH\Start-DesktopSession.ps1" `
+          -IronRdpRoot $env:IRONRDP_ROOT `
+          -DesktopSize $env:DESKTOP_SIZE `
+          -ArtifactsDir $artifactsDir `
+          -NowChannel:($env:NOW_CHANNEL -eq 'true')
+
+    # Checks the RDP extension end to end: DevolutionsSession runs in the desktop session, and a
+    # command sent over the NOW channel runs there. The command is retried, since it sometimes
+    # fails with "NOW operation stream closed before a terminal event" right after the
+    # handshake. If NOW still doesn't work, later steps go without it (DESKTOP_SESSION_NOW=0)
+    # rather than the whole job failing.
+    - name: Check NOW remote execution
+      if: inputs.devolutions-agent-version != '' && inputs.now-channel == 'true'
+      shell: pwsh
+      env:
+        SESSION_ID: ${{ steps.start.outputs.session-id }}
+      run: |
+        $sessionId = [int] $env:SESSION_ID
+
+        # The agent's and DevolutionsSession's logs go with the desktop session artifacts either way.
+        $agentLogs = Join-Path $env:DESKTOP_SESSION_ARTIFACTS 'devolutions-agent'
+        New-Item -Path $agentLogs -ItemType Directory -Force | Out-Null
+        Get-ChildItem -Path (Join-Path $env:ProgramData 'Devolutions\Agent') -File -Filter 'agent*' |
+          Copy-Item -Destination $agentLogs
+        Get-ChildItem -Path (Join-Path $env:APPDATA 'Devolutions\Session') -File -ErrorAction SilentlyContinue |
+          Copy-Item -Destination $agentLogs
+
+        $process = Get-Process -Name 'DevolutionsSession' -ErrorAction SilentlyContinue |
+          Where-Object { $_.SessionId -eq $sessionId } |
+          Select-Object -First 1
+        $failure = if ($null -eq $process) { "DevolutionsSession is not running in desktop session $sessionId" } else { $null }
+
+        # The remote command prints the session it runs in, which must be the desktop session.
+        for ($attempt = 1; $null -ne $process -and $attempt -le 3; $attempt++) {
+          $output = & $env:DESKTOP_SESSION_AGENT --endpoint $env:DESKTOP_SESSION_ENDPOINT now powershell '(Get-Process -Id $PID).SessionId' 2>&1 | Out-String
+          if ($LASTEXITCODE -eq 0 -and $output -match "(?m)^\s*$sessionId\s*$") {
+            $failure = $null
+            Write-Host "DevolutionsSession (pid $($process.Id)) ran a PowerShell command in desktop session $sessionId over NOW (attempt $attempt)"
+            break
+          }
+          $failure = "NOW remote execution in desktop session $sessionId failed (exit code $LASTEXITCODE): $($output.Trim())"
+          Write-Host "Attempt ${attempt}: $failure"
+          Start-Sleep -Seconds 5
+        }
+
+        if ($failure) {
+          Write-Host "::warning::$failure. The desktop session continues without NOW; logs in $agentLogs"
+          'DESKTOP_SESSION_NOW=0' | Add-Content -Path $env:GITHUB_ENV -Encoding utf8
+        }

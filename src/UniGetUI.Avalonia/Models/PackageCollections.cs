@@ -1,11 +1,13 @@
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.Net.Http;
 using Avalonia;
 using Avalonia.Collections;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Avalonia.ViewModels.Pages;
 using UniGetUI.Avalonia.Views.Controls;
 using UniGetUI.Core.Logging;
@@ -13,6 +15,7 @@ using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
 using UniGetUI.Interface.Enums;
 using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.ManagerClasses.Manager;
 using UniGetUI.PackageEngine.Managers.PipManager;
 #if WINDOWS
 using UniGetUI.PackageEngine.Managers.ScoopManager;
@@ -64,6 +67,13 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable, IPacka
     private static readonly SemaphoreSlim _downloadSizeSemaphore = new(8, 8);
     private static readonly object _downloadSizeCacheLock = new();
     private static readonly Dictionary<long, (long Size, long ResolvedAt)> _downloadSizeCache = new();
+
+    private const string UnknownReleaseDate = "\u2014";
+    private const int MaxReleaseDateCacheEntries = 1024;
+    private static readonly TimeSpan ReleaseDateRetryInterval = TimeSpan.FromMinutes(5);
+    private static readonly SemaphoreSlim _releaseDateSemaphore = new(8, 8);
+    private static readonly object _releaseDateCacheLock = new();
+    private static readonly Dictionary<long, (DateTime Date, long ResolvedAt)> _releaseDateCache = new();
 
     private static Bitmap? GetCachedIcon(long hash)
     {
@@ -220,6 +230,9 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable, IPacka
     public string DownloadSizeText { get; private set; } = "";
     public long DownloadSizeBytes { get; private set; }
 
+    public string ReleaseDateText { get; private set; } = "";
+    public DateTime ReleaseDate { get; private set; }
+
     private CancellationTokenSource? _installerHostCheckCts;
     // Cancels this row's queued/in-flight icon load on disposal so it stops rooting the wrapper.
     private readonly CancellationTokenSource _lifetimeCts = new();
@@ -294,6 +307,23 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable, IPacka
 
     private string TargetInstallerVersion =>
         Package.IsUpgradable ? Package.NewVersionString : Package.VersionString;
+
+    private IPackage? _targetPackage;
+
+    // Some managers (Cargo, NuGet) read details for the package's own version, the installed one on update rows.
+    // The copy stays upgradable so update-only installer preferences (WinGet architecture) still apply.
+    private IPackage TargetPackage
+    {
+        get
+        {
+            if (_targetPackage is { } target) return target;
+            IPackage created = Package.IsUpgradable && Package.NewVersionString != Package.VersionString
+                ? new Package(Package.Name, Package.Id, Package.NewVersionString, Package.NewVersionString,
+                    Package.Source, Package.Manager, Package.OverridenOptions)
+                : Package;
+            return Interlocked.CompareExchange(ref _targetPackage, created, null) ?? created;
+        }
+    }
 
     private async Task LoadInstallerHostAsync()
     {
@@ -515,11 +545,12 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable, IPacka
     private async Task<long> ResolveDownloadSizeAsync(CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        if (!Package.Details.IsPopulated)
-            await Package.Details.Load().ConfigureAwait(false);
+        IPackageDetails details = TargetPackage.Details;
+        if (!details.IsPopulated)
+            await details.Load().ConfigureAwait(false);
 
         token.ThrowIfCancellationRequested();
-        return Package.Details.InstallerSize;
+        return details.InstallerSize;
     }
 
     private void ApplyDownloadSize(long size)
@@ -569,6 +600,131 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable, IPacka
             }
 
             _downloadSizeCache[hash] = (size, Environment.TickCount64);
+        }
+    }
+
+    private readonly object _releaseDateLoadLock = new();
+    private Task? _releaseDateLoadTask;
+
+    public void EnsureReleaseDateLoaded() => _ = EnsureReleaseDateLoadedAsync();
+
+    public Task EnsureReleaseDateLoadedAsync()
+    {
+        if (!_page.ReleaseDateColumnVisible) return Task.CompletedTask;
+
+        if (Package.Manager.Capabilities.KnowsPackageReleaseDate is PackageReleaseDateSupport.No)
+        {
+            if (ReleaseDateText.Length == 0) ApplyReleaseDate(default);
+            return Task.CompletedTask;
+        }
+
+        lock (_releaseDateLoadLock)
+        {
+            if (_releaseDateLoadTask is { IsCompleted: false }) return _releaseDateLoadTask;
+            return _releaseDateLoadTask = LoadReleaseDateAsync();
+        }
+    }
+
+    private async Task LoadReleaseDateAsync()
+    {
+        CancellationToken token = _lifetimeCts.Token;
+        long hash = CoreTools.HashStringAsLong(
+            $"{Package.GetVersionedHash()}|{TargetInstallerVersion}"
+        );
+        try
+        {
+            if (TryGetCachedReleaseDate(hash, out DateTime cached))
+            {
+                ApplyReleaseDate(cached);
+                return;
+            }
+
+            await _releaseDateSemaphore.WaitAsync(token).ConfigureAwait(false);
+            DateTime date;
+            try
+            {
+                if (!TryGetCachedReleaseDate(hash, out date))
+                {
+                    date = await ResolveReleaseDateAsync(token).ConfigureAwait(false);
+                    CacheReleaseDate(hash, date);
+                }
+            }
+            finally
+            {
+                _releaseDateSemaphore.Release();
+            }
+
+            if (token.IsCancellationRequested) return;
+            ApplyReleaseDate(date);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Could not resolve the release date for {Package.Id}: {ex.Message}");
+        }
+    }
+
+    private async Task<DateTime> ResolveReleaseDateAsync(CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        IPackageDetails details = TargetPackage.Details;
+        if (!details.IsPopulated)
+            await details.Load().ConfigureAwait(false);
+
+        token.ThrowIfCancellationRequested();
+        // Timestamps carrying an offset become local time; bare dates are kept as published
+        return DateTime.TryParse(details.UpdateDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime date)
+            ? date
+            : default;
+    }
+
+    private void ApplyReleaseDate(DateTime date)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => ApplyReleaseDate(date));
+            return;
+        }
+
+        ReleaseDate = date;
+        ReleaseDateText = date != default ? date.ToString("d", CultureInfo.CurrentCulture) : UnknownReleaseDate;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReleaseDate)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReleaseDateText)));
+    }
+
+    private static bool TryGetCachedReleaseDate(long hash, out DateTime date)
+    {
+        lock (_releaseDateCacheLock)
+        {
+            date = default;
+            if (!_releaseDateCache.TryGetValue(hash, out var entry))
+                return false;
+
+            if (entry.Date != default)
+            {
+                date = entry.Date;
+                return true;
+            }
+
+            if (Environment.TickCount64 - entry.ResolvedAt < (long)ReleaseDateRetryInterval.TotalMilliseconds)
+                return true;
+
+            _releaseDateCache.Remove(hash);
+            return false;
+        }
+    }
+
+    private static void CacheReleaseDate(long hash, DateTime date)
+    {
+        lock (_releaseDateCacheLock)
+        {
+            if (_releaseDateCache.Count >= MaxReleaseDateCacheEntries
+                && !_releaseDateCache.ContainsKey(hash))
+            {
+                _releaseDateCache.Clear();
+            }
+
+            _releaseDateCache[hash] = (date, Environment.TickCount64);
         }
     }
 
@@ -777,7 +933,7 @@ public sealed class PackageWrapper : INotifyPropertyChanged, IDisposable, IPacka
     {
         var info = new FileInfo(filePath);
         if (!info.Exists || info.Length == 0) return null;
-        return TryDecodeIcon(() => { using var fs = File.OpenRead(filePath); return DecodeDownscaled(fs); }, filePath);
+        return TryDecodeIcon(() => { using var ms = BitmapLoader.ReadFile(filePath); return DecodeDownscaled(ms); }, filePath);
     }
 
     private static Bitmap? TryDecodeIcon(byte[] bytes, string source)
@@ -874,6 +1030,7 @@ public sealed class ObservablePackageCollection : AvaloniaList<PackageWrapper>
         NewVersion,
         Source,
         DownloadSize,
+        ReleaseDate,
     }
 
     public Sorter CurrentSorter { get; private set; } = Sorter.Name;
@@ -929,24 +1086,64 @@ public sealed class ObservablePackageCollection : AvaloniaList<PackageWrapper>
         foreach (var w in this) w.IsChecked = false;
     }
 
+    public void ApplyChanges(IEnumerable<PackageWrapper> removed, IEnumerable<PackageWrapper> added)
+        => ApplyChanges(this, removed, added, GetOrderComparer());
+
+    internal static void ApplyChanges<T>(IList<T> list, IEnumerable<T> removed, IEnumerable<T> added, IComparer<T> comparer)
+    {
+        foreach (var item in removed)
+        {
+            int index = IndexOfReference(list, item);
+            if (index >= 0) list.RemoveAt(index);
+        }
+
+        foreach (var item in added)
+        {
+            int low = 0, high = list.Count;
+            while (low < high)
+            {
+                int mid = low + (high - low) / 2;
+                if (comparer.Compare(list[mid], item) <= 0) low = mid + 1;
+                else high = mid;
+            }
+            list.Insert(low, item);
+        }
+    }
+
+    private static int IndexOfReference<T>(IList<T> list, T item)
+    {
+        for (int i = 0; i < list.Count; i++)
+            if (ReferenceEquals(list[i], item)) return i;
+        return -1;
+    }
+
     public void SortBy(Sorter sorter) => CurrentSorter = sorter;
 
     public void SetSortDirection(bool ascending) => _ascending = ascending;
 
     /// <summary>Returns <paramref name="items"/> in the current sort order.</summary>
     public IEnumerable<PackageWrapper> ApplyToList(IEnumerable<PackageWrapper> items)
+        => items.OrderBy(w => w, GetOrderComparer());
+
+    private IComparer<PackageWrapper> GetOrderComparer()
     {
-        var comparer = Comparer<PackageWrapper>.Create((a, b) => Compare(a, b, CurrentSorter));
+        Sorter sorter = CurrentSorter;
+        bool ascending = _ascending;
 
-        if (CurrentSorter is Sorter.DownloadSize)
+        return Comparer<PackageWrapper>.Create((a, b) =>
         {
-            var resolvedFirst = items.OrderBy(w => w.DownloadSizeBytes > 0 ? 0 : 1);
-            return _ascending
-                ? resolvedFirst.ThenBy(w => w, comparer)
-                : resolvedFirst.ThenByDescending(w => w, comparer);
-        }
-
-        return _ascending ? items.OrderBy(w => w, comparer) : items.OrderByDescending(w => w, comparer);
+            if (sorter is Sorter.DownloadSize)
+            {
+                int resolved = (a.DownloadSizeBytes > 0 ? 0 : 1).CompareTo(b.DownloadSizeBytes > 0 ? 0 : 1);
+                if (resolved != 0) return resolved;
+            }
+            else if (sorter is Sorter.ReleaseDate)
+            {
+                int resolved = (a.ReleaseDate != default ? 0 : 1).CompareTo(b.ReleaseDate != default ? 0 : 1);
+                if (resolved != 0) return resolved;
+            }
+            return ascending ? Compare(a, b, sorter) : Compare(b, a, sorter);
+        });
     }
 
     // Shared by the "Order by" menu (ApplyToList) and the DataGrid's native column sorting
@@ -957,12 +1154,16 @@ public sealed class ObservablePackageCollection : AvaloniaList<PackageWrapper>
     {
         Sorter.Version => a.Package.NormalizedVersion.CompareTo(b.Package.NormalizedVersion),
         Sorter.DownloadSize => DownloadSizeSortKey(a).CompareTo(DownloadSizeSortKey(b)),
+        Sorter.ReleaseDate => ReleaseDateSortKey(a).CompareTo(ReleaseDateSortKey(b)),
         Sorter.NewVersion => a.Package.NormalizedNewVersion.CompareTo(b.Package.NormalizedNewVersion),
         _ => string.Compare(GetSortKey(a, sorter), GetSortKey(b, sorter), StringComparison.OrdinalIgnoreCase),
     };
 
     private static long DownloadSizeSortKey(PackageWrapper wrapper)
         => wrapper.DownloadSizeBytes > 0 ? wrapper.DownloadSizeBytes : long.MaxValue;
+
+    private static DateTime ReleaseDateSortKey(PackageWrapper wrapper)
+        => wrapper.ReleaseDate != default ? wrapper.ReleaseDate : DateTime.MaxValue;
 
     private static string GetSortKey(PackageWrapper w, Sorter sorter) => sorter switch
     {

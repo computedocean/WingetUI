@@ -15,6 +15,7 @@ using UniGetUI.Core.Tools;
 using UniGetUI.Interface.Enums;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.ManagerClasses.Manager;
 using UniGetUI.PackageEngine.PackageClasses;
 using UniGetUI.PackageEngine.PackageLoader;
 using UniGetUI.Tui.Infrastructure;
@@ -79,27 +80,43 @@ internal sealed class PackageRow : INotifyPropertyChanged
     /// <summary>Installer download size, filled in once the package details are loaded.</summary>
     public string DownloadSize { get; private set; } = "…";
 
+    /// <summary>Release date of the offered version, filled in once the package details are loaded.</summary>
+    public string ReleaseDate { get; private set; } = "…";
+
     private static readonly SemaphoreSlim DetailsGate = new(4, 4);
     private bool _detailsRequested;
 
-    /// <summary>Loads the details behind the optional host/size columns (desktop column preload).</summary>
+    /// <summary>Loads the details behind the optional host/size/date columns (desktop column preload).</summary>
     public async Task LoadColumnDetailsAsync()
     {
         if (_detailsRequested) return;
         _detailsRequested = true;
+
+        bool datesKnown = Package.Manager.Capabilities.KnowsPackageReleaseDate is not PackageReleaseDateSupport.No;
+        if (!Settings.Get(Settings.K.ShowInstallerHostColumn) && !Settings.Get(Settings.K.ShowDownloadSizeColumn)
+            && !(datesKnown && Settings.Get(Settings.K.ShowReleaseDateColumn)))
+        {
+            // Nothing shown needs the details, so don't run the manager just to learn there is no date
+            ShowColumnDetails("", "\u2014", "\u2014");
+            return;
+        }
+
         await DetailsGate.WaitAsync();
         try
         {
-            await Package.Details.Load();
-            string host = InstallerHostDisplay.FromUrls([Package.Details.InstallerUrl?.ToString()]);
-            string size = Package.Details.InstallerSize > 0 ? CoreTools.FormatAsSize(Package.Details.InstallerSize) : "\u2014";
-            Dispatcher.UIThread.Post(() =>
-            {
-                InstallerHost = host.Length > 0 ? host : "\u2014";
-                DownloadSize = size;
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(InstallerHost)));
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DownloadSize)));
-            });
+            // Update rows describe the new version, and some managers read details for the package's own version.
+            // The copy stays upgradable so update-only installer preferences (WinGet architecture) still apply.
+            IPackage target = Package.IsUpgradable && Package.NewVersionString != Package.VersionString
+                ? new Package(Package.Name, Package.Id, Package.NewVersionString, Package.NewVersionString,
+                    Package.Source, Package.Manager, Package.OverridenOptions)
+                : Package;
+            await target.Details.Load();
+            string host = InstallerHostDisplay.FromUrls([target.Details.InstallerUrl?.ToString()]);
+            string size = target.Details.InstallerSize > 0 ? CoreTools.FormatAsSize(target.Details.InstallerSize) : "\u2014";
+            string date = datesKnown && DateTime.TryParse(target.Details.UpdateDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime released)
+                ? released.ToString("d", CultureInfo.CurrentCulture)
+                : "\u2014";
+            ShowColumnDetails(host, size, date);
         }
         catch (Exception ex)
         {
@@ -110,6 +127,16 @@ internal sealed class PackageRow : INotifyPropertyChanged
             DetailsGate.Release();
         }
     }
+
+    private void ShowColumnDetails(string host, string size, string date) => Dispatcher.UIThread.Post(() =>
+    {
+        InstallerHost = host.Length > 0 ? host : "\u2014";
+        DownloadSize = size;
+        ReleaseDate = date;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(InstallerHost)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DownloadSize)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReleaseDate)));
+    });
 
     public void Detach() => Package.PropertyChanged -= OnPackageChanged;
 
@@ -182,7 +209,7 @@ internal sealed class PackageListPage : UserControl, ITuiPage
     private AbstractPackageLoader? _subscribed;
     private bool _dirty;
     private DateTime _lastLoadTime = DateTime.Now;
-    private string _submittedQuery = string.Empty;
+    private string? _submittedQuery;
 
     public PackageListPage(PackagePageKind kind)
     {
@@ -519,6 +546,10 @@ internal sealed class PackageListPage : UserControl, ITuiPage
         }
     }
 
+    private bool ShowsDetailColumns => _kind != PackagePageKind.Installed
+        && (Settings.Get(Settings.K.ShowInstallerHostColumn) || Settings.Get(Settings.K.ShowDownloadSizeColumn)
+            || Settings.Get(Settings.K.ShowReleaseDateColumn));
+
     private DataGrid BuildGrid()
     {
         var grid = new DataGrid
@@ -561,7 +592,15 @@ internal sealed class PackageListPage : UserControl, ITuiPage
             Column(CoreTools.Translate("Installer host"), r => r.InstallerHost, 18);
         if (_kind != PackagePageKind.Installed && Settings.Get(Settings.K.ShowDownloadSizeColumn))
             Column(CoreTools.Translate("Download size"), r => r.DownloadSize, 15);
+        if (_kind != PackagePageKind.Installed && Settings.Get(Settings.K.ShowReleaseDateColumn))
+            Column(CoreTools.Translate("Release date"), r => r.ReleaseDate, 14);
         Column("", r => r.State, 6);
+
+        // Fill the optional columns as rows come into view, so rows past the first screens load too
+        grid.LoadingRow += (_, e) =>
+        {
+            if (ShowsDetailColumns && e.Row.DataContext is PackageRow row) _ = row.LoadColumnDetailsAsync();
+        };
 
         // Column-header clicks drive the page's own (persisted) sort instead of the grid's.
         grid.Sorting += (_, e) =>
@@ -600,7 +639,7 @@ internal sealed class PackageListPage : UserControl, ITuiPage
     {
         if (_kind == PackagePageKind.Discover)
         {
-            if (_submittedQuery.Length > 0) _ = DiscoverablePackagesLoader.Instance.ReloadPackages(_submittedQuery);
+            if (_submittedQuery is not null) _ = DiscoverablePackagesLoader.Instance.ReloadPackages(_submittedQuery);
             return;
         }
 
@@ -669,14 +708,9 @@ internal sealed class PackageListPage : UserControl, ITuiPage
     {
         string query = (_search.Text ?? string.Empty).Trim();
         _submittedQuery = query;
-        if (query.Length == 0)
-        {
-            DiscoverablePackagesLoader.Instance.ClearPackages(emitFinishSignal: false);
-            Refresh();
-            return;
-        }
-
-        _status.Text = CoreTools.Translate("Searching for \"{0}\"…", query);
+        _status.Text = query.Length == 0
+            ? CoreTools.Translate("Loading packages") + "…"
+            : CoreTools.Translate("Searching for \"{0}\"…", query);
         DiscoverablePackagesLoader.Instance.ClearPackages(emitFinishSignal: false);
         _ = DiscoverablePackagesLoader.Instance.ReloadPackages(query);
     }
@@ -858,7 +892,7 @@ internal sealed class PackageListPage : UserControl, ITuiPage
         }
 
         string query = (_search.Text ?? string.Empty).Trim();
-        if (_kind == PackagePageKind.Discover && query != _submittedQuery) query = _submittedQuery;
+        if (_kind == PackagePageKind.Discover && query != _submittedQuery) query = _submittedQuery ?? string.Empty;
         var filtered = snapshot.Where(p => MatchesQuery(p, query) && MatchesSources(p));
         List<IPackage> ordered = Sort(filtered).ToList();
 
@@ -866,9 +900,6 @@ internal sealed class PackageListPage : UserControl, ITuiPage
         foreach (var old in _rows) old.Detach();
         _rows = ordered.Select(p => new PackageRow(p)).ToList();
         _grid.ItemsSource = _rows;
-        if (_kind != PackagePageKind.Installed
-            && (Settings.Get(Settings.K.ShowInstallerHostColumn) || Settings.Get(Settings.K.ShowDownloadSizeColumn)))
-            foreach (var row in _rows.Take(200)) _ = row.LoadColumnDetailsAsync();
 
         if (selected is not null)
         {
@@ -1020,7 +1051,7 @@ internal sealed class PackageListPage : UserControl, ITuiPage
         {
             _status.Text = _kind switch
             {
-                PackagePageKind.Discover => _submittedQuery.Length == 0
+                PackagePageKind.Discover => _submittedQuery is null
                     ? CoreTools.Translate("Search for packages to start") + "."
                     : CoreTools.Translate("No results were found matching the input criteria"),
                 PackagePageKind.Updates => CoreTools.Translate("Hooray! No updates were found."),

@@ -3,7 +3,6 @@ using System.Net.Http;
 using System.Windows.Input;
 using Avalonia.Automation;
 using Avalonia.Media.Imaging;
-using Avalonia.Platform;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using UniGetUI.Avalonia.Infrastructure;
@@ -164,6 +163,9 @@ public partial class InstallOptionsViewModel : ObservableObject
     [ObservableProperty] private bool _versionEnabled;
     public ObservableCollection<string> VersionOptions { get; } = [];
     [ObservableProperty] private string? _selectedVersion;
+    [ObservableProperty] private bool _versionIsTyped;
+    [ObservableProperty] private string _typedVersion = "";
+    public string TypedVersionPlaceholder { get; } = CoreTools.Translate("Latest");
 
     [ObservableProperty] private bool _skipMinorChecked;
     // Index 0 => keep first 1 number significant (level 2), 1 => first 2 (level 3), 2 => first 3 (level 4).
@@ -183,6 +185,7 @@ public partial class InstallOptionsViewModel : ObservableObject
     partial void OnInteractiveCheckedChanged(bool value) => Refresh();
     partial void OnSkipHashCheckedChanged(bool value) => Refresh();
     partial void OnSelectedVersionChanged(string? value) => Refresh();
+    partial void OnTypedVersionChanged(string value) => Refresh();
 
     // ── Architecture / Scope / Location tab ───────────────────────────────────
     [ObservableProperty] private bool _archEnabled;
@@ -327,6 +330,8 @@ public partial class InstallOptionsViewModel : ObservableObject
             ? CoreTools.Translate("PreRelease")
             : CoreTools.Translate("Latest");
         VersionEnabled = caps.SupportsCustomVersions || caps.SupportsPreRelease;
+        VersionIsTyped = caps.SupportsCustomVersions && !caps.CanListVersions;
+        TypedVersion = options.Version;
 
         // Architecture
         string defaultLabel = CoreTools.Translate("Default");
@@ -384,11 +389,10 @@ public partial class InstallOptionsViewModel : ObservableObject
         ForceKillChecked = Settings.Get(Settings.K.KillProcessesThatRefuseToDie);
 
         // Show fallback immediately, then replace with real icon if available
-        using var fallback = AssetLoader.Open(_fallbackIconUri);
-        PackageIcon = new Bitmap(fallback);
+        PackageIcon = BitmapLoader.TryLoadAsset(_fallbackIconUri);
         _ = LoadIconAsync();
 
-        if (caps.SupportsCustomVersions)
+        if (caps.SupportsCustomVersions && caps.CanListVersions)
             _ = LoadVersionsAsync(options.Version);
 
         _ = LoadIgnoredUpdatesAsync();
@@ -666,7 +670,7 @@ public partial class InstallOptionsViewModel : ObservableObject
 
             Bitmap bmp;
             if (uri.IsFile)
-                bmp = new Bitmap(uri.LocalPath);
+                bmp = BitmapLoader.LoadFile(uri.LocalPath);
             else if (uri.Scheme is "http" or "https")
             {
                 var bytes = await _iconHttp.GetByteArrayAsync(uri);
@@ -719,6 +723,8 @@ public partial class InstallOptionsViewModel : ObservableObject
         var ver = SelectedVersion ?? "";
         o.PreRelease = ver == CoreTools.Translate("PreRelease");
         o.Version = (ver != CoreTools.Translate("Latest") && ver != CoreTools.Translate("PreRelease") && ver.Length > 0) ? ver : "";
+        if (VersionIsTyped)
+            o.Version = TypedVersion.Trim();
 
         string defaultLabel = CoreTools.Translate("Default");
         o.Architecture = (SelectedArch != defaultLabel && SelectedArch is not null) ? SelectedArch : "";

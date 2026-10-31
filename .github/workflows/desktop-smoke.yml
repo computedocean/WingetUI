@@ -1,0 +1,80 @@
+name: Desktop Smoke Test
+
+# Installs UniGetUI, from a release or built from source, and checks that it starts and
+# shows its main window in a real interactive Windows desktop session, driven over
+# localhost RDP by ironrdp-agent. It is also the reference example for the composite
+# actions in .github/actions (see the README there).
+
+on:
+  workflow_dispatch:
+    inputs:
+      unigetui_source:
+        description: Install a published release, an installer built from this commit, or both
+        type: choice
+        options:
+          - release
+          - source
+          - both
+        default: release
+      unigetui_release:
+        description: Release tag to install, for example v2026.3.2 (empty for the latest release)
+        required: false
+        default: ''
+      desktop_size:
+        description: RDP desktop size requested through ironrdp-agent
+        required: true
+        default: 1920x1080
+
+permissions:
+  contents: read
+
+env:
+  # NuGet's package and HTTP caches go in the workspace, on D: on Windows runners, instead of
+  # their default folders on C:, the runner's slow OS disk. Set here for every job and action.
+  NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+  NUGET_HTTP_CACHE_PATH: ${{ github.workspace }}/.nuget/http-cache
+
+jobs:
+  desktop-smoke:
+    name: UniGetUI (${{ matrix.unigetui_source }}) in an RDP desktop session
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        # 'both' runs one job per source.
+        unigetui_source: ${{ fromJSON((inputs.unigetui_source || 'both') == 'both' && '["release","source"]' || format('["{0}"]', inputs.unigetui_source)) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Build UniGetUI from source
+        id: build
+        if: matrix.unigetui_source == 'source'
+        uses: ./.github/actions/unigetui-build
+
+      - name: Start desktop session
+        uses: ./.github/actions/desktop-session
+        with:
+          desktop-size: ${{ inputs.desktop_size || '1920x1080' }}
+
+      - name: Install and start UniGetUI
+        id: unigetui
+        uses: ./.github/actions/unigetui-desktop
+        with:
+          release: ${{ inputs.unigetui_release }}
+          installer-path: ${{ steps.build.outputs.installer-path }}
+
+      - name: Check that UniGetUI is visible
+        shell: pwsh
+        env:
+          BASELINE_SCREENSHOT: ${{ steps.unigetui.outputs.baseline-screenshot }}
+        run: |
+          .\testing\desktop-smoke\Assert-UniGetUIVisible.ps1 -BaselineScreenshot $env:BASELINE_SCREENSHOT
+
+      - name: Clean up desktop session
+        if: always()
+        uses: ./.github/actions/desktop-session-cleanup
+        with:
+          artifact-name: desktop-smoke-${{ matrix.unigetui_source }}

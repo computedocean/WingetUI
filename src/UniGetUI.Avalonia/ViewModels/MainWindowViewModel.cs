@@ -38,6 +38,8 @@ public partial class MainWindowViewModel : ViewModelBase
     private SoftwareCatalogPage? CatalogPage;
     private CatalogEditorPage? _catalogEditorPage;
     public CatalogEditorViewModel? CatalogEditor { get; }
+    private GitRepositoriesPage? _gitRepositoriesPage;
+    public GitRepositoriesViewModel? GitRepositories { get; private set; }
     private SettingsBasePage? SettingsPage;
     private SettingsBasePage? ManagersPage;
     private UniGetUILogPage? UniGetUILogPage;
@@ -99,8 +101,15 @@ public partial class MainWindowViewModel : ViewModelBase
             int total = _operationBatch.Count;
             if (total == 0)
                 return CoreTools.Translate("Operations");
+            // Name the failures, so a collapsed panel does not read as "all good" when some failed.
+            int failed = _operationBatch.Count(o => o.Status is OperationStatus.Failed);
+            if (failed > 0)
+            {
+                int succeeded = _operationBatch.Count(o => o.Status is OperationStatus.Succeeded);
+                return CoreTools.Translate("{0} of {1} succeeded, {2} failed", succeeded, total, failed);
+            }
             int completed = _operationBatch.Count(o =>
-                o.Status is OperationStatus.Succeeded or OperationStatus.Failed or OperationStatus.Canceled);
+                o.Status is OperationStatus.Succeeded or OperationStatus.Canceled);
             return CoreTools.Translate("{0} of {1} operations completed", completed, total);
         }
     }
@@ -426,7 +435,7 @@ public partial class MainWindowViewModel : ViewModelBase
         RegisterBannerToast(TelemetryWarner);
         RegisterBannerToast(PortableImportBanner);
 
-        CatalogEditor = Sidebar.SoftwareCatalogEnabled ? new CatalogEditorViewModel() : null;
+        CatalogEditor = Sidebar.CatalogEditorEnabled ? new CatalogEditorViewModel() : null;
         DiscoverPage = new DiscoverSoftwarePage(CatalogEditor);
         UpdatesPage = new SoftwareUpdatesPage();
         InstalledPage = new InstalledPackagesPage();
@@ -468,6 +477,9 @@ public partial class MainWindowViewModel : ViewModelBase
             // Notifications and auto-update logic are handled by SoftwareUpdatesPage.WhenPackagesLoaded
         }
 
+        if (Sidebar.GitRepositoriesEnabled)
+            StartGitRepositories();
+
         MaintenanceScheduler.Start();
 
         WindowsAppNotificationBridge.NotificationActivated += action =>
@@ -493,6 +505,13 @@ public partial class MainWindowViewModel : ViewModelBase
 
         AvaloniaAutoUpdater.StatusChanged += status => Dispatcher.UIThread.Post(() =>
         {
+            if (!status.IsOpen)
+            {
+                UpdatesBanner.ActionButtonCommand = null;
+                UpdatesBanner.IsOpen = false;
+                return;
+            }
+
             UpdatesBanner.Severity = status.Severity;
             UpdatesBanner.Title = status.Title;
             UpdatesBanner.Message = status.Message;
@@ -645,6 +664,41 @@ public partial class MainWindowViewModel : ViewModelBase
         });
     }
 
+    // ─── Extensions ──────────────────────────────────────────────────────────
+
+    // Lives while the feature is on, so automatic checks and the sidebar badge run with the page closed.
+    private void StartGitRepositories()
+    {
+        var gitRepositories = GitRepositories = new GitRepositoriesViewModel();
+        gitRepositories.PropertyChanged += (_, e) =>
+        {
+            // A turned-off instance may still finish a check it had started.
+            if (!ReferenceEquals(gitRepositories, GitRepositories)) return;
+            if (e.PropertyName == nameof(GitRepositoriesViewModel.BehindCount))
+                Sidebar.GitRepositoriesBadgeCount = gitRepositories.BehindCount;
+            else if (e.PropertyName == nameof(GitRepositoriesViewModel.IsBusy))
+                Sidebar.SetNavItemLoading(PageType.GitRepositories, gitRepositories.IsBusy);
+        };
+        _ = gitRepositories.InitializeAsync();
+    }
+
+    /// <summary>Turns Git Repositories on or off without a restart: its sidebar entry, badge and automatic checks.</summary>
+    public void SetGitRepositoriesEnabled(bool enabled)
+    {
+        if (enabled && GitRepositories is null)
+            StartGitRepositories();
+        // Off first, so leaving the page cannot pick it again as the startup page.
+        Sidebar.GitRepositoriesEnabled = enabled;
+        if (enabled || GitRepositories is not { } gitRepositories)
+            return;
+
+        if (_currentPage == PageType.GitRepositories)
+            LoadDefaultPage();
+        gitRepositories.Stop();
+        GitRepositories = null;
+        _gitRepositoriesPage = null;
+    }
+
     // ─── Navigation ──────────────────────────────────────────────────────────
     public void LoadDefaultPage()
     {
@@ -655,8 +709,11 @@ public partial class MainWindowViewModel : ViewModelBase
             "installed" => PageType.Installed,
             "bundles" => PageType.Bundles,
             "catalog" when Sidebar.SoftwareCatalogEnabled => PageType.Catalog,
-            "catalog-editor" when Sidebar.SoftwareCatalogEnabled => PageType.CatalogEditor,
+            "catalog-editor" when Sidebar.CatalogEditorEnabled => PageType.CatalogEditor,
+            "git-repositories" when Sidebar.GitRepositoriesEnabled => PageType.GitRepositories,
             "settings" => PageType.Settings,
+            // A usable admin-curated catalog is the simplest starting point, so it wins over the default pages.
+            _ when Sidebar.HasUsableCatalog => PageType.Catalog,
             _ => UpgradablePackagesLoader.Instance is { } l && l.Count() > 0 ? PageType.Updates : PageType.Discover,
         };
         NavigateTo(type);
@@ -679,6 +736,8 @@ public partial class MainWindowViewModel : ViewModelBase
             PageType.Catalog => CatalogPage ??= new SoftwareCatalogPage(),
             PageType.CatalogEditor => _catalogEditorPage ??= new CatalogEditorPage(
                 CatalogEditor ?? throw new InvalidOperationException("Catalog Editor is disabled.")),
+            PageType.GitRepositories => _gitRepositoriesPage ??= new GitRepositoriesPage(
+                GitRepositories ?? throw new InvalidOperationException("Git Repositories is disabled.")),
             PageType.Settings => SettingsPage ??= new SettingsBasePage(false),
             PageType.Managers => ManagersPage ??= new SettingsBasePage(true),
             PageType.OwnLog => UniGetUILogPage ??= new UniGetUILogPage(),
@@ -690,39 +749,25 @@ public partial class MainWindowViewModel : ViewModelBase
             _ => throw new InvalidDataException($"Unknown page type {type}"),
         };
 
-    public static PageType GetNextPage(PageType type) =>
-        GetNextPage(type, Settings.Get(Settings.K.EnableSoftwareCatalog));
+    /// <summary>
+    /// The navigation pages in sidebar order: Ctrl/Cmd+1, +2, … follow it (the More menu takes the
+    /// next number), and so does the previous/next page cycle.
+    /// </summary>
+    internal static PageType[] GetShortcutPages(IEnumerable<PageType> navigationPages)
+        => [.. navigationPages, PageType.Settings, PageType.Managers];
 
-    internal static PageType GetNextPage(PageType type, bool catalogEnabled) =>
-        type switch
-        {
-            PageType.Discover => PageType.Updates,
-            PageType.Updates => PageType.Installed,
-            PageType.Installed => PageType.Bundles,
-            PageType.Bundles => catalogEnabled ? PageType.Catalog : PageType.Settings,
-            PageType.Catalog => catalogEnabled ? PageType.CatalogEditor : PageType.Settings,
-            PageType.CatalogEditor => PageType.Settings,
-            PageType.Settings => PageType.Managers,
-            PageType.Managers => PageType.Discover,
-            _ => PageType.Discover,
-        };
+    public PageType[] ShortcutPages => GetShortcutPages(Sidebar.NavigationPages);
 
-    public static PageType GetPreviousPage(PageType type) =>
-        GetPreviousPage(type, Settings.Get(Settings.K.EnableSoftwareCatalog));
+    internal static PageType GetNextPage(PageType type, PageType[] pages) => Step(type, pages, +1);
 
-    internal static PageType GetPreviousPage(PageType type, bool catalogEnabled) =>
-        type switch
-        {
-            PageType.Discover => PageType.Managers,
-            PageType.Updates => PageType.Discover,
-            PageType.Installed => PageType.Updates,
-            PageType.Bundles => PageType.Installed,
-            PageType.Catalog => PageType.Bundles,
-            PageType.CatalogEditor => catalogEnabled ? PageType.Catalog : PageType.Bundles,
-            PageType.Settings => catalogEnabled ? PageType.CatalogEditor : PageType.Bundles,
-            PageType.Managers => PageType.Settings,
-            _ => PageType.Discover,
-        };
+    internal static PageType GetPreviousPage(PageType type, PageType[] pages) => Step(type, pages, -1);
+
+    // Pages outside the sidebar order (logs, help, …) step to Discover.
+    private static PageType Step(PageType type, PageType[] pages, int direction)
+    {
+        int index = Array.IndexOf(pages, type);
+        return index < 0 ? PageType.Discover : pages[(index + direction + pages.Length) % pages.Length];
+    }
 
     public void NavigateTo(PageType newPage_t, bool toHistory = true) =>
         _ = NavigateToAsync(newPage_t, toHistory);
@@ -738,6 +783,24 @@ public partial class MainWindowViewModel : ViewModelBase
             MainWindow.Instance?.ShowBanner(
                 CoreTools.Translate("Software Catalog is disabled"),
                 CoreTools.Translate("Enable Software Catalog in Experimental settings and developer options, then restart UniGetUI."),
+                MainWindow.RuntimeNotificationLevel.Error);
+            return false;
+        }
+        if (newPage_t is PageType.CatalogEditor && !Sidebar.CatalogEditorEnabled)
+        {
+            Logger.Warn("Catalog Editor navigation was rejected because the editor is disabled.");
+            MainWindow.Instance?.ShowBanner(
+                CoreTools.Translate("Catalog Editor is disabled"),
+                CoreTools.Translate("Enable the Catalog Editor in Experimental settings and developer options, then restart UniGetUI."),
+                MainWindow.RuntimeNotificationLevel.Error);
+            return false;
+        }
+        if (newPage_t is PageType.GitRepositories && !Sidebar.GitRepositoriesEnabled)
+        {
+            Logger.Warn("Git Repositories navigation was rejected because it is turned off.");
+            MainWindow.Instance?.ShowBanner(
+                CoreTools.Translate("Git Repositories is turned off"),
+                CoreTools.Translate("Turn it on in Settings, under Extensions."),
                 MainWindow.RuntimeNotificationLevel.Error);
             return false;
         }
@@ -828,6 +891,7 @@ public partial class MainWindowViewModel : ViewModelBase
         PageType.Bundles => CoreTools.Translate("Package Bundles"),
         PageType.Catalog => CoreTools.Translate("Software Catalog"),
         PageType.CatalogEditor => CoreTools.Translate("Catalog Editor"),
+        PageType.GitRepositories => CoreTools.Translate("Git Repositories"),
         PageType.Settings => CoreTools.Translate("Settings"),
         PageType.Managers => CoreTools.Translate("Package Managers"),
         PageType.OwnLog => CoreTools.Translate("UniGetUI Log"),
@@ -837,6 +901,13 @@ public partial class MainWindowViewModel : ViewModelBase
         PageType.ReleaseNotes => CoreTools.Translate("Release notes"),
         _ => CoreTools.Translate("UniGetUI"),
     };
+
+    /// <summary>Opens the Catalog Editor on a new catalog file, for the Software Catalog's New catalog actions.</summary>
+    public async Task StartNewCatalogAsync()
+    {
+        if (!await NavigateToAsync(PageType.CatalogEditor)) return;
+        if (_catalogEditorPage is { } editor) await editor.StartNewCatalogAsync();
+    }
 
     public void NavigateBack() => _ = NavigateBackAsync();
 
@@ -877,6 +948,14 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public void OpenManagerSettings(IPackageManager? manager = null)
         => _ = OpenManagerSettingsAsync(manager);
+
+    // Called after a manager is (re)initialized from the settings, so a page that loaded with no manager ready
+    // picks it up without waiting to be shown again.
+    public void ReloadPagesWithoutReadyManager()
+    {
+        UpdatesPage.ViewModel.ReloadIfManagerBecameReady();
+        InstalledPage.ViewModel.ReloadIfManagerBecameReady();
+    }
 
     private async Task OpenManagerSettingsAsync(IPackageManager? manager)
     {
@@ -934,6 +1013,16 @@ public partial class MainWindowViewModel : ViewModelBase
         await load();
         return true;
     }
+
+    public bool HasUnsavedWork => !CanShutdownWithoutAsking || BundlesPage.HasChangesToLose;
+
+    /// <summary>
+    /// Whether <see cref="CanShutdownAsync"/> would allow the shutdown without a prompt, for callers
+    /// that need the answer straight away.
+    /// </summary>
+    public bool CanShutdownWithoutAsking
+        => CurrentPageContent is not IAsyncLeaveGuard { HasUnsavedWork: true }
+            && CatalogEditor is not ({ IsBusy: true } or { IsDirty: true });
 
     public async Task<bool> CanShutdownAsync(CancellationToken cancellationToken = default)
     {

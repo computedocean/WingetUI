@@ -12,6 +12,13 @@ public partial class Settings
      *
      */
 
+    // DisableSystemTray means closing the window quits, which has always hidden the icon too.
+    // HideSystemTrayIcon only hides the icon while UniGetUI keeps running in the background.
+    public static bool IsSystemTrayIconVisible() =>
+        !Get(K.DisableSystemTray) && !Get(K.HideSystemTrayIcon);
+
+    // Notifications depend on the process staying alive after the window closes, not on the
+    // tray icon, so hiding the icon alone leaves them enabled.
     public static bool AreNotificationsDisabled() =>
         Get(K.DisableSystemTray) || Get(K.DisableNotifications);
 

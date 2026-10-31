@@ -6,6 +6,7 @@ using Avalonia.Platform;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.Tools;
 using UniGetUI.PackageEngine.Enums;
@@ -240,6 +241,11 @@ public partial class PackageDetailsViewModel : ObservableObject
         _ = LoadIconAsync();
         _ = LoadScreenshotsAsync();
 
+        await RefreshDetailsAsync();
+    }
+
+    public async Task RefreshDetailsAsync()
+    {
         var details = Package.Details;
         if (!details.IsPopulated)
             await details.Load();
@@ -306,7 +312,7 @@ public partial class PackageDetailsViewModel : ObservableObject
                 Bitmap? bitmap = null;
                 if (uri.IsFile)
                 {
-                    bitmap = await Task.Run(() => new Bitmap(uri.LocalPath));
+                    bitmap = await Task.Run(() => BitmapLoader.LoadFile(uri.LocalPath));
                 }
                 else if (uri.Scheme is "http" or "https")
                 {

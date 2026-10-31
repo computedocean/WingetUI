@@ -1,6 +1,8 @@
 using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Media;
+using SkiaSharp;
+using UniGetUI.Core.Logging;
 using CoreSettings = global::UniGetUI.Core.SettingsEngine.Settings;
 
 namespace UniGetUI.Avalonia.Infrastructure;
@@ -162,8 +164,54 @@ internal static class UiFontPolicy
 
         string scriptFamily = ResolveScriptFamily();
         string chain = scriptFamily == FallbackFamily ? FallbackFamily : $"{scriptFamily}, {FallbackFamily}";
+        foreach (string? family in GetLastResortFamilies())
+        {
+            chain = AppendTailFamily(chain, family);
+        }
 
         return overrideFamily is null ? chain : $"{overrideFamily}, {chain}";
+    }
+
+    internal static string AppendTailFamily(string chain, string? family)
+    {
+        family = family?.Trim();
+        if (string.IsNullOrEmpty(family) || family.Contains(',') || family.Contains('#') ||
+            family.Contains(FontFamily.DefaultFontFamilyName, StringComparison.Ordinal))
+        {
+            return chain;
+        }
+
+        foreach (string listed in chain.Split(','))
+        {
+            if (listed.Trim().Equals(family, StringComparison.OrdinalIgnoreCase))
+            {
+                return chain;
+            }
+        }
+
+        return $"{chain}, {family}";
+    }
+
+    private static IEnumerable<string?> GetLastResortFamilies()
+    {
+        yield return TryGetFamily(() => SKTypeface.Default.FamilyName);
+        yield return "Arial";
+        yield return "Tahoma";
+        yield return TryGetFamily(() => SKFontManager.Default.FontFamilyCount > 0 ? SKFontManager.Default.GetFamilyName(0) : null);
+    }
+
+    private static string? TryGetFamily(Func<string?> read)
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn("Could not read a platform font family");
+            Logger.Warn(ex);
+            return null;
+        }
     }
 
     /// <summary>

@@ -34,6 +34,52 @@ public sealed class NuGetManifestLoaderTests
     }
 
     [Fact]
+    public void GetManifestUrl_WithoutAVersionAsksForTheLatestOne()
+    {
+        var manager = new PackageManagerBuilder().Build();
+        var source = new SourceBuilder()
+            .WithManager(manager)
+            .WithUrl("https://www.powershellgallery.com/api/v2")
+            .Build();
+        var package = new PackageBuilder()
+            .WithManager(manager)
+            .WithSource(source)
+            .WithId("Devolutions.PowerShell")
+            .WithVersion("")
+            .Build();
+
+        Assert.Equal(
+            "https://www.powershellgallery.com/api/v2/Packages()?$filter=Id eq 'Devolutions.PowerShell' and IsLatestVersion",
+            NuGetManifestLoader.GetManifestUrl(package).ToString()
+        );
+        Assert.EndsWith("Packages(Id='Devolutions.PowerShell',Version='2026.3.2')",
+            NuGetManifestLoader.GetManifestUrl(package, "2026.3.2").ToString());
+    }
+
+    [Fact]
+    public void TheLatestManifestIsKeptOnlyForAWhile()
+    {
+        var manager = new PackageManagerBuilder().Build();
+        // Nothing listens on the discard port, so a fetch fails and only the cache can answer.
+        var source = new SourceBuilder().WithManager(manager).WithUrl("http://127.0.0.1:9/api/v2").Build();
+        var package = new PackageBuilder().WithManager(manager).WithSource(source).WithId("Contoso.Latest").WithVersion("").Build();
+        long key = NuGetManifestLoader.GetCacheKey(package);
+        try
+        {
+            NuGetManifestLoader.LatestManifests[key] = (DateTime.UtcNow, "<entry>fresh</entry>");
+            Assert.Equal("<entry>fresh</entry>", NuGetManifestLoader.GetManifestContent(package));
+
+            NuGetManifestLoader.LatestManifests[key] =
+                (DateTime.UtcNow - NuGetManifestLoader.LatestManifestLifetime - TimeSpan.FromMinutes(1), "<entry>stale</entry>");
+            Assert.Null(NuGetManifestLoader.GetManifestContent(package));
+        }
+        finally
+        {
+            NuGetManifestLoader.LatestManifests.TryRemove(key, out _);
+        }
+    }
+
+    [Fact]
     public void GetCacheKey_MatchesTheVersionedHashForThePackagesOwnVersion()
     {
         var manager = new PackageManagerBuilder().Build();

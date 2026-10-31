@@ -171,7 +171,11 @@ function Write-OrderedJsonMap {
         [string]$Path,
 
         [Parameter(Mandatory = $true)]
-        [System.Collections.IDictionary]$Map
+        [System.Collections.IDictionary]$Map,
+
+        [string]$Indent = '  ',
+
+        [string]$Newline = "`r`n"
     )
 
     $lines = New-Object System.Collections.Generic.List[string]
@@ -181,7 +185,7 @@ function Write-OrderedJsonMap {
     $count = $Map.Count
     foreach ($entry in $Map.GetEnumerator()) {
         $index += 1
-        $line = '  {0}: {1}' -f (ConvertTo-JsonStringLiteral -Value ([string]$entry.Key)), (ConvertTo-JsonStringLiteral -Value ([string]$entry.Value))
+        $line = '{0}{1}: {2}' -f $Indent, (ConvertTo-JsonStringLiteral -Value ([string]$entry.Key)), (ConvertTo-JsonStringLiteral -Value ([string]$entry.Value))
         if ($index -lt $count) {
             $line += ','
         }
@@ -190,7 +194,34 @@ function Write-OrderedJsonMap {
     }
 
     $lines.Add('}')
-    New-Utf8File -Path $Path -Content (($lines -join "`r`n") + "`r`n")
+    New-Utf8File -Path $Path -Content (($lines -join $Newline) + $Newline)
+}
+
+function Get-JsonFileLayout {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $indent = '  '
+    $newline = "`r`n"
+    if (Test-Path -Path $Path -PathType Leaf) {
+        $content = [System.IO.File]::ReadAllText((Get-FullPath -Path $Path))
+        $indentMatch = [regex]::Match($content, '(?m)^([ \t]+)"')
+        if ($indentMatch.Success) {
+            $indent = $indentMatch.Groups[1].Value
+        }
+
+        $newlineMatch = [regex]::Match($content, '\r?\n')
+        if ($newlineMatch.Success) {
+            $newline = $newlineMatch.Value
+        }
+    }
+
+    return [pscustomobject]@{
+        Indent = $indent
+        Newline = $newline
+    }
 }
 
 function Get-TranslationLegacyBoundaryKey {
@@ -438,7 +469,7 @@ function Get-PlaceholderTokens {
         $match.Value
     }
 
-    return @($tokens | Sort-Object)
+    return @($tokens | Sort-Object -CaseSensitive)
 }
 
 function Get-HtmlTokens {
@@ -452,7 +483,7 @@ function Get-HtmlTokens {
         $match.Value
     }
 
-    return @($tokens | Sort-Object)
+    return @($tokens | Sort-Object -CaseSensitive)
 }
 
 function Get-NewlineCount {
@@ -481,13 +512,13 @@ function Assert-TranslationStructure {
 
     $sourcePlaceholderSignature = (Get-PlaceholderTokens -Value $SourceValue) -join "`n"
     $translatedPlaceholderSignature = (Get-PlaceholderTokens -Value $TranslatedValue) -join "`n"
-    if ($sourcePlaceholderSignature -ne $translatedPlaceholderSignature) {
+    if ($sourcePlaceholderSignature -cne $translatedPlaceholderSignature) {
         throw "Placeholder mismatch for key '$Key'."
     }
 
     $sourceHtmlSignature = (Get-HtmlTokens -Value $SourceValue) -join "`n"
     $translatedHtmlSignature = (Get-HtmlTokens -Value $TranslatedValue) -join "`n"
-    if ($sourceHtmlSignature -ne $translatedHtmlSignature) {
+    if ($sourceHtmlSignature -cne $translatedHtmlSignature) {
         throw "HTML fragment mismatch for key '$Key'."
     }
 

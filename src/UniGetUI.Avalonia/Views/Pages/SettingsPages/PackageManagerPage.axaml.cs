@@ -425,7 +425,8 @@ public sealed partial class PackageManagerPage : UserControl, ISettingsPage
     {
         ExtraControls.Children.Clear();
         var manager = ViewModel.Manager;
-        bool managerHasSources = manager.Capabilities.SupportsCustomSources && manager.Name != "vcpkg";
+        bool managerHasSources = manager.Capabilities.SupportsCustomSources && manager.Name != "vcpkg"
+            && manager.Capabilities.Sources.CanBeEdited;
 
         if (managerHasSources)
         {

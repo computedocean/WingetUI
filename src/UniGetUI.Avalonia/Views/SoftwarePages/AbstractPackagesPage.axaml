@@ -118,6 +118,12 @@
          <Setter Property="Background" Value="{DynamicResource SettingsCardBackground}"/>
          <Setter Property="BorderThickness" Value="0"/>
       </Style>
+      <Style Selector="StackPanel#MainActionPanel">
+         <Setter Property="Grid.Column" Value="1"/>
+      </Style>
+      <Style Selector="Button#MainToolbarButtonDropdown Path">
+         <Setter Property="Stroke" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+      </Style>
       <!-- Render the three-state "Select all" checkbox's indeterminate glyph as a dash instead of a square -->
       <Style Selector="CheckBox:indeterminate /template/ Path#CheckGlyph">
          <Setter Property="Data" Value="M0,0 H10 V2 H0 Z"/>
@@ -148,6 +154,42 @@
       <Style Selector="Border#MegaQueryContainer:focus-within">
          <Setter Property="Background" Value="{DynamicResource SearchBoxFocusedBackground}"/>
          <Setter Property="BorderBrush" Value="{DynamicResource SearchBoxFocusedBorderBrush}"/>
+      </Style>
+
+      <!-- macOS glass look: accent selection pill with accent-content text, and a plain header row
+           instead of the WinUI filled header bar. -->
+      <Style Selector="Window.mac-glass DataGrid#PackageList DataGridRow:selected,
+                       Window.mac-glass DataGrid#PackageList DataGridRow:selected:pointerover">
+         <Setter Property="Background" Value="{DynamicResource MacGlassSelectionBackground}"/>
+         <Setter Property="BorderBrush" Value="Transparent"/>
+         <Setter Property="Foreground" Value="{DynamicResource MacAccentForeground}"/>
+      </Style>
+      <Style Selector="Window.mac-glass DataGrid#PackageList DataGridRow:selected /template/ Rectangle#BackgroundRectangle,
+                       Window.mac-glass DataGrid#PackageList DataGridRow:selected:pointerover /template/ Rectangle#BackgroundRectangle">
+         <Setter Property="Fill" Value="Transparent"/>
+      </Style>
+      <Style Selector="Window.mac-glass DataGrid#PackageList DataGridRow:selected controls|SvgIcon">
+         <Setter Property="Foreground" Value="{DynamicResource MacAccentForeground}"/>
+      </Style>
+      <!-- Toolbar on the glass look: icon-only Filters; the main action's chevron uses the accent content colour. -->
+      <Style Selector="Window.mac-glass ToggleButton#ToggleFiltersButton TextBlock">
+         <Setter Property="IsVisible" Value="False"/>
+      </Style>
+      <!-- Apple: one prominent action, on the trailing side of the toolbar. -->
+      <Style Selector="Window.mac-glass StackPanel#MainActionPanel">
+         <Setter Property="Grid.Column" Value="3"/>
+      </Style>
+      <Style Selector="Window.mac-glass Button#MainToolbarButton">
+         <Setter Property="Margin" Value="0,0,1,0"/>
+      </Style>
+      <Style Selector="Window.mac-glass Button#MainToolbarButtonDropdown Path">
+         <Setter Property="Stroke" Value="{DynamicResource MacAccentForeground}"/>
+      </Style>
+      <Style Selector="Window.mac-glass DataGridColumnHeader">
+         <Setter Property="Background" Value="Transparent"/>
+         <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+         <Setter Property="FontSize" Value="12"/>
+         <Setter Property="FontWeight" Value="SemiBold"/>
       </Style>
    </UserControl.Styles>
 
@@ -220,6 +262,22 @@
                               Path="{Binding PageIconPath}"/>
 
             <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="0">
+                <!-- Link back to the page this one belongs to, e.g. the Catalog Editor's Software Catalog -->
+                <Button Classes="filter-hyperlink"
+                        IsVisible="{Binding HasParentPage}"
+                        Command="{Binding GoToParentPageCommand}"
+                        HorizontalAlignment="Left"
+                        Padding="2,1"
+                        Margin="-3,0,0,0"
+                        ToolTip.Tip="{Binding ParentPageLinkName}"
+                        automation:AutomationProperties.Name="{Binding ParentPageLinkName}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <controls:SvgIcon Path="avares://UniGetUI/Assets/Symbols/backward.svg"
+                                          Width="12" Height="12" VerticalAlignment="Center"
+                                          automation:AutomationProperties.AccessibilityView="Raw"/>
+                        <TextBlock Text="{Binding ParentPageTitle}" FontSize="12" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
                 <TextBlock x:Name="MainTitle"
                            MaxHeight="60"
                            HorizontalAlignment="Left"
@@ -228,14 +286,14 @@
                            FontFamily="Segoe UI Variable Display"
                            TextWrapping="Wrap"
                            Text="{Binding PageTitle}"/>
+                <!-- Words and last-check time in the secondary text colour; the numbers are added stronger from code (UpdateSubtitleInlines) -->
                 <TextBlock x:Name="MainSubtitle"
                            MaxHeight="40"
                            HorizontalAlignment="Left"
                            FontSize="12"
                            FontWeight="Normal"
-                           Opacity="0.6"
-                           TextWrapping="Wrap"
-                           Text="{Binding Subtitle}"/>
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           TextWrapping="Wrap"/>
             </StackPanel>
 
         </Grid>
@@ -243,7 +301,7 @@
         <!-- ==================== TOOLBAR ROW ==================== -->
         <Grid Name="ToolbarRow"
               Grid.Row="1"
-              ColumnDefinitions="Auto,Auto,*"
+              ColumnDefinitions="Auto,Auto,*,Auto"
               ColumnSpacing="4"
               Margin="0">
 
@@ -272,8 +330,8 @@
                 </ToggleButton>
             </StackPanel>
 
-            <!-- Main action button + dropdown -->
-            <StackPanel Grid.Column="1" Orientation="Horizontal">
+            <!-- Main action button + dropdown (moved to the trailing column on the macOS glass look) -->
+            <StackPanel x:Name="MainActionPanel" Orientation="Horizontal">
                 <Button x:Name="MainToolbarButton"
                         Height="40"
                         Margin="-9,0,1,0"
@@ -295,7 +353,6 @@
                         automation:AutomationProperties.Name="{t:Translate More}"
                         CornerRadius="0,4,4,0">
                     <Path Data="M 0,0 L 4,4 L 8,0"
-                          Stroke="{DynamicResource TextFillColorPrimaryBrush}"
                           StrokeThickness="1.5"
                           StrokeJoin="Miter"
                           Fill="Transparent"
@@ -485,53 +542,13 @@
                             </StackPanel>
                         </Expander>
 
-                        <!-- Filter options expander -->
+                        <!-- Search options: how the title-bar search matches, folded so the pane leads with real filters -->
                         <Expander Classes="filter-pane-expander"
                                   IsExpanded="False"
                                   CornerRadius="8"
                                   Padding="16,8,16,8"
                                   Background="{DynamicResource FilterExpanderContentBackground}"
-                                  automation:AutomationProperties.Name="{t:Translate Filters}">
-                            <Expander.Header>
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                    <controls:SvgIcon Grid.Column="0"
-                                                      Path="avares://UniGetUI/Assets/Symbols/Filter.svg"
-                                                      Width="16" Height="16"
-                                                      VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Column="1"
-                                               Text="{t:Translate Filters}"
-                                               FontSize="14"
-                                               FontWeight="SemiBold"
-                                               VerticalAlignment="Center"
-                                               TextWrapping="Wrap"/>
-                                </Grid>
-                            </Expander.Header>
-                            <StackPanel HorizontalAlignment="Stretch" Orientation="Vertical" Spacing="0">
-                                <CheckBox x:Name="InstantSearchCheckbox"
-                                          IsChecked="{Binding InstantSearch, Mode=TwoWay}"
-                                          automation:AutomationProperties.Name="{t:Translate Instant search}">
-                                    <TextBlock Text="{t:Translate Instant search}" TextWrapping="Wrap"/>
-                                </CheckBox>
-                                <CheckBox x:Name="UpperLowerCaseCheckbox"
-                                          IsChecked="{Binding UpperLowerCase, Mode=TwoWay}"
-                                          automation:AutomationProperties.Name="{t:Translate Distinguish between uppercase and lowercase}">
-                                    <TextBlock Text="{t:Translate Distinguish between uppercase and lowercase}" TextWrapping="Wrap"/>
-                                </CheckBox>
-                                <CheckBox x:Name="IgnoreSpecialCharsCheckbox"
-                                          IsChecked="{Binding IgnoreSpecialChars, Mode=TwoWay}"
-                                          automation:AutomationProperties.Name="{t:Translate Ignore special characters}">
-                                    <TextBlock Text="{t:Translate Ignore special characters}" TextWrapping="Wrap"/>
-                                </CheckBox>
-                            </StackPanel>
-                        </Expander>
-
-                        <!-- Search mode expander -->
-                        <Expander Classes="filter-pane-expander"
-                                  IsExpanded="True"
-                                  CornerRadius="8"
-                                  Padding="16,8,16,8"
-                                  Background="{DynamicResource FilterExpanderContentBackground}"
-                                  automation:AutomationProperties.Name="{t:Translate Search mode}">
+                                  automation:AutomationProperties.Name="{t:Translate Search options}">
                             <Expander.Header>
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                                     <controls:SvgIcon Grid.Column="0"
@@ -539,7 +556,7 @@
                                                       Width="16" Height="16"
                                                       VerticalAlignment="Center"/>
                                     <TextBlock Grid.Column="1"
-                                               Text="{t:Translate Search mode}"
+                                               Text="{t:Translate Search options}"
                                                FontSize="14"
                                                FontWeight="SemiBold"
                                                VerticalAlignment="Center"
@@ -547,6 +564,12 @@
                                 </Grid>
                             </Expander.Header>
                             <StackPanel HorizontalAlignment="Stretch" Orientation="Vertical" Spacing="0">
+                                <TextBlock Text="{t:Translate Search mode}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Opacity="0.7"
+                                           Margin="0,0,0,2"
+                                           TextWrapping="Wrap"/>
                                 <RadioButton Classes="filter-radio"
                                              IsChecked="{Binding SearchMode_Name, Mode=TwoWay}"
                                              Content="{t:Translate Package Name}"
@@ -568,6 +591,22 @@
                                              IsEnabled="{Binding SimilarSearchEnabled}"
                                              Content="{t:Translate Show similar packages}"
                                              automation:AutomationProperties.Name="{t:Translate Show similar packages}"/>
+                                <Separator Margin="0,8" Background="{DynamicResource MenuDividerBrush}"/>
+                                <CheckBox x:Name="InstantSearchCheckbox"
+                                          IsChecked="{Binding InstantSearch, Mode=TwoWay}"
+                                          automation:AutomationProperties.Name="{t:Translate Instant search}">
+                                    <TextBlock Text="{t:Translate Instant search}" TextWrapping="Wrap"/>
+                                </CheckBox>
+                                <CheckBox x:Name="UpperLowerCaseCheckbox"
+                                          IsChecked="{Binding UpperLowerCase, Mode=TwoWay}"
+                                          automation:AutomationProperties.Name="{t:Translate Case sensitive}">
+                                    <TextBlock Text="{t:Translate Case sensitive}" TextWrapping="Wrap"/>
+                                </CheckBox>
+                                <CheckBox x:Name="IgnoreSpecialCharsCheckbox"
+                                          IsChecked="{Binding IgnoreSpecialChars, Mode=TwoWay}"
+                                          automation:AutomationProperties.Name="{t:Translate Ignore special characters}">
+                                    <TextBlock Text="{t:Translate Ignore special characters}" TextWrapping="Wrap"/>
+                                </CheckBox>
                             </StackPanel>
                         </Expander>
 
@@ -676,7 +715,7 @@
                                   ItemsSource="{Binding FilteredPackages}"
                                   automation:AutomationProperties.AccessibilityView="Control"
                                   automation:AutomationProperties.Name="{Binding PageTitle}"
-                                  automation:AutomationProperties.HelpText="{Binding Subtitle}"
+                                  automation:AutomationProperties.HelpText="{Binding SubtitleAccessibleText}"
                                   AutoGenerateColumns="False"
                                   CanUserReorderColumns="True"
                                   CanUserResizeColumns="True"
@@ -698,7 +737,8 @@
                                 </DataGridTemplateColumn>
                                 <DataGridTemplateColumn Tag="Name" SortMemberPath="Package.Name"
                                                         Header="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).NameHeaderText}"
-                                                        Width="*">
+                                                        Width="*"
+                                                        IsVisible="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).NameColumnVisible}">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="pkg:PackageWrapper">
                                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center" Margin="4,0"
@@ -734,7 +774,8 @@
                                 </DataGridTemplateColumn>
                                 <DataGridTemplateColumn Tag="Id" SortMemberPath="Package.Id"
                                                         Header="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).IdHeaderText}"
-                                                        Width="*">
+                                                        Width="*"
+                                                        IsVisible="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).IdColumnVisible}">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="pkg:PackageWrapper">
                                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center" Margin="4,0"
@@ -749,7 +790,8 @@
                                 </DataGridTemplateColumn>
                                 <DataGridTemplateColumn Tag="Version" SortMemberPath="VersionComboString"
                                                         Header="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).VersionHeaderText}"
-                                                        Width="*">
+                                                        Width="*"
+                                                        IsVisible="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).VersionColumnVisible}">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="pkg:PackageWrapper">
                                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center" Margin="4,0"
@@ -793,7 +835,8 @@
                                 </DataGridTemplateColumn>
                                 <DataGridTemplateColumn Tag="Source" SortMemberPath="Package.Source.AsString_DisplayName"
                                                         Header="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).SourceHeaderText}"
-                                                        Width="*">
+                                                        Width="*"
+                                                        IsVisible="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).SourceColumnVisible}">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="pkg:PackageWrapper">
                                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center" Margin="4,0"
@@ -806,7 +849,7 @@
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTemplateColumn CanUserSort="False"
+                                <DataGridTemplateColumn Tag="InstallerHost" CanUserSort="False"
                                                         Header="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).InstallerHostHeaderText}"
                                                         Width="*"
                                                         IsVisible="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).InstallerHostColumnVisible}">
@@ -830,7 +873,7 @@
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTemplateColumn CanUserSort="False"
+                                <DataGridTemplateColumn Tag="DownloadSize" CanUserSort="False"
                                                         Header="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).DownloadSizeHeaderText}"
                                                         Width="*"
                                                         IsVisible="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).DownloadSizeColumnVisible}">
@@ -842,6 +885,23 @@
                                                 <controls:SvgIcon Grid.Column="0" Path="avares://UniGetUI/Assets/Symbols/disk.svg"
                                                                   Width="24" Height="24" VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="1" Text="{Binding DownloadSizeText}" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Tag="ReleaseDate" CanUserSort="False"
+                                                        Header="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).ReleaseDateHeaderText}"
+                                                        Width="*"
+                                                        IsVisible="{Binding $parent[UserControl].((vm:PackagesPageViewModel)DataContext).ReleaseDateColumnVisible}">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate x:DataType="pkg:PackageWrapper">
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center" Margin="4,0"
+                                                  controls:PackageRowValueLoader.Track="True"
+                                                  automation:AutomationProperties.Name="{Binding ReleaseDateText}">
+                                                <controls:SvgIcon Grid.Column="0" Path="avares://UniGetUI/Assets/Symbols/history.svg"
+                                                                  Width="24" Height="24" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding ReleaseDateText}" VerticalAlignment="Center"
                                                            TextTrimming="CharacterEllipsis"/>
                                             </Grid>
                                         </DataTemplate>
@@ -1054,7 +1114,7 @@
                         <StackPanel VerticalAlignment="Center"
                                     HorizontalAlignment="Center"
                                     Spacing="16">
-                            <Image Source="avares://UniGetUI/Assets/Images/launcher.png"
+                            <Image Source="{Binding LoadingImage}"
                                    MaxWidth="{Binding #PackageListHost.Bounds.Width, Converter={StaticResource ScaleClampConverter}, ConverterParameter=0.4|180}"
                                    MaxHeight="{Binding #PackageListHost.Bounds.Height, Converter={StaticResource ScaleClampConverter}, ConverterParameter=0.4|180}"
                                    Stretch="Uniform"
@@ -1077,6 +1137,10 @@
                                        TextWrapping="Wrap"
                                        Text="{Binding BackgroundText}"
                                        IsVisible="{Binding BackgroundTextVisible}"/>
+                            <Button HorizontalAlignment="Center"
+                                    Content="{t:Translate Package manager preferences}"
+                                    Command="{Binding OpenManagerSettingsCommand}"
+                                    IsVisible="{Binding NoManagerReadyVisible}"/>
                         </StackPanel>
                     </Panel>
                 </Grid>
@@ -1180,9 +1244,12 @@
                             <MenuItem x:Name="OrderByNewVersion_Menu" Header="{t:Translate New version}" Command="{Binding SortByNewVersionCommand}"/>
                             <MenuItem x:Name="OrderBySource_Menu"     Header="{t:Translate Source}"      Command="{Binding SortBySourceCommand}"/>
                             <MenuItem x:Name="OrderByDownloadSize_Menu" Header="{t:Translate Download size}" Command="{Binding SortByDownloadSizeCommand}"/>
+                            <MenuItem x:Name="OrderByReleaseDate_Menu" Header="{t:Translate Release date}" Command="{Binding SortByReleaseDateCommand}"/>
                             <Separator/>
                             <MenuItem x:Name="OrderByAscending_Menu"  Header="{t:Translate Ascendant}"   Command="{Binding SetSortAscendingCommand}"/>
                             <MenuItem x:Name="OrderByDescending_Menu" Header="{t:Translate Descendant}"  Command="{Binding SetSortDescendingCommand}"/>
+                            <Separator/>
+                            <MenuItem x:Name="Columns_Menu" Header="{t:Translate Columns}"/>
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>
@@ -1207,8 +1274,8 @@
                             <StackPanel Orientation="Horizontal"/>
                         </ItemsPanelTemplate>
                     </ListBox.ItemsPanel>
-                    <ListBoxItem x:Name="Selector_List" Classes="segment-item" Padding="8,4,8,8" ToolTip.Tip="List"
-                                 automation:AutomationProperties.Name="List">
+                    <ListBoxItem x:Name="Selector_List" Classes="segment-item" Padding="8,4,8,8" ToolTip.Tip="{t:Translate List}"
+                                 automation:AutomationProperties.Name="{t:Translate List}">
                         <Viewbox Width="18" Height="18" automation:AutomationProperties.AccessibilityView="Raw">
                             <Grid Width="16" Height="16">
                                 <!-- bullets -->
@@ -1225,8 +1292,8 @@
                             </Grid>
                         </Viewbox>
                     </ListBoxItem>
-                    <ListBoxItem x:Name="Selector_Grid" Classes="segment-item" Padding="8,4,8,8" ToolTip.Tip="Grid"
-                                 automation:AutomationProperties.Name="Grid">
+                    <ListBoxItem x:Name="Selector_Grid" Classes="segment-item" Padding="8,4,8,8" ToolTip.Tip="{t:Translate Grid}"
+                                 automation:AutomationProperties.Name="{t:Translate Grid}">
                         <!-- Two rows: open "[" bracket on the left + two stacked lines on the right -->
                         <Viewbox Width="18" Height="18" automation:AutomationProperties.AccessibilityView="Raw">
                             <Path Width="16" Height="16"
@@ -1239,8 +1306,8 @@
                                   Fill="Transparent"/>
                         </Viewbox>
                     </ListBoxItem>
-                    <ListBoxItem x:Name="Selector_Icons" Classes="segment-item" Padding="8,4,8,8" ToolTip.Tip="Icons"
-                                 automation:AutomationProperties.Name="Icons">
+                    <ListBoxItem x:Name="Selector_Icons" Classes="segment-item" Padding="8,4,8,8" ToolTip.Tip="{t:Translate Icons}"
+                                 automation:AutomationProperties.Name="{t:Translate Icons}">
                         <!-- 2x2 hollow squares (WinUI IconView) with extra gap between -->
                         <Viewbox Width="18" Height="18" automation:AutomationProperties.AccessibilityView="Raw">
                             <Path Width="16" Height="16"

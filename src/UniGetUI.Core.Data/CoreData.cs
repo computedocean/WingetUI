@@ -8,7 +8,7 @@ namespace UniGetUI.Core.Data
     {
         private const string GitHubReleasePageBaseUrl = "https://github.com/Devolutions/UniGetUI/releases/tag/";
         private const string GitHubReleaseApiBaseUrl = "https://api.github.com/repos/Devolutions/UniGetUI/releases/tags/";
-        public const string ReleaseNotesUrl = "https://devolutions.net/unigetui/release-notes/";
+        public const string ReleaseNotesUrl = "https://devolutions.net/data/UniGetUIChangeHistoryUpdate.htm";
 
         private static int? __code_page;
         public static int CODE_PAGE
@@ -38,7 +38,7 @@ namespace UniGetUI.Core.Data
                 return __console_encoding;
             }
         }
-        public const string VersionName = "2026.1.0"; // Do not modify this line, use file scripts/set-version.ps1
+        public const string VersionName = "1.0.0.0"; // Do not modify this line, use file scripts/set-version.ps1
         public const int BuildNumber = 106; // Do not modify this line, use file scripts/set-version.ps1
 
         public const string UserAgentString =

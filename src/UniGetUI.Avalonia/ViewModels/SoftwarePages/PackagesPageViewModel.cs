@@ -9,12 +9,12 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
-using Avalonia.Platform;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Avalonia.ViewModels;
+using UniGetUI.Avalonia.Views;
 using UniGetUI.Avalonia.Views.Controls;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.Tools;
@@ -153,9 +153,9 @@ public partial class PackagesPageViewModel : ViewModelBase
     public readonly bool LoadsOnStart;
     public readonly bool RoleIsUpdateLike;
     public bool SimilarSearchEnabled { get; private set; }
-    public bool InstallerHostColumnVisible { get; }
-    public bool DownloadSizeColumnVisible { get; }
-    public readonly string NoPackagesText;
+    public readonly bool OptionalColumnsAvailable;
+    // Settable so a page can say why it is empty; takes effect on the next list update.
+    public string NoPackagesText { get; set; }
     public readonly string NoMatchesText;
     public readonly string SearchBoxPlaceholder;
     private readonly string _noPackagesSubtitleBase;
@@ -170,11 +170,68 @@ public partial class PackagesPageViewModel : ViewModelBase
     [ObservableProperty] private string _pageTitle = "";
     [ObservableProperty] private string _pageIconPath = "";
     [ObservableProperty] private string _subtitle = "";
+
+    // A page opened from another one (the Catalog Editor from the Software Catalog) links back to it above its title.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasParentPage))]
+    [NotifyPropertyChangedFor(nameof(ParentPageLinkName))]
+    private string _parentPageTitle = "";
+
+    public bool HasParentPage => ParentPageTitle.Length > 0;
+    public string ParentPageLinkName => CoreTools.Translate("Back to {0}", ParentPageTitle);
+    public Action? ParentPageRequested { get; set; }
+
+    [RelayCommand]
+    private void GoToParentPage() => ParentPageRequested?.Invoke();
+
+    // Shown after the subtitle in a secondary tone: when the list was last checked, then the page suffix.
+    [ObservableProperty] private string _subtitleDetail = "";
+
+    // The whole subtitle as one sentence, for screen readers.
+    [ObservableProperty] private string _subtitleAccessibleText = "";
+
+    /// <summary>The subtitle cut around its numbers, so the page can draw them stronger than the words.</summary>
+    [ObservableProperty] private IReadOnlyList<SubtitleSegment> _subtitleSegments = [];
+
+    // The sentence is formatted with the real integers, so ICU plural selectors keep working (ru, lt, et, sq);
+    // the numbers are then found in the formatted text, wherever the translation placed them.
+    private void SetSubtitle(string text, params int[] values)
+    {
+        var segments = new List<SubtitleSegment>();
+        if (values.Length > 0)
+        {
+            string alternatives = string.Join('|', values
+                .Select(v => v.ToString(CultureInfo.CurrentCulture))
+                .Distinct()
+                .OrderByDescending(v => v.Length)
+                .Select(System.Text.RegularExpressions.Regex.Escape));
+            int last = 0;
+            foreach (System.Text.RegularExpressions.Match match in
+                     System.Text.RegularExpressions.Regex.Matches(text, $@"(?<!\d)(?:{alternatives})(?!\d)"))
+            {
+                if (match.Index > last) segments.Add(new SubtitleSegment(text[last..match.Index], false));
+                segments.Add(new SubtitleSegment(match.Value, true));
+                last = match.Index + match.Length;
+            }
+            if (last < text.Length) segments.Add(new SubtitleSegment(text[last..], false));
+        }
+        else
+        {
+            segments.Add(new SubtitleSegment(text, false));
+        }
+
+        SubtitleSegments = segments;
+        Subtitle = text;
+    }
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private bool _backgroundTextVisible;
     [ObservableProperty] private bool _loadingImageVisible;
+    private static readonly Lazy<Bitmap?> _loadingImage =
+        new(() => BitmapLoader.TryLoadAsset("avares://UniGetUI/Assets/Images/launcher.png"));
+    public Bitmap? LoadingImage => _loadingImage.Value;
     [ObservableProperty] private Bitmap? _noPackagesImage;
     [ObservableProperty] private bool _noPackagesImageVisible;
+    [ObservableProperty] private bool _noManagerReadyVisible;
     [ObservableProperty] private string _backgroundText = "";
     [ObservableProperty] private bool _sourcesPlaceholderVisible = true;
     [ObservableProperty] private bool _sourcesTreeVisible;
@@ -182,6 +239,13 @@ public partial class PackagesPageViewModel : ViewModelBase
     [ObservableProperty] private string _megaQueryText = "";
     [ObservableProperty] private string _globalQueryText = "";
     [ObservableProperty] private bool _newVersionHeaderVisible;
+    [ObservableProperty] private bool _nameColumnVisible;
+    [ObservableProperty] private bool _idColumnVisible;
+    [ObservableProperty] private bool _versionColumnVisible;
+    [ObservableProperty] private bool _sourceColumnVisible;
+    [ObservableProperty] private bool _installerHostColumnVisible;
+    [ObservableProperty] private bool _downloadSizeColumnVisible;
+    [ObservableProperty] private bool _releaseDateColumnVisible;
     [ObservableProperty] private bool _reloadButtonVisible;
     [ObservableProperty] private string _reloadButtonTooltip = "";
     [ObservableProperty] private bool _isFilterPaneOpen;
@@ -200,6 +264,7 @@ public partial class PackagesPageViewModel : ViewModelBase
     [ObservableProperty] private string _sourceHeaderText = "";
     [ObservableProperty] private string _installerHostHeaderText = "";
     [ObservableProperty] private string _downloadSizeHeaderText = "";
+    [ObservableProperty] private string _releaseDateHeaderText = "";
 
     // ─── Collections ──────────────────────────────────────────────────────────
     public ObservablePackageCollection FilteredPackages { get; } = new();
@@ -217,7 +282,7 @@ public partial class PackagesPageViewModel : ViewModelBase
 
     private readonly ObservableCollection<PackageWrapper> _wrappedPackages = new();
     private CancellationTokenSource? _iconPreloadCts;
-    private CancellationTokenSource? _downloadSizePreloadCts;
+    private CancellationTokenSource? _rowValuePreloadCts;
     protected List<IPackageManager> UsedManagers = [];
     protected ConcurrentDictionary<IPackageManager, List<IManagerSource>> UsedSourcesForManager = new();
     protected ConcurrentDictionary<IPackageManager, SourceTreeNode> RootNodeForManager = new();
@@ -253,18 +318,15 @@ public partial class PackagesPageViewModel : ViewModelBase
         NoMatchesText = data.NoMatches_BackgroundText;
         if (_showPackageIllustrations && !string.IsNullOrEmpty(data.NoPackages_ImagePath))
         {
-            using var stream = AssetLoader.Open(new Uri(data.NoPackages_ImagePath));
-            NoPackagesImage = new Bitmap(stream);
+            NoPackagesImage = BitmapLoader.TryLoadAsset(data.NoPackages_ImagePath);
         }
         _noPackagesSubtitleBase = data.NoPackages_SubtitleText_Base;
         _stillLoadingSubtitle = data.MainSubtitle_StillLoading;
         SimilarSearchEnabled = !data.DisableSuggestedResultsRadio;
         RoleIsUpdateLike = data.PageRole == OperationType.Update;
-        NewVersionHeaderVisible = RoleIsUpdateLike;
-        InstallerHostColumnVisible = Settings.Get(Settings.K.ShowInstallerHostColumn)
-            && data.PageRole != OperationType.Uninstall;
-        DownloadSizeColumnVisible = Settings.Get(Settings.K.ShowDownloadSizeColumn)
-            && data.PageRole != OperationType.Uninstall;
+        OptionalColumnsAvailable = data.PageRole != OperationType.Uninstall;
+        LoadColumnVisibility();
+        ColumnVisibilityChanged += LoadColumnVisibility;
         ReloadButtonVisible = !DisableReload;
         SearchBoxPlaceholder = CoreTools.Translate("Search for packages");
 
@@ -295,9 +357,10 @@ public partial class PackagesPageViewModel : ViewModelBase
 
         // Restore per-page sort preferences (default: Name, ascending).
         int savedSortField = Settings.GetDictionaryItem<string, int>(Settings.K.PackageListSortFieldIndex, PageName);
-        if (savedSortField is < 0 or > 5
+        if (savedSortField is < 0 or > 6
             || (savedSortField is 3 && !RoleIsUpdateLike)
-            || (savedSortField is 5 && !DownloadSizeColumnVisible))
+            || (savedSortField is 5 && !DownloadSizeColumnVisible)
+            || (savedSortField is 6 && !ReleaseDateColumnVisible))
             savedSortField = 0;
         SortFieldIndex = savedSortField;
         SortAscending = !Settings.GetDictionaryItem<string, bool>(Settings.K.PackageListSortDescending, PageName);
@@ -388,8 +451,13 @@ public partial class PackagesPageViewModel : ViewModelBase
     }
 
     /// <summary>Adds a thin vertical separator to the toolbar.</summary>
-    public void AddToolbarSeparator(int index = -1)
+    /// <param name="subgroup">Separates closely related actions; the macOS glass toolbar omits it so
+    /// they share one capsule.</param>
+    public void AddToolbarSeparator(int index = -1, bool subgroup = false)
     {
+        if (subgroup && MacGlassWindowHelper.IsGlassEnabled())
+            return;
+
         object? borderResource = null;
         Application.Current?.Resources.TryGetResource(
             "AppBorderBrush",
@@ -470,16 +538,23 @@ public partial class PackagesPageViewModel : ViewModelBase
 
         if (e.ProceduralChange)
         {
+            var added = new List<PackageWrapper>();
             foreach (var pkg in e.AddedPackages)
             {
                 if (_wrappedPackages.Any(w => w.Package.GetVersionedHash() == pkg.GetVersionedHash())) continue;
-                _wrappedPackages.Add(new PackageWrapper(pkg, this));
+                var wrapper = new PackageWrapper(pkg, this);
+                _wrappedPackages.Add(wrapper);
+                added.Add(wrapper);
                 AddPackageToSourcesList(pkg);
             }
             var toRemove = _wrappedPackages
                 .Where(w => e.RemovedPackages.Any(r => r.GetVersionedHash() == w.Package.GetVersionedHash()))
                 .ToList();
             foreach (var wrapper in toRemove) { wrapper.Dispose(); _wrappedPackages.Remove(wrapper); }
+
+            var filter = BuildPackageFilter(out string query);
+            FilteredPackages.ApplyChanges(toRemove, added.Where(filter));
+            UpdateFilteredState(query);
         }
         else
         {
@@ -491,8 +566,11 @@ public partial class PackagesPageViewModel : ViewModelBase
                 _wrappedPackages.Add(new PackageWrapper(pkg, this));
                 AddPackageToSourcesList(pkg);
             }
+            FilterPackages();
         }
-        FilterPackages();
+
+        // A finished load starts its own preload; this covers changes outside one, such as bundle additions
+        if (!Loader.IsLoading) StartRowValuePreload();
     }
 
     private void Loader_FinishedLoading(object? sender, EventArgs e)
@@ -504,6 +582,8 @@ public partial class PackagesPageViewModel : ViewModelBase
         }
         IsLoading = Loader.IsLoading;
         _lastLoadTime = DateTime.Now;
+        // Also called from the constructor before any load has run: only a finished load counts
+        _lastLoadHadNoManagerReady = Loader.IsLoaded && !Loader.AnyManagerReady;
         ReloadButtonTooltip = CoreTools.Translate("Last checked: {0}", _lastLoadTime.ToString(CultureInfo.CurrentCulture));
         FilterPackages();
         _iconPreloadCts?.Cancel();
@@ -512,25 +592,38 @@ public partial class PackagesPageViewModel : ViewModelBase
         _ = PreloadPackageIconsAsync(
             FilteredPackages.Take(MaximumPreloadedIcons).ToArray(),
             _iconPreloadCts.Token);
-        if (FilteredPackages.CurrentSorter is ObservablePackageCollection.Sorter.DownloadSize)
-            StartDownloadSizePreload();
+        StartRowValuePreload();
         PackagesLoaded?.Invoke(ReloadReason.External);
     }
 
-    private void StartDownloadSizePreload()
+    // Sorting by a lazily loaded column needs every row's value, filtered out or not, not just the visible ones
+    private void StartRowValuePreload()
     {
-        if (!DownloadSizeColumnVisible) return;
+        ObservablePackageCollection.Sorter sorter = FilteredPackages.CurrentSorter;
+        Func<PackageWrapper, Task>? load = sorter switch
+        {
+            ObservablePackageCollection.Sorter.DownloadSize when DownloadSizeColumnVisible
+                => wrapper => wrapper.EnsureDownloadSizeLoadedAsync(),
+            ObservablePackageCollection.Sorter.ReleaseDate when ReleaseDateColumnVisible
+                => wrapper => wrapper.EnsureReleaseDateLoadedAsync(),
+            _ => null,
+        };
+        if (load is null) return;
 
-        _downloadSizePreloadCts?.Cancel();
-        _downloadSizePreloadCts?.Dispose();
-        _downloadSizePreloadCts = new CancellationTokenSource();
-        _ = PreloadDownloadSizesAsync(
-            FilteredPackages.ToArray(),
-            _downloadSizePreloadCts.Token);
+        _rowValuePreloadCts?.Cancel();
+        _rowValuePreloadCts?.Dispose();
+        _rowValuePreloadCts = new CancellationTokenSource();
+        _ = PreloadRowValuesAsync(
+            _wrappedPackages.ToArray(),
+            load,
+            sorter,
+            _rowValuePreloadCts.Token);
     }
 
-    private async Task PreloadDownloadSizesAsync(
+    private async Task PreloadRowValuesAsync(
         PackageWrapper[] wrappers,
+        Func<PackageWrapper, Task> load,
+        ObservablePackageCollection.Sorter sorter,
         CancellationToken cancellationToken)
     {
         if (wrappers.Length == 0) return;
@@ -544,7 +637,7 @@ public partial class PackagesPageViewModel : ViewModelBase
                 int count = Math.Min(batchSize, wrappers.Length - start);
                 var tasks = new Task[count];
                 for (int index = 0; index < count; index++)
-                    tasks[index] = wrappers[start + index].EnsureDownloadSizeLoadedAsync();
+                    tasks[index] = load(wrappers[start + index]);
 
                 await Task.WhenAll(tasks).WaitAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -552,7 +645,7 @@ public partial class PackagesPageViewModel : ViewModelBase
         catch (OperationCanceledException) { return; }
 
         if (cancellationToken.IsCancellationRequested) return;
-        if (FilteredPackages.CurrentSorter is not ObservablePackageCollection.Sorter.DownloadSize) return;
+        if (FilteredPackages.CurrentSorter != sorter) return;
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
@@ -591,7 +684,7 @@ public partial class PackagesPageViewModel : ViewModelBase
         }
         IsLoading = true;
         _iconPreloadCts?.Cancel();
-        _downloadSizePreloadCts?.Cancel();
+        _rowValuePreloadCts?.Cancel();
         UpdateSubtitle();
     }
 
@@ -605,7 +698,10 @@ public partial class PackagesPageViewModel : ViewModelBase
             {
                 MegaQueryText = "";
                 MegaQueryVisible = true;
-                Loader?.ClearPackages(emitFinishSignal: false);
+                if (Loader is DiscoverablePackagesLoader discoverLoader)
+                    discoverLoader.ResetSearch();
+                else
+                    Loader?.ClearPackages(emitFinishSignal: false);
             }
             else
             {
@@ -639,26 +735,38 @@ public partial class PackagesPageViewModel : ViewModelBase
         }
         else
         {
-            FilterPackages(fromQuery: true);
+            FilterPackages();
         }
     }
 
-    public void FilterPackages(bool fromQuery = false)
+    public void FilterPackages()
+    {
+        var filter = BuildPackageFilter(out string query);
+        var results = FilteredPackages.ApplyToList(_wrappedPackages.Where(filter)).ToList();
+
+        FilteredPackages.Clear();
+        foreach (var w in results) FilteredPackages.Add(w);
+
+        UpdateFilteredState(query);
+    }
+
+    private Func<PackageWrapper, bool> BuildPackageFilter(out string query)
     {
         var filters = new List<Func<string, string>>();
         if (!UpperLowerCase) filters.Add(FilterHelpers.NormalizeCase);
         if (IgnoreSpecialChars) filters.Add(FilterHelpers.NormalizeSpecialCharacters);
 
-        string query = _searchQuery;
-        foreach (var f in filters) query = f(query);
+        string normalizedQuery = _searchQuery;
+        foreach (var f in filters) normalizedQuery = f(normalizedQuery);
+        query = normalizedQuery;
 
-        Func<IPackage, bool> matchFunc = SearchMode switch
+        Func<IPackage, bool> matchFunc = normalizedQuery.Length == 0 ? _ => true : SearchMode switch
         {
-            SearchMode.Name => pkg => FilterHelpers.NameContains(pkg, query, filters),
-            SearchMode.Id => pkg => FilterHelpers.IdContains(pkg, query, filters),
-            SearchMode.Exact => pkg => FilterHelpers.NameOrIdExactMatch(pkg, query, filters),
+            SearchMode.Name => pkg => FilterHelpers.NameContains(pkg, normalizedQuery, filters),
+            SearchMode.Id => pkg => FilterHelpers.IdContains(pkg, normalizedQuery, filters),
+            SearchMode.Exact => pkg => FilterHelpers.NameOrIdExactMatch(pkg, normalizedQuery, filters),
             SearchMode.Similar => _ => true,
-            _ => pkg => FilterHelpers.NameOrIdContains(pkg, query, filters),
+            _ => pkg => FilterHelpers.NameOrIdContains(pkg, normalizedQuery, filters),
         };
 
         var (visibleSources, visibleManagers) = GetSelectedSourceFilters();
@@ -673,13 +781,11 @@ public partial class PackagesPageViewModel : ViewModelBase
                         && visibleManagers.Contains(pkg.Manager)
                     );
 
-        var results = FilteredPackages.ApplyToList(
-            _wrappedPackages.Where(w => matchFunc(w.Package) && sourceFilter(w.Package))
-        ).ToList();
+        return w => matchFunc(w.Package) && sourceFilter(w.Package);
+    }
 
-        FilteredPackages.Clear();
-        foreach (var w in results) FilteredPackages.Add(w);
-
+    private void UpdateFilteredState(string query)
+    {
         UpdateSubtitle();
         PackageCountUpdated?.Invoke();
 
@@ -689,22 +795,28 @@ public partial class PackagesPageViewModel : ViewModelBase
         {
             BackgroundText = _stillLoadingSubtitle;
             BackgroundTextVisible = true;
-            LoadingImageVisible = _showPackageIllustrations;
+            LoadingImageVisible = _showPackageIllustrations && LoadingImage is not null;
             NoPackagesImageVisible = false;
+            NoManagerReadyVisible = false;
         }
         else if (FilteredPackages.Count == 0)
         {
             bool noQuery = string.IsNullOrWhiteSpace(query);
-            BackgroundText = noQuery ? NoPackagesText : NoMatchesText;
-            BackgroundTextVisible = !MegaQueryBoxEnabled || !noQuery;
+            bool noManagerReady = noQuery && IsWithoutReadyManager;
+            BackgroundText = noManagerReady
+                ? CoreTools.Translate("No package managers are available")
+                : noQuery ? NoPackagesText : NoMatchesText;
+            BackgroundTextVisible = !MegaQueryBoxEnabled || !noQuery || !MegaQueryVisible;
             LoadingImageVisible = false;
-            NoPackagesImageVisible = noQuery && BackgroundTextVisible && NoPackagesImage is not null;
+            NoPackagesImageVisible = noQuery && !noManagerReady && BackgroundTextVisible && NoPackagesImage is not null;
+            NoManagerReadyVisible = noManagerReady && BackgroundTextVisible;
         }
         else
         {
             BackgroundTextVisible = false;
             LoadingImageVisible = false;
             NoPackagesImageVisible = false;
+            NoManagerReadyVisible = false;
         }
     }
 
@@ -726,6 +838,7 @@ public partial class PackagesPageViewModel : ViewModelBase
         3 => "New version",
         4 => "Source",
         5 => "Download size",
+        6 => "Release date",
         _ => "Name",
     });
 
@@ -738,12 +851,73 @@ public partial class PackagesPageViewModel : ViewModelBase
             3 => ObservablePackageCollection.Sorter.NewVersion,
             4 => ObservablePackageCollection.Sorter.Source,
             5 => ObservablePackageCollection.Sorter.DownloadSize,
+            6 => ObservablePackageCollection.Sorter.ReleaseDate,
             _ => ObservablePackageCollection.Sorter.Name,
         });
         OnPropertyChanged(nameof(SortFieldName));
         FilterPackages();
-        if (value is 5) StartDownloadSizePreload();
+        StartRowValuePreload();
         Settings.SetDictionaryItem(Settings.K.PackageListSortFieldIndex, PageName, value);
+    }
+
+    public const string NameColumn = "Name";
+    public const string IdColumn = "Id";
+    public const string VersionColumn = "Version";
+    public const string NewVersionColumn = "NewVersion";
+    public const string SourceColumn = "Source";
+    public const string InstallerHostColumn = "InstallerHost";
+    public const string DownloadSizeColumn = "DownloadSize";
+    public const string ReleaseDateColumn = "ReleaseDate";
+
+    private static event Action? ColumnVisibilityChanged;
+
+    private static bool ColumnHidden(string column)
+        => Settings.GetDictionaryItem<string, bool>(Settings.K.HiddenPackageListColumns, column);
+
+    private void LoadColumnVisibility()
+    {
+        NameColumnVisible = !ColumnHidden(NameColumn);
+        IdColumnVisible = !ColumnHidden(IdColumn);
+        VersionColumnVisible = !ColumnHidden(VersionColumn);
+        NewVersionHeaderVisible = RoleIsUpdateLike && !ColumnHidden(NewVersionColumn);
+        SourceColumnVisible = !ColumnHidden(SourceColumn);
+        InstallerHostColumnVisible = OptionalColumnsAvailable && Settings.Get(Settings.K.ShowInstallerHostColumn);
+        DownloadSizeColumnVisible = OptionalColumnsAvailable && Settings.Get(Settings.K.ShowDownloadSizeColumn);
+        ReleaseDateColumnVisible = OptionalColumnsAvailable && Settings.Get(Settings.K.ShowReleaseDateColumn);
+        if (!IdColumnVisible && !VersionColumnVisible && !NewVersionHeaderVisible && !SourceColumnVisible
+            && !InstallerHostColumnVisible && !DownloadSizeColumnVisible && !ReleaseDateColumnVisible)
+            NameColumnVisible = true;
+    }
+
+    public static void SetColumnVisible(string column, bool visible)
+    {
+        switch (column)
+        {
+            case InstallerHostColumn:
+                Settings.Set(Settings.K.ShowInstallerHostColumn, visible);
+                break;
+            case DownloadSizeColumn:
+                Settings.Set(Settings.K.ShowDownloadSizeColumn, visible);
+                break;
+            case ReleaseDateColumn:
+                Settings.Set(Settings.K.ShowReleaseDateColumn, visible);
+                break;
+            default:
+                if (visible) Settings.RemoveDictionaryKey<string, bool>(Settings.K.HiddenPackageListColumns, column);
+                else Settings.SetDictionaryItem(Settings.K.HiddenPackageListColumns, column, true);
+                break;
+        }
+        ColumnVisibilityChanged?.Invoke();
+    }
+
+    partial void OnDownloadSizeColumnVisibleChanged(bool value)
+    {
+        if (!value && SortFieldIndex == 5) SortFieldIndex = 0;
+    }
+
+    partial void OnReleaseDateColumnVisibleChanged(bool value)
+    {
+        if (!value && SortFieldIndex == 6) SortFieldIndex = 0;
     }
 
     partial void OnSortAscendingChanged(bool value)
@@ -981,6 +1155,7 @@ public partial class PackagesPageViewModel : ViewModelBase
         SourceHeaderText = isList ? CoreTools.Translate("Source") : "";
         InstallerHostHeaderText = isList ? CoreTools.Translate("Installer host") : "";
         DownloadSizeHeaderText = isList ? CoreTools.Translate("Download size") : "";
+        ReleaseDateHeaderText = isList ? CoreTools.Translate("Release date") : "";
     }
 
     public bool IsListViewMode => ViewMode == PackageViewMode.List;
@@ -1020,34 +1195,54 @@ public partial class PackagesPageViewModel : ViewModelBase
     }
 
     // ─── Subtitle ─────────────────────────────────────────────────────────────
+    // Page-specific state appended to the subtitle, e.g. an editor's unsaved-changes marker.
+    private string _subtitleSuffix = "";
+    public string SubtitleSuffix
+    {
+        get => _subtitleSuffix;
+        set
+        {
+            _subtitleSuffix = value;
+            UpdateSubtitle();
+        }
+    }
+
     public void UpdateSubtitle()
     {
         if (Loader.IsLoading || (LoadsOnStart && Loader.HasPendingInitialLoad))
         {
-            Subtitle = _stillLoadingSubtitle;
+            SetSubtitle(_stillLoadingSubtitle);
+            SubtitleDetail = "";
+            SubtitleAccessibleText = Subtitle;
             return;
         }
 
+        SubtitleDetail = (_showLastCheckedTime
+            ? " " + CoreTools.Translate("(Last checked: {0})", _lastLoadTime.ToString(CultureInfo.CurrentCulture))
+            : "") + SubtitleSuffix;
+
         if (Loader.Any())
         {
+            // {0} is everything the managers returned, {1} what the filters keep, as the sentence reads
             int selected = FilteredPackages.GetCheckedPackages().Count;
-            string r = CoreTools.Translate(
+            int found = _wrappedPackages.Count;
+            int matching = FilteredPackages.Count;
+            SetSubtitle(CoreTools.Translate(
                 "{0} packages were found, {1} of which match the specified filters.",
-                FilteredPackages.Count,
-                _wrappedPackages.Count
-            ) + " (" + CoreTools.Translate("{0} selected", selected) + ")";
-
-            if (_showLastCheckedTime)
-                r += " " + CoreTools.Translate("(Last checked: {0})", _lastLoadTime.ToString(CultureInfo.CurrentCulture));
-
-            Subtitle = r;
+                found,
+                matching
+            ) + " (" + CoreTools.Translate("{0} selected", selected) + ")", found, matching, selected);
+        }
+        else if (IsWithoutReadyManager)
+        {
+            SetSubtitle(CoreTools.Translate("No package managers are available"));
         }
         else
         {
-            Subtitle = _noPackagesSubtitleBase + (_showLastCheckedTime
-                ? " " + CoreTools.Translate("(Last checked: {0})", _lastLoadTime.ToString(CultureInfo.CurrentCulture))
-                : "");
+            SetSubtitle(_noPackagesSubtitleBase);
         }
+
+        SubtitleAccessibleText = Subtitle + SubtitleDetail;
     }
 
     // ─── Commands ─────────────────────────────────────────────────────────────
@@ -1058,6 +1253,30 @@ public partial class PackagesPageViewModel : ViewModelBase
     [RelayCommand] private void RequestManageIgnored() => ManageIgnoredRequested?.Invoke();
     [RelayCommand] private void RequestManageAutoUpdates() => ManageAutoUpdatesRequested?.Invoke();
 
+    // Pages that load on start (Updates, Installed) show their empty state as a result. When the last load ran
+    // with no manager ready, nothing was checked, so that state would describe a result that does not exist.
+    // Like the list itself, it describes the last load: a manager enabled or disabled since then counts from the
+    // next load, which ReloadIfManagerBecameReady starts when one becomes ready.
+    private bool _lastLoadHadNoManagerReady;
+    private bool IsWithoutReadyManager => LoadsOnStart && _lastLoadHadNoManagerReady;
+
+    [RelayCommand]
+    private void OpenManagerSettings()
+    {
+        if (MainWindow.Instance?.DataContext is MainWindowViewModel mainVm)
+            mainVm.OpenManagerSettings();
+    }
+
+    // Enabling a manager in the settings does not reload this page, so it would keep saying that none is
+    // available. Called when a manager finishes initializing and when the page is shown again. Never before
+    // the startup load, which would then be dropped while this one runs and miss the managers still starting.
+    public void ReloadIfManagerBecameReady()
+    {
+        if (LoadsOnStart && _lastLoadHadNoManagerReady && !Loader.IsLoading && !Loader.HasPendingInitialLoad
+            && Loader.AnyManagerReady)
+            _ = LoadPackages(ReloadReason.Automated);
+    }
+
     // ─── Sort commands ────────────────────────────────────────────────────────
     [RelayCommand] private void SortByName() => SortFieldIndex = 0;
     [RelayCommand] private void SortById() => SortFieldIndex = 1;
@@ -1065,6 +1284,7 @@ public partial class PackagesPageViewModel : ViewModelBase
     [RelayCommand] private void SortByNewVersion() => SortFieldIndex = 3;
     [RelayCommand] private void SortBySource() => SortFieldIndex = 4;
     [RelayCommand] private void SortByDownloadSize() => SortFieldIndex = 5;
+    [RelayCommand] private void SortByReleaseDate() => SortFieldIndex = 6;
     [RelayCommand] private void SetSortAscending() => SortAscending = true;
     [RelayCommand] private void SetSortDescending() => SortAscending = false;
 
@@ -1073,7 +1293,7 @@ public partial class PackagesPageViewModel : ViewModelBase
     {
         MegaQueryVisible = false;
         _searchQuery = query?.Trim() ?? "";
-        FilterPackages(fromQuery: true);
+        FilterPackages();
     }
 
     // ─── Keyboard / search-box actions (called by the View's interface impls) ──
@@ -1104,7 +1324,7 @@ public partial class PackagesPageViewModel : ViewModelBase
     public void HandleSearchSubmitted()
     {
         if (MegaQueryBoxEnabled) SubmitSearch();
-        else FilterPackages(fromQuery: true);
+        else FilterPackages();
     }
 
     // ─── Operation launchers ─────────────────────────────────────────────────
@@ -1112,16 +1332,19 @@ public partial class PackagesPageViewModel : ViewModelBase
         IEnumerable<IPackage> packages,
         bool? elevated = null,
         bool? interactive = null,
-        bool? no_integrity = null)
+        bool? no_integrity = null,
+        string? version = null,
+        TEL_InstallReferral referral = TEL_InstallReferral.DIRECT_SEARCH)
     {
         foreach (var pkg in packages)
         {
             var opts = await InstallOptionsFactory.LoadApplicableAsync(
                 pkg, elevated: elevated, interactive: interactive, no_integrity: no_integrity);
+            if (!string.IsNullOrEmpty(version)) opts.Version = version;
             if (PackageOperation.HasPendingOperation(pkg, OperationType.Install)) continue;
             var op = new InstallPackageOperation(pkg, opts);
-            op.OperationSucceeded += (_, _) => TelemetryHandler.InstallPackage(pkg, TEL_OP_RESULT.SUCCESS, TEL_InstallReferral.DIRECT_SEARCH);
-            op.OperationFailed += (_, _) => TelemetryHandler.InstallPackage(pkg, TEL_OP_RESULT.FAILED, TEL_InstallReferral.DIRECT_SEARCH);
+            op.OperationSucceeded += (_, _) => TelemetryHandler.InstallPackage(pkg, TEL_OP_RESULT.SUCCESS, referral);
+            op.OperationFailed += (_, _) => TelemetryHandler.InstallPackage(pkg, TEL_OP_RESULT.FAILED, referral);
             AvaloniaOperationRegistry.Add(op);
             _ = op.MainThread();
         }
@@ -1165,3 +1388,6 @@ public partial class PackagesPageViewModel : ViewModelBase
         }
     }
 }
+
+/// <summary>A piece of the page subtitle; <paramref name="IsValue"/> marks a number.</summary>
+public readonly record struct SubtitleSegment(string Text, bool IsValue);

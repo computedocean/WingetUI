@@ -328,15 +328,15 @@ namespace UniGetUI.PackageEngine.Managers.PowerShellManager
                 entries.Add(candidate);
             }
 
-            var installed = new Dictionary<string, (string Id, string Version)>();
-            foreach (IPackage package in installedPackages)
-                installed[package.Id.ToLower()] = (package.Id, package.VersionString);
-
-            var scopeMap = BuildInstalledScopeMap(installedPackages);
+            var newestInstalled = SelectNewestInstalled(installedPackages);
+            var scopeMap = BuildInstalledScopeMap(newestInstalled.Values);
             List<Package> packages = [];
 
-            foreach ((string id, string installedVersion) in installed.Values)
+            foreach (IPackage installedPackage in newestInstalled.Values)
             {
+                string id = installedPackage.Id;
+                string installedVersion = installedPackage.VersionString;
+
                 if (!availableById.TryGetValue(id, out List<LocalNuGetPackage>? entries))
                     continue;
 
@@ -493,52 +493,57 @@ namespace UniGetUI.PackageEngine.Managers.PowerShellManager
                         continue;
                     }
 
-                    var packageIds = new StringBuilder();
-                    var packageVers = new StringBuilder();
-                    var packageIdVersion = new Dictionary<string, string>();
-                    foreach (var package in pair.Value)
-                    {
-                        packageIds.Append(package.Id + "|");
-                        packageVers.Append(package.VersionString + "|");
-                        packageIdVersion[package.Id.ToLower()] = package.VersionString;
-                    }
-                    var packageIdScope = BuildInstalledScopeMap(pair.Value);
-
-                    var SearchUrl =
-                        $"{pair.Key.Url.ToString().Trim('/')}/GetUpdates()"
-                        + $"?packageIds=%27{HttpUtility.UrlEncode(packageIds.ToString().Trim('|'))}%27"
-                        + $"&versions=%27{HttpUtility.UrlEncode(packageVers.ToString().Trim('|'))}%27"
-                        + $"&includePrerelease={(canPrerelease ? "true" : "false")}"
-                        + $"&includeAllVersions=0";
+                    var newestInstalled = SelectNewestInstalled(pair.Value);
+                    var packageIdVersion = newestInstalled.ToDictionary(
+                        entry => entry.Key,
+                        entry => entry.Value.VersionString
+                    );
+                    var packageIdScope = BuildInstalledScopeMap(newestInstalled.Values);
 
                     using HttpClient client = new(CoreTools.GenericHttpClientParameters);
                     client.DefaultRequestHeaders.UserAgent.ParseAdd(CoreData.UserAgentString);
-                    using var request = new HttpRequestMessage(HttpMethod.Get, SearchUrl);
-                    using HttpResponseMessage response = client.Send(request);
 
-                    if (!response.IsSuccessStatusCode)
+                    foreach (
+                        string SearchUrl in BuildV2UpdateUrls(pair.Key, pair.Value, canPrerelease)
+                    )
                     {
-                        logger.Error(
-                            $"Failed to fetch api at Url={SearchUrl} with status code {response.StatusCode}"
-                        );
-                        errors++;
-                    }
-                    else
-                    {
-                        string SearchResults = response
-                            .Content.ReadAsStringAsync()
-                            .GetAwaiter()
-                            .GetResult();
-                        Packages.AddRange(
-                            ParseUpdatesResponse(
-                                SearchResults,
-                                packageIdVersion,
-                                packageIdScope,
-                                pair.Key,
-                                this,
-                                logger
-                            )
-                        );
+                        try
+                        {
+                            using var request = new HttpRequestMessage(HttpMethod.Get, SearchUrl);
+                            using HttpResponseMessage response = client.Send(request);
+
+                            if (!response.IsSuccessStatusCode)
+                            {
+                                logger.Error(
+                                    $"Failed to fetch api at Url={SearchUrl} with status code {response.StatusCode}"
+                                );
+                                errors++;
+                                continue;
+                            }
+
+                            string SearchResults = response
+                                .Content.ReadAsStringAsync()
+                                .GetAwaiter()
+                                .GetResult();
+                            Packages.AddRange(
+                                ParseUpdatesResponse(
+                                    SearchResults,
+                                    packageIdVersion,
+                                    packageIdScope,
+                                    pair.Key,
+                                    this,
+                                    logger
+                                )
+                            );
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.Error(
+                                $"Failed to fetch api at Url={SearchUrl} on source {pair.Key.Name}"
+                            );
+                            logger.Error(ex);
+                            errors++;
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -553,6 +558,81 @@ namespace UniGetUI.PackageEngine.Managers.PowerShellManager
             logger.Close(errors);
             return KeepUpdatesNewerThanInstalled(Packages, installedPackages);
         }
+
+        internal const int MaxV2UpdateUrlLength = 8000;
+
+        internal IReadOnlyList<string> BuildV2UpdateUrls(
+            IManagerSource source,
+            IReadOnlyList<IPackage> installedPackages,
+            bool canPrerelease
+        )
+        {
+            var entries = new List<(string Id, string Version)>();
+            var indexById = new Dictionary<string, int>();
+            foreach (var package in installedPackages)
+            {
+                string key = package.Id.ToLower();
+                if (!indexById.TryGetValue(key, out int index))
+                {
+                    indexById[key] = entries.Count;
+                    entries.Add((package.Id, package.VersionString));
+                }
+                else if (IsOlderVersion(package.VersionString, entries[index].Version))
+                {
+                    entries[index] = (entries[index].Id, package.VersionString);
+                }
+            }
+
+            string prefix = $"{source.Url.ToString().Trim('/')}/GetUpdates()?packageIds=%27";
+            const string middle = "%27&versions=%27";
+            string suffix =
+                $"%27&includePrerelease={(canPrerelease ? "true" : "false")}&includeAllVersions=0";
+            string separator = HttpUtility.UrlEncode("|");
+            int fixedLength = prefix.Length + middle.Length + suffix.Length;
+
+            var urls = new List<string>();
+            var ids = new StringBuilder();
+            var versions = new StringBuilder();
+            int count = 0;
+
+            foreach (var (id, version) in entries)
+            {
+                string encodedId = HttpUtility.UrlEncode(id);
+                string encodedVersion = HttpUtility.UrlEncode(version);
+                int added =
+                    encodedId.Length + encodedVersion.Length + (count > 0 ? 2 * separator.Length : 0);
+
+                if (
+                    count > 0
+                    && fixedLength + ids.Length + versions.Length + added > MaxV2UpdateUrlLength
+                )
+                {
+                    urls.Add(prefix + ids + middle + versions + suffix);
+                    ids.Clear();
+                    versions.Clear();
+                    count = 0;
+                }
+
+                if (count > 0)
+                {
+                    ids.Append(separator);
+                    versions.Append(separator);
+                }
+                ids.Append(encodedId);
+                versions.Append(encodedVersion);
+                count++;
+            }
+
+            if (count > 0)
+                urls.Add(prefix + ids + middle + versions + suffix);
+
+            return urls;
+        }
+
+        private bool IsOlderVersion(string version, string other) =>
+            CompareVersions(version, other) is { } comparison
+                ? comparison < 0
+                : CoreTools.VersionStringToStruct(version) < CoreTools.VersionStringToStruct(other);
 
         internal IReadOnlyList<Package>? GetAvailableUpdatesV3(
             IManagerSource source,
@@ -580,11 +660,13 @@ namespace UniGetUI.PackageEngine.Managers.PowerShellManager
                 return null;
             }
 
-            var installed = new Dictionary<string, (string Id, string Version)>();
-            foreach (var package in installedPackages)
-                installed[package.Id.ToLower()] = (package.Id, package.VersionString);
+            var newestInstalled = SelectNewestInstalled(installedPackages);
+            var installed = newestInstalled.ToDictionary(
+                entry => entry.Key,
+                entry => (entry.Value.Id, Version: entry.Value.VersionString)
+            );
 
-            var scopeMap = BuildInstalledScopeMap(installedPackages);
+            var scopeMap = BuildInstalledScopeMap(newestInstalled.Values);
             var candidates = new ConcurrentDictionary<string, string>();
             var failures = new ConcurrentDictionary<string, Exception?>();
 
@@ -664,26 +746,15 @@ namespace UniGetUI.PackageEngine.Managers.PowerShellManager
             IReadOnlyList<IPackage> installedPackages
         )
         {
-            var highestInstalledById = new Dictionary<string, string>();
-            foreach (var package in installedPackages)
-            {
-                string key = package.Id.ToLower();
-                if (
-                    !highestInstalledById.TryGetValue(key, out string? highest)
-                    || CompareVersions(package.VersionString, highest) > 0
-                )
-                {
-                    highestInstalledById[key] = package.VersionString;
-                }
-            }
+            var newestInstalled = SelectNewestInstalled(installedPackages);
 
             List<Package> kept = [];
             foreach (var candidate in candidates)
             {
                 if (
-                    !highestInstalledById.TryGetValue(
+                    !newestInstalled.TryGetValue(
                         candidate.Id.ToLower(),
-                        out string? highestInstalled
+                        out IPackage? newestPackage
                     )
                 )
                 {
@@ -691,6 +762,7 @@ namespace UniGetUI.PackageEngine.Managers.PowerShellManager
                     continue;
                 }
 
+                string highestInstalled = newestPackage.VersionString;
                 bool isNewer =
                     CompareVersions(highestInstalled, candidate.NewVersionString)
                     is { } comparison
@@ -706,13 +778,40 @@ namespace UniGetUI.PackageEngine.Managers.PowerShellManager
         }
 
         /// <summary>
+        /// Picks, for each installed package id (lowercased), the copy its update applies to:
+        /// the highest installed version, the last one enumerated on a tie. Update-PSResource
+        /// installs a new version side by side with the old ones, and Get-InstalledPSResource
+        /// lists them sorted as strings (1.9.0, 1.12.6, 1.10.1), so taking whichever copy came
+        /// last reported a stale installed version that never moved after an update.
+        /// </summary>
+        internal Dictionary<string, IPackage> SelectNewestInstalled(
+            IEnumerable<IPackage> installedPackages
+        )
+        {
+            var newest = new Dictionary<string, IPackage>();
+            foreach (var package in installedPackages)
+            {
+                string key = package.Id.ToLower();
+                if (
+                    !newest.TryGetValue(key, out IPackage? current)
+                    || !IsOlderVersion(package.VersionString, current.VersionString)
+                )
+                {
+                    newest[key] = package;
+                }
+            }
+
+            return newest;
+        }
+
+        /// <summary>
         /// Maps each installed package id (lowercased) to the scope its update should target.
-        /// Mirrors the last-wins keying of the version map so the scope and the installed
-        /// version always come from the same enumerated package (issue #5163). A module
-        /// installed in a single scope updates in that scope; a module installed in both
-        /// resolves to whichever scope is enumerated last (as its version does) — surfacing
-        /// an independent update per scope would require scope-aware package identity, which
-        /// the upgrade loader does not currently support.
+        /// Callers pass the copies chosen by <see cref="SelectNewestInstalled"/>, so the scope
+        /// and the installed version always come from the same enumerated package (issue
+        /// #5163). A module installed in a single scope updates in that scope; a module
+        /// installed in both resolves to the scope holding its newest version — surfacing an
+        /// independent update per scope would require scope-aware package identity, which the
+        /// upgrade loader does not currently support.
         /// </summary>
         internal static Dictionary<string, string?> BuildInstalledScopeMap(
             IEnumerable<IPackage> installedPackages
@@ -774,7 +873,14 @@ namespace UniGetUI.PackageEngine.Managers.PowerShellManager
         }
 
         protected sealed override IReadOnlyList<Package> GetInstalledPackages_UnSafe() =>
-            TaskRecycler<IReadOnlyList<Package>>.RunOrAttach(_getInstalledPackages_UnSafe);
+            TaskRecycler<IReadOnlyList<Package>>.RunOrAttach(
+                ListInstalledPackagesForGeneration,
+                InstalledPackagesGeneration
+            );
+
+        private IReadOnlyList<Package> ListInstalledPackagesForGeneration(
+            long installedPackagesGeneration
+        ) => _getInstalledPackages_UnSafe();
 
         protected abstract IReadOnlyList<Package> _getInstalledPackages_UnSafe();
     }

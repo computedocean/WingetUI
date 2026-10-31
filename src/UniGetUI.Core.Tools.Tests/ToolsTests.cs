@@ -200,6 +200,40 @@ namespace UniGetUI.Core.Tools.Tests
         }
 
         [Fact]
+        public void TestWhichIgnoresTheCurrentDirectoryAndRelativePathEntries()
+        {
+            string tempDirectory = CreateTemporaryDirectory();
+            string commandName = OperatingSystem.IsWindows()
+                ? "unigetui-cwd-test.exe"
+                : "unigetui-cwd-test";
+            string? oldPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Process);
+            string oldDirectory = Environment.CurrentDirectory;
+
+            try
+            {
+                CreateCommandFile(Path.Combine(tempDirectory, commandName));
+                Environment.CurrentDirectory = tempDirectory;
+                Environment.SetEnvironmentVariable(
+                    "PATH",
+                    string.Join(Path.PathSeparator, "", ".", "\"\"", " "),
+                    EnvironmentVariableTarget.Process
+                );
+
+                Assert.Empty(CoreTools.WhichMultiple(commandName));
+            }
+            finally
+            {
+                Environment.CurrentDirectory = oldDirectory;
+                Environment.SetEnvironmentVariable(
+                    "PATH",
+                    oldPath,
+                    EnvironmentVariableTarget.Process
+                );
+                Directory.Delete(tempDirectory, true);
+            }
+        }
+
+        [Fact]
         public void TestWhichFunctionResolvesPathextOnWindows()
         {
             if (!OperatingSystem.IsWindows())
@@ -413,6 +447,65 @@ namespace UniGetUI.Core.Tools.Tests
         {
             CoreTools.Version v = CoreTools.VersionStringToStruct("10c8e557");
             Assert.Equal(CoreTools.Version.Null, v);
+        }
+
+        [Theory]
+        [InlineData("37149234619", "38756550835")]
+        [InlineData("1.2147483648", "1.2147483649")]
+        [InlineData("20260101.120000000001", "20260101.120000000002")]
+        [InlineData("99999999999999999999", "100000000000000000000")]
+        [InlineData("1.20260101120000000000001", "1.20260101120000000000002")]
+        public void TestGetVersionStringAsFloat_WithSegmentsBeyondInt32_OrdersCorrectly(
+            string older,
+            string newer
+        )
+        {
+            Assert.True(
+                CoreTools.VersionStringToStruct(older) < CoreTools.VersionStringToStruct(newer)
+            );
+        }
+
+        [Theory]
+        [InlineData("1.0.0+20260101123456", 1, 0, 0)]
+        [InlineData("1.0 (20260101123456)", 1, 0, 0)]
+        [InlineData("2.0.0+42", 2, 0, 42)]
+        [InlineData("1.0.0+2147483647", 1, 0, 2147483647)]
+        [InlineData("1.0.0+2147483648", 1, 0, 0)]
+        public void TestGetVersionStringAsFloat_WithSplicedDigitRuns_KeepsInt32Limit(
+            string version,
+            int major,
+            int minor,
+            int patch
+        )
+        {
+            Assert.Equal(
+                new CoreTools.Version(major, minor, patch),
+                CoreTools.VersionStringToStruct(version)
+            );
+        }
+
+        [Fact]
+        public void TestGetVersionStringAsFloat_WithExtraSegmentBeyondInt32_HashesConsistently()
+        {
+            CoreTools.Version a = CoreTools.VersionStringToStruct("1.2.3.4.37149234619");
+            CoreTools.Version b = CoreTools.VersionStringToStruct("1.2.3.4.37149234619.0");
+
+            Assert.Equal(a, b);
+            Assert.Equal(a.GetHashCode(), b.GetHashCode());
+            Assert.NotEqual(a, CoreTools.VersionStringToStruct("1.2.3.4.38756550835"));
+        }
+
+        [Theory]
+        [InlineData("20250301123456", "2.0.0")]
+        [InlineData("37149234619", "1.0.0")]
+        public void TestGetVersionStringAsFloat_WithLongNumericScheme_RanksAboveDottedVersions(
+            string numericScheme,
+            string dotted
+        )
+        {
+            Assert.True(
+                CoreTools.VersionStringToStruct(numericScheme) > CoreTools.VersionStringToStruct(dotted)
+            );
         }
 
         // An underscore introducing a pre-release tag rather than a numeric revision must keep

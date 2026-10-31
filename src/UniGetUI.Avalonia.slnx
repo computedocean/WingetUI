@@ -91,6 +91,16 @@
       <Platform Solution="*|x64" Project="x64" />
     </Project>
   </Folder>
+  <Folder Name="/UniGetUI.Extensions/">
+    <Project Path="UniGetUI.Extensions.GitRepositories/UniGetUI.Extensions.GitRepositories.csproj">
+      <Platform Solution="*|arm64" Project="arm64" />
+      <Platform Solution="*|x64" Project="x64" />
+    </Project>
+    <Project Path="UniGetUI.Extensions.GitRepositories.Tests/UniGetUI.Extensions.GitRepositories.Tests.csproj">
+      <Platform Solution="*|arm64" Project="arm64" />
+      <Platform Solution="*|x64" Project="x64" />
+    </Project>
+  </Folder>
   <Folder Name="/UniGetUI.Interface.Enums/">
     <Project Path="UniGetUI.Interface.Enums/UniGetUI.Interface.Enums.csproj">
       <Platform Solution="*|arm64" Project="arm64" />
@@ -129,6 +139,12 @@
   </Folder>
   <Folder Name="/UniGetUI.PackageEngine.PackageManagerClasses/">
     <Project Path="UniGetUI.PackageEngine.PackageManagerClasses/UniGetUI.PackageEngine.Classes.csproj">
+      <Platform Solution="*|arm64" Project="arm64" />
+      <Platform Solution="*|x64" Project="x64" />
+    </Project>
+  </Folder>
+  <Folder Name="/UniGetUI.PackageEngine.Managers.Generic.InstallerFeeds/">
+    <Project Path="UniGetUI.PackageEngine.Managers.Generic.InstallerFeeds/UniGetUI.PackageEngine.Managers.Generic.InstallerFeeds.csproj">
       <Platform Solution="*|arm64" Project="arm64" />
       <Platform Solution="*|x64" Project="x64" />
     </Project>
@@ -177,6 +193,12 @@
   </Folder>
   <Folder Name="/UniGetUI.PackageEngine.Managers.Homebrew/">
     <Project Path="UniGetUI.PackageEngine.Managers.Homebrew/UniGetUI.PackageEngine.Managers.Homebrew.csproj">
+      <Platform Solution="*|arm64" Project="arm64" />
+      <Platform Solution="*|x64" Project="x64" />
+    </Project>
+  </Folder>
+  <Folder Name="/UniGetUI.PackageEngine.Managers.MacPkg/">
+    <Project Path="UniGetUI.PackageEngine.Managers.MacPkg/UniGetUI.PackageEngine.Managers.MacPkg.csproj">
       <Platform Solution="*|arm64" Project="arm64" />
       <Platform Solution="*|x64" Project="x64" />
     </Project>

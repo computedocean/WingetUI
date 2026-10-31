@@ -118,6 +118,16 @@ namespace UniGetUI.PackageEngine.ManagerClasses.Manager
                     out string path,
                     out string callArguments
                 );
+
+                if (_recordDefaultEnabledState(found))
+                {
+                    Status = new() { Version = CoreTools.Translate("{0} is disabled", DisplayName) };
+                    Logger.ImportantInfo(
+                        $"{Name} was not found on the system and has been disabled by default"
+                    );
+                    return;
+                }
+
                 Status = new ManagerStatus();
                 Status.Found = found;
                 Status.ExecutablePath = path;
@@ -303,6 +313,20 @@ namespace UniGetUI.PackageEngine.ManagerClasses.Manager
         public bool IsEnabled()
         {
             return !Settings.GetDictionaryItem<string, bool>(Settings.K.DisabledManagers, Name);
+        }
+
+        private static readonly object _defaultEnabledStateLock = new();
+
+        private bool _recordDefaultEnabledState(bool found)
+        {
+            lock (_defaultEnabledStateLock)
+            {
+                if (Settings.DictionaryContainsKey<string, bool>(Settings.K.DisabledManagers, Name))
+                    return false;
+
+                Settings.SetDictionaryItem(Settings.K.DisabledManagers, Name, !found);
+                return !found;
+            }
         }
 
         /// <summary>
@@ -521,6 +545,13 @@ namespace UniGetUI.PackageEngine.ManagerClasses.Manager
         /// This method is fail-safe and will return an empty array if an error occurs.
         /// </summary>
         public bool LastInstalledListingFailed { get; private set; }
+
+        private long _installedPackagesGeneration;
+
+        public long InstalledPackagesGeneration => Volatile.Read(ref _installedPackagesGeneration);
+
+        public void InvalidateInstalledPackages() =>
+            Interlocked.Increment(ref _installedPackagesGeneration);
 
         public IReadOnlyList<IPackage> GetInstalledPackages()
         {

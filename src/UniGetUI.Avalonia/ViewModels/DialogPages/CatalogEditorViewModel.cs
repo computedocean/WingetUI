@@ -21,15 +21,33 @@ public partial class CatalogEditorCatalog : ViewModelBase
 
     public ObservableCollection<CatalogEntry> Packages { get; }
 
+    // A folder or https location of macOS packages that fills the catalog, edited from the Package feed dialog.
+    [ObservableProperty]
+    private string? _pkgFeed;
+
+    [ObservableProperty]
+    private bool? _allowUnsignedPackages;
+
     public CatalogEditorCatalog(CatalogDefinition definition)
     {
         _id = definition.Id;
         _name = definition.Name;
         Packages = new(definition.Packages);
+        _pkgFeed = definition.PkgFeed;
+        _allowUnsignedPackages = definition.AllowUnsignedPackages;
     }
 
-    public CatalogDefinition ToDefinition() => new() { Id = Id, Name = Name, Packages = Packages.ToArray() };
+    public CatalogDefinition ToDefinition() => new()
+    {
+        Id = Id,
+        Name = Name,
+        Packages = Packages.ToArray(),
+        PkgFeed = PkgFeed,
+        AllowUnsignedPackages = AllowUnsignedPackages
+    };
 }
+
+public sealed record CatalogAddResult(CatalogEditorCatalog Catalog, int Added, int AlreadyPresent);
 
 public partial class CatalogEditorViewModel : ViewModelBase
 {
@@ -53,7 +71,7 @@ public partial class CatalogEditorViewModel : ViewModelBase
     private string _query = "";
 
     [ObservableProperty]
-    private string _filePath = SoftwareCatalog.FilePath;
+    private string _filePath = "";
 
     private string _message = "";
 
@@ -69,7 +87,14 @@ public partial class CatalogEditorViewModel : ViewModelBase
 
     internal CatalogEditorViewModel(Action<string?, AutomationLiveSetting> announce) => _announce = announce;
 
-    public void SetErrorMessage(string message) => SetMessage(message, AutomationLiveSetting.Assertive);
+    /// <summary>Raised with the text of every error, so the view can show it to the user.</summary>
+    public event Action<string>? ErrorRaised;
+
+    public void SetErrorMessage(string message)
+    {
+        SetMessage(message, AutomationLiveSetting.Assertive);
+        ErrorRaised?.Invoke(message);
+    }
 
     private void SetMessage(string message, AutomationLiveSetting liveSetting = AutomationLiveSetting.Polite)
     {
@@ -93,8 +118,45 @@ public partial class CatalogEditorViewModel : ViewModelBase
     private Task<bool>? _initialLoad;
     private CatalogDefinition[] _savedCatalogs = [];
 
-    public Task<bool> EnsureLoadedAsync() =>
-        IsLoaded ? Task.FromResult(true) : _initialLoad ??= LoadAsync(FilePath);
+    public Task<bool> EnsureLoadedAsync()
+    {
+        if (IsLoaded) return Task.FromResult(true);
+        // A failed load is retried on the next visit, so a file fixed or deployed later is picked up.
+        if (_initialLoad is { IsCompleted: true } done && !done.Result) _initialLoad = null;
+        return _initialLoad ??= LoadOrStartAsync(FilePath);
+    }
+
+    // The editor starts on an untitled, empty document rather than the deployed catalog, so nobody
+    // edits what this device installs from by accident; New catalog or Open file is the first step.
+    // A path set beforehand that does not exist yet also starts empty, and saves there.
+    private Task<bool> LoadOrStartAsync(string path)
+    {
+        if (path.Length > 0 && !IsMissing(path)) return LoadAsync(path);
+        SelectedCatalog = null;
+        Catalogs.Clear();
+        FilePath = path.Length > 0 ? Path.GetFullPath(path) : "";
+        _savedCatalogs = [];
+        IsLoaded = true;
+        IsDirty = false;
+        return Task.FromResult(true);
+    }
+
+    internal static bool IsMissing(string path)
+    {
+        if (File.Exists(path)) return false;
+        try
+        {
+            using (File.OpenRead(path)) return false;
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     public void NewDocument()
     {
@@ -112,16 +174,41 @@ public partial class CatalogEditorViewModel : ViewModelBase
     {
         if (!CanEdit || SelectedCatalog is not { } catalog)
             throw new InvalidOperationException(CoreTools.Translate("Open or create a catalog before adding packages."));
-        int added = 0;
-        foreach (var package in packages)
-        {
-            if (catalog.Packages.Any(p => p.Matches(package))) continue;
-            catalog.Packages.Add(CatalogEntry.FromPackage(package));
-            added++;
-        }
-        Message = CoreTools.Translate("{0} packages added to catalog {1}. Save the catalog to keep your changes.", added, catalog.Name);
-        return added;
+        return AddPackages(packages, [catalog])[0].Added;
     }
+
+    /// <summary>
+    /// Adds <paramref name="packages"/> to each of <paramref name="catalogs"/>, skipping ones a catalog
+    /// already holds, and reports what happened per catalog.
+    /// </summary>
+    public IReadOnlyList<CatalogAddResult> AddPackages(IEnumerable<IPackage> packages, IReadOnlyList<CatalogEditorCatalog> catalogs)
+    {
+        if (!CanEdit || catalogs.Count == 0 || catalogs.Any(c => !Catalogs.Contains(c)))
+            throw new InvalidOperationException(CoreTools.Translate("Open or create a catalog before adding packages."));
+        var selection = packages.ToList();
+        var results = new List<CatalogAddResult>();
+        foreach (var catalog in catalogs)
+        {
+            int added = 0;
+            foreach (var package in selection)
+            {
+                if (catalog.Packages.Any(p => p.Matches(package))) continue;
+                catalog.Packages.Add(CatalogEntry.FromPackage(package));
+                added++;
+            }
+            results.Add(new CatalogAddResult(catalog, added, selection.Count - added));
+        }
+        Message = results.Count == 1
+            ? AddedToCatalogMessage(results[0].Added, results[0].Catalog.Name)
+            : results.Sum(r => r.Added) == 1
+                ? CoreTools.Translate("1 package added to {0} catalogs. Save the catalog to keep your changes.", results.Count)
+                : CoreTools.Translate("{0} packages added to {1} catalogs. Save the catalog to keep your changes.", results.Sum(r => r.Added), results.Count);
+        return results;
+    }
+
+    internal static string AddedToCatalogMessage(int added, string catalogName) => added == 1
+        ? CoreTools.Translate("1 package added to catalog {0}. Save the catalog to keep your changes.", catalogName)
+        : CoreTools.Translate("{0} packages added to catalog {1}. Save the catalog to keep your changes.", added, catalogName);
 
     public bool CanEdit => IsLoaded && !IsBusy;
     public bool CanDiscardChanges => CanEdit && IsDirty;
@@ -227,7 +314,23 @@ public partial class CatalogEditorViewModel : ViewModelBase
         try
         {
             var definitions = CopyCatalogs(Catalogs.Select(c => c.ToDefinition()));
-            await SoftwareCatalog.SaveAsync(path, definitions);
+            try
+            {
+                // The machine-wide folder belongs to UniGetUI; create it on first save (as an administrator when needed).
+                if (string.Equals(Path.GetFullPath(path), Path.GetFullPath(SoftwareCatalog.FilePath),
+                        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+                await SoftwareCatalog.SaveAsync(path, definitions);
+            }
+            catch (UnauthorizedAccessException) when (SoftwareCatalog.CanSaveWithAdminRights)
+            {
+                // The machine-wide catalog can be admin-owned; ask for an administrator instead.
+                if (!await SoftwareCatalog.SaveWithAdminRightsAsync(path, definitions))
+                {
+                    Message = CoreTools.Translate("The catalog was not saved.");
+                    return false;
+                }
+            }
             FilePath = Path.GetFullPath(path);
             _savedCatalogs = definitions;
             IsDirty = false;
@@ -278,6 +381,8 @@ public partial class CatalogEditorViewModel : ViewModelBase
         {
             Id = c.Id,
             Name = c.Name,
+            PkgFeed = c.PkgFeed,
+            AllowUnsignedPackages = c.AllowUnsignedPackages,
             Packages = c.Packages.Select(p => new CatalogEntry
             {
                 Id = p.Id,
@@ -306,6 +411,19 @@ public partial class CatalogEditorViewModel : ViewModelBase
         Catalogs.Add(catalog);
         SelectedCatalog = catalog;
         IsDirty = true;
+    }
+
+    public void RemoveCatalog(CatalogEditorCatalog catalog)
+    {
+        int index = Catalogs.IndexOf(catalog);
+        if (!CanEdit || index < 0) return;
+        bool wasSelected = ReferenceEquals(SelectedCatalog, catalog);
+        if (wasSelected) SelectedCatalog = null;
+        Catalogs.RemoveAt(index);
+        if (wasSelected)
+            SelectedCatalog = Catalogs.Count == 0 ? null : Catalogs[Math.Min(index, Catalogs.Count - 1)];
+        IsDirty = true;
+        Message = "";
     }
 
     [RelayCommand]

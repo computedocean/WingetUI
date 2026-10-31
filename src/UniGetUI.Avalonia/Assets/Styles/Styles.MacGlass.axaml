@@ -1,0 +1,179 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    x:Class="UniGetUI.Avalonia.Assets.Styles.MacGlassStyles">
+    <!-- macOS vibrancy overrides, merged only when MacGlassWindowHelper.IsGlassEnabled().
+         The blur shows real content behind the window, so surfaces stay more opaque than Mica's. -->
+    <CornerRadius x:Key="MacGlassPanelCornerRadius">18</CornerRadius>
+    <CornerRadius x:Key="MacGlassMenuCornerRadius">10</CornerRadius>
+    <!-- Text and glyphs drawn on the accent: white, or near-black for light accents (computed by
+         MacGlassWindowHelper from the accent's contrast; this is the default until then). -->
+    <Color x:Key="MacAccentForegroundColor">White</Color>
+    <SolidColorBrush x:Key="MacAccentForeground" Color="{DynamicResource MacAccentForegroundColor}"/>
+    <!-- Native menus highlight the hovered row with the accent colour and accent text. -->
+    <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPointerOver" Color="{DynamicResource SystemAccentColor}" Opacity="0.85"/>
+    <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPressed"     Color="{DynamicResource SystemAccentColor}"/>
+    <SolidColorBrush x:Key="MenuFlyoutItemForegroundPointerOver" Color="{DynamicResource MacAccentForegroundColor}"/>
+    <SolidColorBrush x:Key="MenuFlyoutItemForegroundPressed"     Color="{DynamicResource MacAccentForegroundColor}"/>
+
+    <!-- Controls: rounder corners, a full focus ring, and the true system accent with white
+         content (Fluent's dark theme uses a lighter accent with dark glyphs). -->
+    <CornerRadius x:Key="ControlCornerRadius">7</CornerRadius>
+    <Thickness x:Key="TextControlBorderThemeThicknessFocused">2</Thickness>
+    <SolidColorBrush x:Key="AccentFillColorDefaultBrush"   Color="{DynamicResource SystemAccentColor}"/>
+    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="{DynamicResource SystemAccentColor}" Opacity="0.9"/>
+    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush"  Color="{DynamicResource SystemAccentColor}" Opacity="0.8"/>
+    <SolidColorBrush x:Key="AccentButtonBackground"            Color="{DynamicResource SystemAccentColor}"/>
+    <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="{DynamicResource SystemAccentColor}" Opacity="0.9"/>
+    <SolidColorBrush x:Key="AccentButtonBackgroundPressed"     Color="{DynamicResource SystemAccentColor}" Opacity="0.8"/>
+    <SolidColorBrush x:Key="AccentButtonForeground"            Color="{DynamicResource MacAccentForegroundColor}"/>
+    <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="{DynamicResource MacAccentForegroundColor}"/>
+    <SolidColorBrush x:Key="AccentButtonForegroundPressed"     Color="{DynamicResource MacAccentForegroundColor}" Opacity="0.8"/>
+    <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush"   Color="{DynamicResource MacAccentForegroundColor}"/>
+    <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="{DynamicResource MacAccentForegroundColor}" Opacity="0.8"/>
+    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="{DynamicResource SystemAccentColor}" Opacity="0.7"/>
+    <SolidColorBrush x:Key="SearchBoxFocusedBorderBrush"   Color="{DynamicResource SystemAccentColor}" Opacity="0.7"/>
+    <SolidColorBrush x:Key="ButtonBorderBrush"            Color="Transparent"/>
+    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent"/>
+    <SolidColorBrush x:Key="ButtonBorderBrushPressed"     Color="Transparent"/>
+    <SolidColorBrush x:Key="ButtonBorderBrushDisabled"    Color="Transparent"/>
+    <SolidColorBrush x:Key="ComboBoxBorderBrush"                    Color="Transparent"/>
+    <SolidColorBrush x:Key="ComboBoxBackgroundBorderBrushUnfocused" Color="Transparent"/>
+    <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver"         Color="Transparent"/>
+    <SolidColorBrush x:Key="ComboBoxBorderBrushPressed"             Color="Transparent"/>
+    <SolidColorBrush x:Key="ToggleSwitchStrokeOff"            Color="Transparent"/>
+    <SolidColorBrush x:Key="ToggleSwitchStrokeOffPointerOver" Color="Transparent"/>
+    <SolidColorBrush x:Key="ToggleSwitchStrokeOffPressed"     Color="Transparent"/>
+    <SolidColorBrush x:Key="ToggleSwitchStrokeOffDisabled"    Color="Transparent"/>
+    <SolidColorBrush x:Key="ToggleSwitchKnobFillOff"            Color="White"/>
+    <SolidColorBrush x:Key="ToggleSwitchKnobFillOffPointerOver" Color="White"/>
+    <SolidColorBrush x:Key="ToggleSwitchKnobFillOffPressed"     Color="White"/>
+
+    <ResourceDictionary.ThemeDictionaries>
+
+        <ResourceDictionary x:Key="Light">
+            <!-- Opaque window surface; only the sidebar panel cut out of it shows the vibrancy. -->
+            <SolidColorBrush x:Key="MacGlassSelectionBackground" Color="{DynamicResource SystemAccentColor}"/>
+            <SolidColorBrush x:Key="MacGlassWindowBackground"    Color="#FFFFFF"/>
+            <!-- Dialogs are opaque on macOS too; match the main window surface. -->
+            <SolidColorBrush x:Key="AppDialogBackground"         Color="#FFFFFF"/>
+            <!-- Floating glass: sidebar panel (also the expanded overlay) and toolbar capsules. -->
+            <SolidColorBrush x:Key="MacGlassPanelBackground"     Color="#C2FCFCFC"/>
+            <SolidColorBrush x:Key="MacGlassControlBackground"   Color="#17000000"/>
+            <!-- Tint over the native menu blur (popups get NSVisualEffectMaterialMenu). -->
+            <SolidColorBrush x:Key="MacGlassMenuBackground"      Color="#B8FAFAFA"/>
+            <LinearGradientBrush x:Key="MacGlassPanelBorderBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#0F000000"/>
+                <GradientStop Offset="1" Color="#1A000000"/>
+            </LinearGradientBrush>
+            <BoxShadows x:Key="MacGlassPanelShadow">0 2 12 0 #14000000</BoxShadows>
+            <!-- Push buttons, dropdowns and switch tracks: a flat translucent fill, no border. -->
+            <SolidColorBrush x:Key="ButtonBackground"            Color="#14000000"/>
+            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#1C000000"/>
+            <SolidColorBrush x:Key="ButtonBackgroundPressed"     Color="#26000000"/>
+            <SolidColorBrush x:Key="ButtonBackgroundDisabled"    Color="#0A000000"/>
+            <SolidColorBrush x:Key="ComboBoxBackground"            Color="#14000000"/>
+            <SolidColorBrush x:Key="ComboBoxBackgroundUnfocused"   Color="#14000000"/>
+            <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="#1C000000"/>
+            <SolidColorBrush x:Key="ComboBoxBackgroundPressed"     Color="#26000000"/>
+            <SolidColorBrush x:Key="ToggleSwitchFillOff"            Color="#26000000"/>
+            <SolidColorBrush x:Key="ToggleSwitchFillOffPointerOver" Color="#2E000000"/>
+            <SolidColorBrush x:Key="ToggleSwitchFillOffPressed"     Color="#38000000"/>
+            <SolidColorBrush x:Key="ToggleSwitchFillOffDisabled"    Color="#14000000"/>
+            <SolidColorBrush x:Key="SearchBoxInactiveBackground" Color="#17000000"/>
+            <SolidColorBrush x:Key="SearchBoxFocusedBackground"  Color="#0F000000"/>
+            <SolidColorBrush x:Key="MacToastBackground"          Color="#F7F6F6F6"/>
+            <SolidColorBrush x:Key="MicaPageBackground"          Color="Transparent"/>
+            <SolidColorBrush x:Key="SettingsCardBackground"      Color="#08000000"/>
+            <SolidColorBrush x:Key="SettingsCardBorderBrush"     Color="#0A000000"/>
+            <SolidColorBrush x:Key="SettingsCardHoverBackground" Color="#0F000000"/>
+            <SolidColorBrush x:Key="PackageListBackground"       Color="#06000000"/>
+            <SolidColorBrush x:Key="PackageListBorderBrush"      Color="#0A000000"/>
+            <SolidColorBrush x:Key="PackageListHeaderBackground" Color="#06000000"/>
+            <SolidColorBrush x:Key="AppSplitterBackground"       Color="#18000000"/>
+            <SolidColorBrush x:Key="AppOperationsPanelBackground" Color="Transparent"/>
+            <SolidColorBrush x:Key="AppBorderBrush"              Color="#18000000"/>
+            <SolidColorBrush x:Key="AppBadgeBackground"          Color="#0F000000"/>
+            <SolidColorBrush x:Key="AppDialogPanelBackground"    Color="#08000000"/>
+            <SolidColorBrush x:Key="AppDialogSubtleBackground"   Color="#0D000000"/>
+            <SolidColorBrush x:Key="AppDialogDarkBackground"     Color="#0D000000"/>
+            <!-- Expander chrome -->
+            <SolidColorBrush x:Key="ExpanderHeaderBackground"            Color="#08000000"/>
+            <SolidColorBrush x:Key="ExpanderHeaderBackgroundPointerOver" Color="#0F000000"/>
+            <SolidColorBrush x:Key="ExpanderHeaderBackgroundPressed"     Color="#14000000"/>
+            <SolidColorBrush x:Key="ExpanderHeaderBackgroundDisabled"    Color="#05000000"/>
+            <SolidColorBrush x:Key="ExpanderContentBackground"           Color="#04000000"/>
+            <SolidColorBrush x:Key="ExpanderHeaderBorderBrush"           Color="#12000000"/>
+            <SolidColorBrush x:Key="ExpanderContentBorderBrush"          Color="#12000000"/>
+            <!-- Tab headers (selected tab matches the content panel so they read as one surface) -->
+            <SolidColorBrush x:Key="TabItemHeaderBackgroundSelected"              Color="#08000000"/>
+            <SolidColorBrush x:Key="TabItemHeaderBackgroundUnselected"            Color="Transparent"/>
+            <SolidColorBrush x:Key="TabItemHeaderBackgroundUnselectedPointerOver" Color="#0F000000"/>
+            <SolidColorBrush x:Key="TabItemHeaderBackgroundSelectedPointerOver"   Color="#08000000"/>
+            <SolidColorBrush x:Key="TabItemHeaderBackgroundUnselectedPressed"     Color="#08000000"/>
+            <SolidColorBrush x:Key="TabItemHeaderBackgroundSelectedPressed"       Color="#08000000"/>
+            <SolidColorBrush x:Key="TabItemHeaderBackgroundDisabled"             Color="Transparent"/>
+        </ResourceDictionary>
+
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="MacGlassSelectionBackground" Color="{DynamicResource SystemAccentColor}" Opacity="0.68"/>
+            <SolidColorBrush x:Key="MacGlassWindowBackground"    Color="#232323"/>
+            <SolidColorBrush x:Key="AppDialogBackground"         Color="#232323"/>
+            <!-- Matches System Settings: the sidebar sits darker than the window, cards lighter. -->
+            <SolidColorBrush x:Key="MacGlassPanelBackground"     Color="#B30E0E0E"/>
+            <SolidColorBrush x:Key="MacGlassControlBackground"   Color="#4D000000"/>
+            <SolidColorBrush x:Key="MacGlassMenuBackground"      Color="#99262626"/>
+            <LinearGradientBrush x:Key="MacGlassPanelBorderBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#2EFFFFFF"/>
+                <GradientStop Offset="0.5" Color="#0FFFFFFF"/>
+                <GradientStop Offset="1" Color="#1AFFFFFF"/>
+            </LinearGradientBrush>
+            <BoxShadows x:Key="MacGlassPanelShadow">0 6 20 0 #4D000000</BoxShadows>
+            <SolidColorBrush x:Key="ButtonBackground"            Color="#1FFFFFFF"/>
+            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#29FFFFFF"/>
+            <SolidColorBrush x:Key="ButtonBackgroundPressed"     Color="#33FFFFFF"/>
+            <SolidColorBrush x:Key="ButtonBackgroundDisabled"    Color="#0FFFFFFF"/>
+            <SolidColorBrush x:Key="ComboBoxBackground"            Color="#1FFFFFFF"/>
+            <SolidColorBrush x:Key="ComboBoxBackgroundUnfocused"   Color="#1FFFFFFF"/>
+            <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="#29FFFFFF"/>
+            <SolidColorBrush x:Key="ComboBoxBackgroundPressed"     Color="#33FFFFFF"/>
+            <SolidColorBrush x:Key="ToggleSwitchFillOff"            Color="#33FFFFFF"/>
+            <SolidColorBrush x:Key="ToggleSwitchFillOffPointerOver" Color="#3DFFFFFF"/>
+            <SolidColorBrush x:Key="ToggleSwitchFillOffPressed"     Color="#47FFFFFF"/>
+            <SolidColorBrush x:Key="ToggleSwitchFillOffDisabled"    Color="#1AFFFFFF"/>
+            <SolidColorBrush x:Key="SearchBoxInactiveBackground" Color="#4D000000"/>
+            <SolidColorBrush x:Key="SearchBoxFocusedBackground"  Color="#66000000"/>
+            <SolidColorBrush x:Key="MacToastBackground"          Color="#F72C2C2C"/>
+            <SolidColorBrush x:Key="MicaPageBackground"          Color="Transparent"/>
+            <SolidColorBrush x:Key="SettingsCardBackground"      Color="#12FFFFFF"/>
+            <SolidColorBrush x:Key="SettingsCardBorderBrush"     Color="#26000000"/>
+            <SolidColorBrush x:Key="SettingsCardHoverBackground" Color="#1CFFFFFF"/>
+            <SolidColorBrush x:Key="PackageListBackground"       Color="#40000000"/>
+            <SolidColorBrush x:Key="PackageListBorderBrush"      Color="#14FFFFFF"/>
+            <SolidColorBrush x:Key="PackageListHeaderBackground" Color="#0DFFFFFF"/>
+            <SolidColorBrush x:Key="AppSplitterBackground"       Color="#66000000"/>
+            <SolidColorBrush x:Key="AppOperationsPanelBackground" Color="Transparent"/>
+            <SolidColorBrush x:Key="AppBorderBrush"              Color="#15FFFFFF"/>
+            <SolidColorBrush x:Key="AppBadgeBackground"          Color="#66383838"/>
+            <SolidColorBrush x:Key="AppDialogPanelBackground"    Color="#662C2C2C"/>
+            <SolidColorBrush x:Key="AppDialogSubtleBackground"   Color="#66393939"/>
+            <SolidColorBrush x:Key="AppDialogDarkBackground"     Color="#66181818"/>
+            <!-- Expander chrome -->
+            <SolidColorBrush x:Key="ExpanderHeaderBackground"            Color="#12FFFFFF"/>
+            <SolidColorBrush x:Key="ExpanderHeaderBackgroundPointerOver" Color="#1CFFFFFF"/>
+            <SolidColorBrush x:Key="ExpanderHeaderBackgroundPressed"     Color="#24FFFFFF"/>
+            <SolidColorBrush x:Key="ExpanderHeaderBackgroundDisabled"    Color="#08FFFFFF"/>
+            <SolidColorBrush x:Key="ExpanderContentBackground"           Color="#26000000"/>
+            <SolidColorBrush x:Key="ExpanderHeaderBorderBrush"           Color="#26000000"/>
+            <SolidColorBrush x:Key="ExpanderContentBorderBrush"          Color="#26000000"/>
+            <!-- Tab headers -->
+            <SolidColorBrush x:Key="TabItemHeaderBackgroundSelected"              Color="#12FFFFFF"/>
+            <SolidColorBrush x:Key="TabItemHeaderBackgroundUnselected"            Color="Transparent"/>
+            <SolidColorBrush x:Key="TabItemHeaderBackgroundUnselectedPointerOver" Color="#1AFFFFFF"/>
+            <SolidColorBrush x:Key="TabItemHeaderBackgroundSelectedPointerOver"   Color="#12FFFFFF"/>
+            <SolidColorBrush x:Key="TabItemHeaderBackgroundUnselectedPressed"     Color="#0FFFFFFF"/>
+            <SolidColorBrush x:Key="TabItemHeaderBackgroundSelectedPressed"       Color="#12FFFFFF"/>
+            <SolidColorBrush x:Key="TabItemHeaderBackgroundDisabled"             Color="Transparent"/>
+        </ResourceDictionary>
+
+    </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

@@ -41,6 +41,13 @@
 
             <Border Height="16"/>
 
+            <settings:ButtonCard x:Name="NavigationOrderCard"
+                                 CornerRadius="8"
+                                 Text="{t:Translate Navigation menu order}"
+                                 ButtonText="{t:Translate Reset}"/>
+
+            <Border Height="16"/>
+
             <settings:TranslatedTextBlock Text="Rendering"
                                          FontSize="14"
                                          FontWeight="SemiBold"
@@ -67,9 +74,17 @@
 
                 <settings:CheckboxCard x:Name="DisableSystemTrayCard"
                                        SettingName="DisableSystemTray"
-                                       Text="{t:Translate Close UniGetUI to the system tray}"
+                                       Text="{t:Translate Keep UniGetUI running in the background when its window is closed}"
                                        StateChangedCommand="{Binding RefreshSystemTrayCommand}"
                                        CornerRadius="8,8,0,0"/>
+
+                <settings:CheckboxCard x:Name="SystemTrayIconCard"
+                                       SettingName="HideSystemTrayIcon"
+                                       ForceInversion="True"
+                                       Text="{t:Translate Show the UniGetUI icon in the system tray}"
+                                       StateChangedCommand="{Binding RefreshSystemTrayCommand}"
+                                       CornerRadius="0"
+                                       BorderThickness="1,0,1,1"/>
 
                 <settings:ButtonCard x:Name="EditAutostartSettings"
                                      CornerRadius="0,0,8,8"
@@ -95,22 +110,6 @@
             <settings:CheckboxCard x:Name="PackageIllustrationsCard"
                                    SettingName="DisablePackageIllustrations"
                                    Text="{t:Translate Show illustrations on package lists}"
-                                   WarningText="{t:Translate Restart UniGetUI to apply this change}"
-                                   StateChangedCommand="{Binding ShowRestartRequiredCommand}"
-                                   CornerRadius="0"
-                                   BorderThickness="1,0,1,1"/>
-
-            <settings:CheckboxCard x:Name="InstallerHostColumnCard"
-                                   SettingName="ShowInstallerHostColumn"
-                                   Text="{t:Translate Show the installer host on package lists}"
-                                   WarningText="{t:Translate Restart UniGetUI to apply this change}"
-                                   StateChangedCommand="{Binding ShowRestartRequiredCommand}"
-                                   CornerRadius="0"
-                                   BorderThickness="1,0,1,1"/>
-
-            <settings:CheckboxCard x:Name="DownloadSizeColumnCard"
-                                   SettingName="ShowDownloadSizeColumn"
-                                   Text="{t:Translate Show the download size on package lists}"
                                    WarningText="{t:Translate Restart UniGetUI to apply this change}"
                                    StateChangedCommand="{Binding ShowRestartRequiredCommand}"
                                    CornerRadius="0"

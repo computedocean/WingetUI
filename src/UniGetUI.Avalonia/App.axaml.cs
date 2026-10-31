@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -31,13 +32,18 @@ public partial class App : Application
         AvaloniaXamlLoader.Load(this);
 
         ButtonActivationGuard.Install();
+        TabControlFocusGuard.Install();
+        UiAutomationGuard.Install();
         SmoothScrollManager.Install();
 
         // Windows 11 Mica look is opt-in per environment: only merge the translucent
         // surface overrides when Mica is actually usable (Win11 + transparency on).
-        // macOS, Linux, Windows 10, and transparency-off all keep the solid Styles.Common look.
+        // macOS gets its own look (Styles.MacGlass*); Linux, Windows 10, and Windows with
+        // transparency off keep the solid Styles.Common look.
         if (MicaWindowHelper.IsMicaEnabled())
             ApplyWindowsMicaStyling();
+        else
+            MacGlassWindowHelper.Initialize(this);
 #if AVALONIA_DIAGNOSTICS_ENABLED
         this.AttachDeveloperTools();
 #endif
@@ -182,14 +188,15 @@ public partial class App : Application
         AvaloniaAppHost.SecondaryInstanceArgsReceived += args =>
             HandleSecondaryInstanceArgs(mainWindow, args);
 
-        desktop.ShutdownRequested += (_, e) =>
-        {
-            if (mainWindow.IsQuitting)
-                return;
+        desktop.ShutdownRequested += (_, e) => HandleShutdownRequest(
+            e,
+            mainWindow.IsQuitting,
+            fromSessionManager: OperatingSystem.IsLinux(),
+            mainWindow.CanQuitWithoutAsking,
+            mainWindow.QuitApplication);
 
-            e.Cancel = true;
-            mainWindow.QuitApplication();
-        };
+        if (OperatingSystem.IsLinux())
+            QuitOnTerminationSignals(mainWindow);
 
         if (Current?.TryGetFeature<IActivatableLifetime>() is { } activatable)
         {
@@ -217,6 +224,65 @@ public partial class App : Application
             mainWindow.Show();
 
         _ = StartupAsync(mainWindow, desktop.Args ?? []);
+    }
+
+    /// <summary>
+    /// Routes the lifetime's shutdown request through <see cref="MainWindow.QuitApplication"/>, which
+    /// asks about unsaved work before it exits.
+    /// </summary>
+    /// <remarks>
+    /// On Linux only the X session manager raises the request, for a logout, restart or shutdown, and
+    /// Avalonia passes `e.Cancel` straight back to it. Cancelling makes the session manager abort the
+    /// logout even though the quit that follows exits the app anyway, so when the quit would not ask
+    /// anything the request is let through and the lifetime closes the windows itself.
+    /// </remarks>
+    internal static void HandleShutdownRequest(
+        ShutdownRequestedEventArgs e,
+        bool isQuitting,
+        bool fromSessionManager,
+        bool canQuitWithoutAsking,
+        Action quit)
+    {
+        if (isQuitting || (fromSessionManager && canQuitWithoutAsking))
+            return;
+
+        e.Cancel = true;
+        quit();
+    }
+
+    // A registration that gets collected stops handling its signal.
+    private static PosixSignalRegistration[]? _terminationSignals;
+    private static int _terminationSignalsReceived;
+
+    /// <summary>
+    /// systemd stops the processes left in a session with SIGTERM, and a terminal sends SIGINT on
+    /// Ctrl+C. The IPC server's host leaves both to this handler on Linux, because its default
+    /// lifetime cancels the termination on every signal, which left the app running.
+    /// </summary>
+    private static void QuitOnTerminationSignals(MainWindow mainWindow)
+    {
+        void Quit(PosixSignalContext context) =>
+            HandleTerminationSignal(
+                context,
+                ref _terminationSignalsReceived,
+                () => Dispatcher.UIThread.Post(mainWindow.QuitApplication));
+
+        _terminationSignals =
+        [
+            PosixSignalRegistration.Create(PosixSignal.SIGTERM, Quit),
+            PosixSignalRegistration.Create(PosixSignal.SIGINT, Quit),
+        ];
+    }
+
+    internal static void HandleTerminationSignal(PosixSignalContext context, ref int signalsReceived, Action quit)
+    {
+        // A later signal takes the default termination, so a quit held up by a prompt can be forced.
+        if (Interlocked.Increment(ref signalsReceived) > 1)
+            return;
+
+        // The runtime would otherwise end the process before the quit has saved anything.
+        context.Cancel = true;
+        quit();
     }
 
     private static async Task StartupAsync(MainWindow mainWindow, string[] args)

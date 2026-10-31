@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using UniGetUI.Avalonia.Infrastructure;
 using UniGetUI.Core.Data;
+using UniGetUI.Core.Tools;
 using UniGetUI.PackageEngine.Classes.Serializable;
 using UniGetUI.PackageEngine.Interfaces;
 
@@ -23,6 +25,16 @@ public sealed class CatalogDefinition
     public required string Name { get; init; }
     [JsonPropertyName("packages")]
     public required CatalogEntry[] Packages { get; init; }
+
+    // A folder or https location of macOS .pkg and .dmg files: every package in it joins this catalog.
+    [JsonPropertyName("pkgFeed")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PkgFeed { get; init; }
+
+    // Lets the feed's packages install even when Gatekeeper rejects them (unsigned or not notarized).
+    [JsonPropertyName("allowUnsignedPackages")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? AllowUnsignedPackages { get; init; }
 }
 
 public sealed class CatalogEntry
@@ -69,8 +81,7 @@ public sealed class CatalogEntry
     public bool MatchesInstalled(IPackage package) =>
         string.Equals(Id, package.Id, StringComparison.OrdinalIgnoreCase)
         && MatchesManager(package.Manager)
-        // Chocolatey's installed inventory assigns DefaultSource and does not retain feed provenance.
-        && (string.Equals(package.Manager.Id, "chocolatey", StringComparison.OrdinalIgnoreCase)
+        && (!package.Manager.Capabilities.InstalledPackagesKeepTheirSource
             || string.Equals(Source, package.Source.Name, StringComparison.OrdinalIgnoreCase));
 }
 
@@ -78,11 +89,35 @@ internal static class SoftwareCatalog
 {
     public static string FilePath => Path.Combine(CoreData.UniGetUIGlobalDirectory, "SoftwareCatalog.json");
 
-    internal static async Task SaveAsync(string filePath, CatalogDefinition[] catalogs)
+    private static string Serialize(CatalogDefinition[] catalogs)
     {
         var document = new CatalogDocument { Version = 1, Catalogs = catalogs };
         string json = JsonSerializer.Serialize(document, CatalogJsonContext.Default.CatalogDocument);
         Parse(json);
+        return json;
+    }
+
+    /// <summary>
+    /// Saves through the administrator prompt (macOS password dialog, Windows UAC), for a
+    /// machine-wide location the user cannot write. Returns false when the user cancels the prompt.
+    /// </summary>
+    internal static Task<bool> SaveWithAdminRightsAsync(string filePath, CatalogDefinition[] catalogs)
+    {
+        string destination = Path.GetFullPath(filePath);
+        string contents = Serialize(catalogs) + Environment.NewLine;
+        if (OperatingSystem.IsWindows())
+            return WindowsAdminFileInstaller.WriteAsync(destination, contents);
+        if (OperatingSystem.IsMacOS())
+            return MacAdminFileInstaller.WriteAsync(destination, contents,
+                CoreTools.Translate("UniGetUI needs administrator rights to save the software catalog."));
+        throw new PlatformNotSupportedException();
+    }
+
+    internal static bool CanSaveWithAdminRights => OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
+
+    internal static async Task SaveAsync(string filePath, CatalogDefinition[] catalogs)
+    {
+        string json = Serialize(catalogs);
         string destination = Path.GetFullPath(filePath);
         string temporary = Path.Combine(Path.GetDirectoryName(destination)!, $".catalog-{Guid.NewGuid():N}.tmp");
         try
@@ -101,6 +136,26 @@ internal static class SoftwareCatalog
     }
 
     public static Task<CatalogDefinition[]> LoadAsync() => LoadAsync(FilePath);
+
+    /// <summary>
+    /// Whether the machine-wide catalog exists, loads and lists at least one package: only then is
+    /// it worth leading the navigation with. Missing, empty and broken catalogs all count as unset.
+    /// </summary>
+    public static bool HasUsableCatalog() => HasUsableCatalog(FilePath);
+
+    internal static bool HasUsableCatalog(string filePath)
+    {
+        try
+        {
+            // A pkgFeed fills its catalog only on macOS and Windows, where an Installer packages manager exists.
+            return File.Exists(filePath) && Parse(File.ReadAllText(filePath)).Any(c => c.Packages.Length > 0
+                || ((OperatingSystem.IsMacOS() || OperatingSystem.IsWindows()) && !string.IsNullOrWhiteSpace(c.PkgFeed)));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return false;
+        }
+    }
 
     internal static async Task<CatalogDefinition[]> LoadAsync(string filePath)
     {
@@ -125,6 +180,8 @@ internal static class SoftwareCatalog
                 throw new JsonException("Every catalog requires an id, name and packages array.");
             if (!catalogIds.Add(catalog.Id))
                 throw new JsonException($"Duplicate catalog identifier: {catalog.Id}.");
+            if (catalog.PkgFeed is not null && string.IsNullOrWhiteSpace(catalog.PkgFeed))
+                throw new JsonException($"The pkgFeed of catalog {catalog.Id} is empty.");
 
             var identities = new HashSet<(string, string, string)>();
             foreach (var entry in catalog.Packages)

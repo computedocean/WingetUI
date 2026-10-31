@@ -11,6 +11,7 @@ using UniGetUI.PackageEngine.AgentBroker;
 using UniGetUI.PackageEngine.Classes.Packages.Classes;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.Interfaces.ManagerProviders;
 using UniGetUI.PackageEngine.Operations.Reboot;
 using UniGetUI.PackageEngine.PackageClasses;
 using UniGetUI.PackageEngine.PackageLoader;
@@ -52,6 +53,8 @@ namespace UniGetUI.PackageEngine.Operations
         /// </summary>
         internal static Func<Devolutions.Now.Policy.Client.IBrokerTransport>? BrokerTransportFactory;
 
+        internal static Func<CancellationToken, Task<BrokerUnreachableCause>>? BrokerUnreachableDiagnosis;
+
         /// <summary>
         /// Interval between broker operation status polls. Internal so tests can shorten it.
         /// </summary>
@@ -81,6 +84,7 @@ namespace UniGetUI.PackageEngine.Operations
         public readonly InstallOptions Options;
         public readonly OperationType Role;
         public bool FailedBecauseApplicationRunning { get; private set; }
+        public Task SuccessHandled { get; private set; } = Task.CompletedTask;
         private IReadOnlyList<string> _closeRunningAppProcessNames = [];
         private readonly List<string> _brokerKillBeforeOperationAdded = [];
 
@@ -136,8 +140,9 @@ namespace UniGetUI.PackageEngine.Operations
                 if (status is OperationStatus.Canceled)
                     Package.SetTag(PackageTag.Default);
             };
+            OperationSucceeded += (_, _) => Package.Manager.InvalidateInstalledPackages();
             OperationSucceeded += (_, _) => RecordPendingRebootState();
-            OperationSucceeded += (_, _) => HandleSuccess();
+            OperationSucceeded += (_, _) => SuccessHandled = HandleSuccess();
             OperationFailed += (_, _) => HandleFailure();
         }
 
@@ -346,7 +351,7 @@ namespace UniGetUI.PackageEngine.Operations
             if (!ShouldUseAgentBroker())
             {
                 if (!Package.Manager.Capabilities.SerializesOperations)
-                    return await base.PerformOperation();
+                    return await PerformLocalOperation();
 
                 SemaphoreSlim gate = ManagerOperationGates.GetOrAdd(
                     Package.Manager.Name,
@@ -378,7 +383,7 @@ namespace UniGetUI.PackageEngine.Operations
 
                 try
                 {
-                    return await base.PerformOperation();
+                    return await PerformLocalOperation();
                 }
                 finally
                 {
@@ -387,6 +392,27 @@ namespace UniGetUI.PackageEngine.Operations
             }
 
             return await PerformBrokerOperation();
+        }
+
+        private async Task<OperationVeredict> PerformLocalOperation()
+        {
+            if (Package.Manager.OperationHelper is IManagedPackageOperationHelper managed)
+            {
+                try
+                {
+                    var result = await managed.TryPerformAsync(Package, Options, Role,
+                        message => Line(message, LineType.Information), ReportProgress, CancellationToken);
+                    if (result is not null)
+                        return result.Value;
+                    // Resolution may have pinned an initially unversioned request before fallback.
+                    PrepareProcessStartInfo();
+                }
+                catch (OperationCanceledException) when (CancellationToken.IsCancellationRequested)
+                {
+                    return OperationVeredict.Canceled;
+                }
+            }
+            return await base.PerformOperation();
         }
 
         private static readonly ConcurrentDictionary<string, SemaphoreSlim> ManagerOperationGates =
@@ -446,6 +472,7 @@ namespace UniGetUI.PackageEngine.Operations
             // elevation, mirroring the local execution path where this runs as part of
             // building the process parameters.
             Package.Manager.OperationHelper.ApplyElevationRequirements(Package, Options, Role);
+            Package.Manager.OperationHelper.ApplyOperationOverrides(Package, Options, Role);
 
             bool requestElevated = RequiresAdminRights();
             _ranElevated = requestElevated ? 1 : 0;
@@ -455,7 +482,7 @@ namespace UniGetUI.PackageEngine.Operations
             // execution: policy evaluation and kill/pre/post actions are owned by the broker.
             if (!await client.IsAvailable(CancellationToken))
             {
-                return HandleBrokerUnavailable();
+                return await HandleBrokerUnavailable();
             }
 
             // Fetch the capabilities up front: the broker requires an authenticated client for
@@ -579,7 +606,7 @@ namespace UniGetUI.PackageEngine.Operations
                 // The broker can stop between the availability probe and the request itself;
                 // route this through the same unavailable handling as a failed probe.
                 Logger.Error($"[AgentBroker] Broker became unavailable during the operation: {ex}");
-                return HandleBrokerUnavailable();
+                return await HandleBrokerUnavailable();
             }
             catch (BrokerClientException ex)
             {
@@ -619,7 +646,7 @@ namespace UniGetUI.PackageEngine.Operations
             catch (BrokerClientException ex) when (ex.Kind is BrokerClientErrorKind.BrokerUnavailable)
             {
                 Logger.Error($"[AgentBroker] Broker became unavailable while reading its capabilities: {ex}");
-                return HandleBrokerUnavailable();
+                return await HandleBrokerUnavailable();
             }
             catch (BrokerClientException ex)
             {
@@ -964,16 +991,39 @@ namespace UniGetUI.PackageEngine.Operations
         /// actions are owned by the broker. Sets the failure metadata and raises
         /// <see cref="BrokerUnavailable"/> so the UI can notify the user.
         /// </summary>
-        private OperationVeredict HandleBrokerUnavailable()
+        private async Task<OperationVeredict> HandleBrokerUnavailable()
         {
             Line("Agent broker is not available. The operation cannot continue.", LineType.Error);
             Logger.Error("[AgentBroker] Broker not available, aborting operation");
-            string message = CoreTools.Translate(
-                "The Devolutions Agent broker is not available. The operation cannot be performed. Please ensure the Devolutions Agent is installed and running.");
-            Metadata.FailureTitle = CoreTools.Translate("Agent broker unavailable");
-            Metadata.FailureMessage = message;
-            BrokerUnavailable?.Invoke(this, new BrokerFailureDescription(Metadata.FailureTitle, message));
+            BrokerUnreachableCause cause = await DiagnoseUnreachableBroker();
+            Logger.Info($"[AgentBroker] Unreachable broker diagnosis: {cause}");
+            BrokerFailureDescription failure = BrokerFailureDescriber.DescribeUnreachable(cause)
+                ?? new BrokerFailureDescription(
+                    CoreTools.Translate("Agent broker unavailable"),
+                    CoreTools.Translate(
+                        "The Devolutions Agent broker is not available. The operation cannot be performed. Please ensure the Devolutions Agent is installed and running."));
+            Metadata.FailureTitle = failure.Title;
+            Metadata.FailureMessage = failure.Message;
+            BrokerUnavailable?.Invoke(this, failure);
             return OperationVeredict.Failure;
+        }
+
+        private async Task<BrokerUnreachableCause> DiagnoseUnreachableBroker()
+        {
+            Func<CancellationToken, Task<BrokerUnreachableCause>> diagnose =
+                BrokerUnreachableDiagnosis
+                ?? (BrokerTransportFactory is null
+                    ? BrokerReachability.DiagnoseAsync
+                    : _ => Task.FromResult(BrokerUnreachableCause.Unknown));
+            try
+            {
+                return await diagnose(CancellationToken);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"[AgentBroker] Could not diagnose why the broker is unreachable: {ex}");
+                return BrokerUnreachableCause.Unknown;
+            }
         }
 
         /// <summary>
@@ -1424,7 +1474,7 @@ namespace UniGetUI.PackageEngine.Operations
                 return l;
 
             foreach (var process in opts.KillBeforeOperation)
-                l.Add(new InnerOperation(new KillProcessOperation(process), mustSucceed: false));
+                l.Add(new InnerOperation(new KillProcessOperation(process), mustSucceed: true));
 
             if (role is OperationType.Install && opts.PreInstallCommand.Any())
                 l.Add(
@@ -1601,6 +1651,8 @@ namespace UniGetUI.PackageEngine.Operations
         )
             : base(package, options, OperationType.Update, IgnoreParallelInstalls, req) { }
 
+        public bool KeepUpdatesPaused { get; init; }
+
         protected override Task HandleFailure()
         {
             Package.SetTag(PackageTag.Failed);
@@ -1618,6 +1670,16 @@ namespace UniGetUI.PackageEngine.Operations
             UpgradablePackagesLoader.Instance.Remove(Package);
             InstalledPackagesLoader.Instance.Remove(Package);
 
+            bool explicitVersionRequested =
+                !string.IsNullOrWhiteSpace(Options.Version)
+                && Package.Manager.Capabilities.SupportsCustomVersionsOnUpdate;
+            string targetVersion = explicitVersionRequested
+                ? Options.Version
+                : string.IsNullOrWhiteSpace(Package.NewVersionString)
+                    ? Package.VersionString
+                    : Package.NewVersionString;
+            IgnoredUpdatesDatabase.ForgetAvailableUpdate(Package, targetVersion);
+
             if (Settings.Get(Settings.K.AskToDeleteNewDesktopShortcuts))
             {
                 DesktopShortcutsDatabase.HandleNewShortcuts(DesktopShortcutsBeforeStart);
@@ -1631,19 +1693,15 @@ namespace UniGetUI.PackageEngine.Operations
                 );
             }
 
-            bool explicitVersionRequested = !string.IsNullOrWhiteSpace(Options.Version);
             var installedPackage = await ResolveInstalledPackageSnapshotAsync(
-                explicitVersionRequested
-                    ? Options.Version
-                    : string.IsNullOrWhiteSpace(Package.NewVersionString)
-                        ? Package.VersionString
-                        : Package.NewVersionString,
+                targetVersion,
                 preferFallbackVersionWhenMissing: explicitVersionRequested
             );
             await InstalledPackagesLoader.Instance.AddForeign(installedPackage);
 
             if (
-                await Package.HasUpdatesIgnoredAsync()
+                !KeepUpdatesPaused
+                && await Package.HasUpdatesIgnoredAsync()
                 && await Package.GetIgnoredUpdatesVersionAsync() != "*"
             )
                 await Package.RemoveFromIgnoredUpdatesAsync();

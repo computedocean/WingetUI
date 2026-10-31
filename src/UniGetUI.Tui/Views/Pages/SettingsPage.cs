@@ -311,13 +311,22 @@ internal sealed class SettingsPage : UserControl, ITuiPage
             Settings.Set(Settings.K.ShowDownloadSizeColumn, v);
             TuiShell.InvalidatePages(TuiPageIds.Discover, TuiPageIds.Updates, TuiPageIds.Bundles);
         });
+        _form.AddCheck(CoreTools.Translate("Show the release date column"), () => Settings.Get(Settings.K.ShowReleaseDateColumn), v =>
+        {
+            Settings.Set(Settings.K.ShowReleaseDateColumn, v);
+            TuiShell.InvalidatePages(TuiPageIds.Discover, TuiPageIds.Updates, TuiPageIds.Bundles);
+        });
         _form.AddHeader(CoreTools.Translate("Desktop app"));
         Choice("Application theme:" + _desktopOnly, Settings.K.PreferredTheme,
             [new(CoreTools.Translate("Light"), "light"), new(CoreTools.Translate("Dark"), "dark"), new(CoreTools.Translate("Follow system color scheme"), "auto")]);
         Check("Use the system UI font" + _desktopOnly, Settings.K.UseSystemUIFont);
         Choice("Navigation menu" + _desktopOnly, Settings.K.NavMenuMode,
             [new(CoreTools.Translate("Automatic"), "auto"), new(CoreTools.Translate("Docked"), "docked"), new(CoreTools.Translate("Overlay"), "overlay")]);
-        Check("Close UniGetUI to the system tray" + _desktopOnly, Settings.K.DisableSystemTray, inverted: true);
+        Check("Keep UniGetUI running in the background when its window is closed" + _desktopOnly, Settings.K.DisableSystemTray, inverted: true);
+        _form.AddCheck(CoreTools.Translate("Show the UniGetUI icon in the system tray") + _desktopOnly,
+            () => !Settings.Get(Settings.K.HideSystemTrayIcon),
+            v => Settings.Set(Settings.K.HideSystemTrayIcon, !v),
+            enabled: () => !Settings.Get(Settings.K.DisableSystemTray));
         Check("Show package icons on package lists" + _desktopOnly, Settings.K.DisableIconsOnPackageLists, inverted: true);
         Check("Show illustrations on empty package lists" + _desktopOnly, Settings.K.DisablePackageIllustrations, inverted: true);
         Check("Use software rendering automatically on hosts without a GPU" + _desktopOnly, Settings.K.DisableAutoSoftwareRenderingOnGpuLessHosts, inverted: true);

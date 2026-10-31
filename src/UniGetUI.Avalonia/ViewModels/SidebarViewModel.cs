@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using UniGetUI.Avalonia.Infrastructure;
+using UniGetUI.Avalonia.Models;
 using UniGetUI.Avalonia.Views;
 using UniGetUI.Core.Data;
 using UniGetUI.Core.SettingsEngine;
@@ -11,6 +12,42 @@ namespace UniGetUI.Avalonia.ViewModels;
 public partial class SidebarViewModel : ViewModelBase
 {
     public bool SoftwareCatalogEnabled { get; } = Settings.Get(Settings.K.EnableSoftwareCatalog);
+
+    // An administrator tool, opened from the catalog page rather than the sidebar; off unless asked for.
+    public bool CatalogEditorEnabled { get; } =
+        Settings.Get(Settings.K.EnableSoftwareCatalog) && Settings.Get(Settings.K.EnableCatalogEditor);
+
+    // Only a catalog with packages to offer becomes the startup page; an unset or broken one would
+    // open the app on an empty page. Checked once at startup, like the setting itself.
+    public bool HasUsableCatalog { get; } =
+        Settings.Get(Settings.K.EnableSoftwareCatalog) && SoftwareCatalog.HasUsableCatalog();
+
+    // Turned on and off from Settings > Extensions while the app runs.
+    [ObservableProperty]
+    private bool _gitRepositoriesEnabled = Settings.Get(Settings.K.EnableGitRepositories);
+
+    partial void OnGitRepositoriesEnabledChanged(bool value)
+    {
+        NavigationPages = NavigationPageOrder.Get(SoftwareCatalogEnabled, value);
+        if (value) return;
+        GitRepositoriesBadgeCount = 0;
+        GitRepositoriesIsLoading = false;
+    }
+
+    [ObservableProperty]
+    private PageType[] _navigationPages;
+
+    public void ReorderNavigationPages(IReadOnlyList<PageType> pages)
+    {
+        NavigationPageOrder.Save(pages);
+        NavigationPages = NavigationPageOrder.Get(SoftwareCatalogEnabled, GitRepositoriesEnabled);
+    }
+
+    public void ResetNavigationPages()
+    {
+        NavigationPageOrder.Reset();
+        NavigationPages = NavigationPageOrder.Get(SoftwareCatalogEnabled, GitRepositoriesEnabled);
+    }
 
     // ─── Badge properties ─────────────────────────────────────────────────────
     [ObservableProperty]
@@ -24,6 +61,19 @@ public partial class SidebarViewModel : ViewModelBase
     private bool _bundlesBadgeVisible;
 
     public string UpdatesBadgeText => UpdatesBadgeCount > 99 ? "99+" : UpdatesBadgeCount.ToString();
+
+    // Main clones that a fast-forward would bring up to date.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GitRepositoriesBadgeText))]
+    [NotifyPropertyChangedFor(nameof(GitRepositoriesBadgeVisible))]
+    private int _gitRepositoriesBadgeCount;
+
+    public bool GitRepositoriesBadgeVisible => GitRepositoriesBadgeCount > 0;
+
+    public string GitRepositoriesBadgeText => GitRepositoriesBadgeCount > 99 ? "99+" : GitRepositoriesBadgeCount.ToString();
+
+    [ObservableProperty]
+    private bool _gitRepositoriesIsLoading;
 
     // When the count changes, sync the badge visibility
     partial void OnUpdatesBadgeCountChanged(int value) =>
@@ -83,6 +133,7 @@ public partial class SidebarViewModel : ViewModelBase
 
     public SidebarViewModel()
     {
+        _navigationPages = NavigationPageOrder.Get(SoftwareCatalogEnabled, GitRepositoriesEnabled);
         _wasDocked = Docked;
         _isPaneOpen = Docked && !Settings.Get(Settings.K.CollapseNavMenuOnWideScreen);
     }
@@ -150,6 +201,7 @@ public partial class SidebarViewModel : ViewModelBase
             case PageType.Discover: DiscoverIsLoading = isLoading; break;
             case PageType.Updates: UpdatesIsLoading = isLoading; break;
             case PageType.Installed: InstalledIsLoading = isLoading; break;
+            case PageType.GitRepositories: GitRepositoriesIsLoading = isLoading; break;
         }
     }
 }

@@ -10041,6 +10041,10 @@
         "https://raw.githubusercontent.com/Devolutions/MsRdpEx/master/images/MsRdpEx_installed.png"
       ]
     },
+    "Devolutions.PowerShellUniversal": {
+      "icon": "https://cdnweb.devolutions.net/web/common/logos/img-devolutions-powershell-universal-icon.svg",
+      "images": []
+    },
     "Devolutions.RemoteDesktopManager": {
       "icon": "https://raw.githubusercontent.com/Devolutions/UniGetUI/main/WebBasedData/icons/remote-desktop-manager-icon.png",
       "images": []
@@ -15824,14 +15828,14 @@
       "images": []
     },
     "FSPProductions.FileHasher": {
-      "icon": "https://raw.githubusercontent.com/fsantiago07044/filehasher/main/docs/filehasher-winget-PR-assets/app-icon/hash-icon-256.png",
+      "icon": "https://raw.githubusercontent.com/fsantiago07044/filehasher/v0.5.0/docs/filehasher-winget-PR-assets/app-icon/hash-icon-256.png",
       "images": [
-        "https://raw.githubusercontent.com/fsantiago07044/filehasher/main/docs/filehasher-winget-PR-assets/app-ui-screenshots/main-ui-completion-state-simple.png",
-        "https://raw.githubusercontent.com/fsantiago07044/filehasher/main/docs/filehasher-winget-PR-assets/app-ui-screenshots/main-ui.png",
-        "https://raw.githubusercontent.com/fsantiago07044/filehasher/main/docs/filehasher-winget-PR-assets/app-ui-screenshots/main-ui-completion-inner-msi-scan.png",
-        "https://raw.githubusercontent.com/fsantiago07044/filehasher/main/docs/filehasher-winget-PR-assets/app-ui-screenshots/sidecar-file-explorer-view.png",
-        "https://raw.githubusercontent.com/fsantiago07044/filehasher/main/docs/filehasher-winget-PR-assets/app-ui-screenshots/sidecar-file-overwrite-dialog.png",
-        "https://raw.githubusercontent.com/fsantiago07044/filehasher/main/docs/filehasher-winget-PR-assets/app-ui-screenshots/completion-dialog-sidecars-overwritten.png"
+        "https://raw.githubusercontent.com/fsantiago07044/filehasher/v0.5.0/docs/filehasher-winget-PR-assets/app-ui-screenshots/main-ui-completion-state-simple.png",
+        "https://raw.githubusercontent.com/fsantiago07044/filehasher/v0.5.0/docs/filehasher-winget-PR-assets/app-ui-screenshots/main-ui.png",
+        "https://raw.githubusercontent.com/fsantiago07044/filehasher/v0.5.0/docs/filehasher-winget-PR-assets/app-ui-screenshots/main-ui-completion-inner-msi-scan.png",
+        "https://raw.githubusercontent.com/fsantiago07044/filehasher/v0.5.0/docs/filehasher-winget-PR-assets/app-ui-screenshots/sidecar-file-explorer-view.png",
+        "https://raw.githubusercontent.com/fsantiago07044/filehasher/v0.5.0/docs/filehasher-winget-PR-assets/app-ui-screenshots/sidecar-file-overwrite-dialog.png",
+        "https://raw.githubusercontent.com/fsantiago07044/filehasher/v0.5.0/docs/filehasher-winget-PR-assets/app-ui-screenshots/completion-dialog-sidecars-overwritten.png"
       ]
     },
     "fspy": {
@@ -27674,6 +27678,21 @@
     "nbfc": {
       "icon": "",
       "images": []
+    },
+    "nbt-explorer": {
+      "icon": "https://i.postimg.cc/BZFQ1C1R/NBTExplorer.png",
+      "images": []
+    },
+    "nbt-studio": {
+      "icon": "https://raw.githubusercontent.com/Gesugao-san/scoop-bucket/main/icons/nbt-studio-alt.png",
+      "images": [
+        "https://raw.githubusercontent.com/Gesugao-san/scoop-bucket/main/screenshots/nbt-studio-1.png",
+        "https://raw.githubusercontent.com/Gesugao-san/scoop-bucket/main/screenshots/nbt-studio-2.png",
+        "https://raw.githubusercontent.com/Gesugao-san/scoop-bucket/main/screenshots/nbt-studio-3.png",
+        "https://raw.githubusercontent.com/Gesugao-san/scoop-bucket/main/screenshots/nbt-studio-4.png",
+        "https://raw.githubusercontent.com/Gesugao-san/scoop-bucket/main/screenshots/nbt-studio-5.png",
+        "https://raw.githubusercontent.com/Gesugao-san/scoop-bucket/main/screenshots/nbt-studio-6.png"
+      ]
     },
     "nbtexplorer": {
       "icon": "https://i.postimg.cc/BZFQ1C1R/NBTExplorer.png",

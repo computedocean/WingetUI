@@ -20,6 +20,10 @@ namespace UniGetUI.PackageEngine.Classes.Manager
 
         public bool LastInstalledListingFailed => false;
 
+        public long InstalledPackagesGeneration => 0;
+
+        public void InvalidateInstalledPackages() { }
+
         public static NullPackageManager Instance = new();
         public ManagerProperties Properties { get; }
         public ManagerCapabilities Capabilities { get; }
@@ -186,6 +190,12 @@ namespace UniGetUI.PackageEngine.Classes.Manager
         ) => throw new NotImplementedException();
 
         public void ApplyElevationRequirements(
+            IPackage package,
+            InstallOptions options,
+            OperationType operation
+        ) => throw new NotImplementedException();
+
+        public void ApplyOperationOverrides(
             IPackage package,
             InstallOptions options,
             OperationType operation

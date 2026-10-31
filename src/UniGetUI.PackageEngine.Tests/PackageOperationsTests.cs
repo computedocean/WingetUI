@@ -22,6 +22,7 @@ using UniGetUI.PackageEngine.Structs;
 using UniGetUI.PackageEngine.Tests.Infrastructure.Builders;
 using UniGetUI.PackageEngine.Tests.Infrastructure.Fakes;
 using UniGetUI.PackageOperations;
+using BrokerApiArchitecture = Devolutions.Now.Policy.Api.Architecture;
 using BrokerApiCancelResponse = Devolutions.Now.Policy.Api.CancelResponse;
 using BrokerApiCapabilitiesResponse = Devolutions.Now.Policy.Api.CapabilitiesResponse;
 using BrokerApiConstants = Devolutions.Now.Policy.Api.BrokerApi;
@@ -139,12 +140,12 @@ public sealed class PackageOperationsTests
             inner =>
             {
                 Assert.IsType<KillProcessOperation>(inner.Operation);
-                Assert.False(inner.MustSucceed);
+                Assert.True(inner.MustSucceed);
             },
             inner =>
             {
                 Assert.IsType<KillProcessOperation>(inner.Operation);
-                Assert.False(inner.MustSucceed);
+                Assert.True(inner.MustSucceed);
             },
             inner =>
             {
@@ -544,6 +545,27 @@ public sealed class PackageOperationsTests
     }
 
     [Fact]
+    public async Task ASuccessfulOperationInvalidatesTheInstalledPackagesOfItsManager()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var manager = CreateSlowProcessManager(serializesOperations: false);
+        InitializeLoaders();
+        long generationBefore = manager.InstalledPackagesGeneration;
+        using var operation = new UpdatePackageOperation(
+            new PackageBuilder().WithManager(manager).WithId("updated").Build(),
+            new InstallOptions(),
+            IgnoreParallelInstalls: true
+        );
+
+        await operation.MainThread().WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.Equal(OperationStatus.Succeeded, operation.Status);
+        Assert.NotEqual(generationBefore, manager.InstalledPackagesGeneration);
+    }
+
+    [Fact]
     public async Task OperationsOfASerializingManagerNeverRunTheirProcessesConcurrently()
     {
         if (!OperatingSystem.IsWindows())
@@ -938,6 +960,50 @@ public sealed class PackageOperationsTests
         Assert.DoesNotContain(
             InstalledPackagesLoader.Instance.GetEquivalentPackages(installedBeforeUpdate),
             package => package.VersionString == "2.1.4"
+        );
+    }
+
+    [Fact]
+    public async Task UpdateOperationSuccessfulRunIgnoresAnInstallOnlyPinnedVersion()
+    {
+        TestPackageManager? manager = null;
+        Package? installedPackage = null;
+        manager = new PackageManagerBuilder()
+            .ConfigureCapabilities(capabilities =>
+            {
+                capabilities.SupportsCustomVersionsOnUpdate = false;
+                return capabilities;
+            })
+            .WithInstalledPackages(_ => [Assert.IsType<Package>(installedPackage)])
+            .Build();
+        var installedBeforeUpdate = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("jq")
+            .WithVersion("1.7.1")
+            .WithNewVersion("1.8.2")
+            .Build();
+        installedPackage = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("jq")
+            .WithVersion("1.8.2")
+            .Build();
+        InitializeLoaders();
+        await InstalledPackagesLoader.Instance.AddForeign(installedBeforeUpdate);
+        using var operation = new SimulatedUpdatePackageOperation(
+            installedBeforeUpdate,
+            new InstallOptions { Version = "1.7.1" },
+            OperationVeredict.Success
+        );
+
+        await operation.MainThread();
+        await WaitForAsync(() =>
+            InstalledPackagesLoader.Instance.GetEquivalentPackages(installedBeforeUpdate)
+                .Any(package => package.VersionString == "1.8.2")
+        );
+
+        Assert.DoesNotContain(
+            InstalledPackagesLoader.Instance.GetEquivalentPackages(installedBeforeUpdate),
+            package => package.VersionString == "1.7.1"
         );
     }
 
@@ -1404,6 +1470,24 @@ public sealed class PackageOperationsTests
         await AssertBrokerUnavailableFailure(transport);
     }
 
+    [Theory]
+    [InlineData(BrokerUnreachableCause.NotListening, "The Devolutions Agent package broker is not running")]
+    [InlineData(BrokerUnreachableCause.ConnectionClosed, "Devolutions Agent refused this copy of UniGetUI")]
+    [InlineData(BrokerUnreachableCause.Unknown, "Agent broker unavailable")]
+    public async Task BrokerOperationExplainsWhyTheBrokerIsUnreachable(BrokerUnreachableCause cause, string expectedTitle)
+    {
+        var transport = new FakeBrokerTransport(healthy: false);
+        PackageOperation.BrokerUnreachableDiagnosis = _ => Task.FromResult(cause);
+        try
+        {
+            await AssertBrokerUnavailableFailure(transport, expectedTitle);
+        }
+        finally
+        {
+            PackageOperation.BrokerUnreachableDiagnosis = null;
+        }
+    }
+
     [Fact]
     public async Task BrokerOperationFailsWithoutLocalFallbackWhenBrokerDropsAfterProbe()
     {
@@ -1528,7 +1612,9 @@ public sealed class PackageOperationsTests
     /// broker-unavailable metadata, raises <see cref="PackageOperation.BrokerUnavailable"/>,
     /// and never falls back to local process execution.
     /// </summary>
-    private static async Task AssertBrokerUnavailableFailure(FakeBrokerTransport transport)
+    private static async Task AssertBrokerUnavailableFailure(
+        FakeBrokerTransport transport,
+        string expectedTitle = "Agent broker unavailable")
     {
         bool originalSetting = Settings.Get(Settings.K.UseAgentBroker);
         bool localExecutionPrepared = false;
@@ -1548,7 +1634,12 @@ public sealed class PackageOperationsTests
             .Build();
         var package = new PackageBuilder().WithManager(manager).Build();
         string? notifiedMessage = null;
-        EventHandler<BrokerFailureDescription> onBrokerUnavailable = (_, failure) => notifiedMessage = failure.Message;
+        string? notifiedTitle = null;
+        EventHandler<BrokerFailureDescription> onBrokerUnavailable = (_, failure) =>
+        {
+            notifiedTitle = failure.Title;
+            notifiedMessage = failure.Message;
+        };
         PackageOperation.BrokerUnavailable += onBrokerUnavailable;
         PackageOperation.BrokerTransportFactory = () => transport;
         Settings.Set(Settings.K.UseAgentBroker, true);
@@ -1559,9 +1650,10 @@ public sealed class PackageOperationsTests
 
             Assert.Equal(OperationVeredict.Failure, veredict);
             Assert.Equal(
-                CoreTools.Translate("Agent broker unavailable"),
+                CoreTools.Translate(expectedTitle),
                 operation.Metadata.FailureTitle);
             Assert.False(string.IsNullOrWhiteSpace(operation.Metadata.FailureMessage));
+            Assert.Equal(operation.Metadata.FailureTitle, notifiedTitle);
             Assert.Equal(operation.Metadata.FailureMessage, notifiedMessage);
             Assert.False(localExecutionPrepared);
         }
@@ -1749,6 +1841,26 @@ public sealed class PackageOperationsTests
             BrokerApiElevation.Elevated,
             DeserializeExecuteRequest(transport).Client?.RequestedElevation);
         Assert.Contains(result.Output, line => line.Item1.Contains("Elevation: Elevated"));
+    }
+
+    [Fact]
+    public async Task BrokeredOperationAppliesTheManagerOperationOverrides()
+    {
+        var transport = new ScriptedBrokerTransport
+        {
+            StatusAfterCancel = BrokerApiOperationStatus.Completed,
+            CompletedExitCode = 0,
+        };
+
+        var result = await RunBrokeredOperationWithOutput(
+            transport,
+            configureOperationHelper: helper => helper.OperationOverridesAction =
+                (_, options, _) => options.Architecture = Architecture.x64);
+
+        Assert.Equal(OperationVeredict.Success, result.Veredict);
+        Assert.Equal(
+            BrokerApiArchitecture.X64,
+            DeserializeExecuteRequest(transport).Package.Architecture);
     }
 
     [Fact]
@@ -2208,6 +2320,7 @@ public sealed class PackageOperationsTests
                 {
                     Manager = BrokerApiManagerName.Chocolatey,
                     Operations = [BrokerApiOperation.Install, BrokerApiOperation.Update, BrokerApiOperation.Uninstall],
+                    Architectures = [BrokerApiArchitecture.X86, BrokerApiArchitecture.X64],
                     SupportsCustomParameters = true,
                     SupportsCustomInstallLocation = true,
                     SupportsCaptureOutput = true,

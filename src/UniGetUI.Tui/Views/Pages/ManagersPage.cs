@@ -181,7 +181,7 @@ internal sealed class ManagerSettingsDialog : FormDialog
             TuiShell.Navigate(TuiPageIds.Logs);
         });
 
-        if (m.Capabilities.SupportsCustomSources && m.Name != "vcpkg")
+        if (m.Capabilities.SupportsCustomSources && m.Name != "vcpkg" && m.Capabilities.Sources.CanBeEdited)
             BuildSources();
 
         BuildExtras();

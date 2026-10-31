@@ -22,6 +22,7 @@
     </Window.Resources>
     <Window.Styles>
         <Style Selector="Border#GlobalSearchContainer">
+            <Setter Property="CornerRadius" Value="5"/>
             <Setter Property="Background" Value="{DynamicResource SearchBoxInactiveBackground}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource ControlElevationBorderBrush}"/>
         </Style>
@@ -58,6 +59,7 @@
              value, which would beat the .open setter). -->
         <Style Selector="Border#NavFlyout">
             <Setter Property="Opacity" Value="0"/>
+            <Setter Property="Background" Value="{DynamicResource AppWindowBackground}"/>
         </Style>
         <Style Selector="Border#NavFlyout.open">
             <Setter Property="Opacity" Value="1"/>
@@ -170,8 +172,62 @@
         <Style Selector="Button.operation-output:pressed">
             <Setter Property="RenderTransform" Value="none"/>
         </Style>
+
+        <!-- macOS glass look (MacGlassWindowHelper.GLASS_CLASS): floating sidebar panel and
+             capsule search field. Declared last so they win over the base styles above. -->
+        <Style Selector="Border.mac-glass-panel">
+            <Setter Property="Background" Value="{DynamicResource MacGlassPanelBackground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource MacGlassPanelBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="{DynamicResource MacGlassPanelCornerRadius}"/>
+            <Setter Property="BoxShadow" Value="{DynamicResource MacGlassPanelShadow}"/>
+        </Style>
+        <Style Selector="Window.mac-glass Border#NavFlyout">
+            <Setter Property="Background" Value="{DynamicResource MacGlassPanelBackground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource MacGlassPanelBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="{DynamicResource MacGlassPanelCornerRadius}"/>
+            <Setter Property="BoxShadow" Value="{DynamicResource MacGlassPanelShadow}"/>
+        </Style>
+        <Style Selector="Window.mac-glass Border#GlobalSearchContainer">
+            <Setter Property="CornerRadius" Value="16"/>
+            <Setter Property="Background" Value="{DynamicResource MacGlassControlBackground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource MacGlassPanelBorderBrush}"/>
+        </Style>
+        <Style Selector="Window.mac-glass Border#GlobalSearchContainer:focus-within">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}"/>
+        </Style>
+        <Style Selector="Window.mac-glass Border#SearchFocusUnderline">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
+        <!-- Sidebar selection: a solid accent pill with accent-content text, as in System Settings,
+             replacing the WinUI leading-edge indicator. -->
+        <Style Selector="Window.mac-glass Panel#NavigationSelectionPill">
+            <Setter Property="Opacity" Value="0"/>
+        </Style>
+        <Style Selector="Window.mac-glass ListBoxItem.nav-item:pointerover /template/ ContentPresenter#ContentHost">
+            <Setter Property="CornerRadius" Value="10"/>
+        </Style>
+        <Style Selector="Window.mac-glass ListBoxItem.nav-item:selected /template/ ContentPresenter#ContentHost">
+            <Setter Property="Background" Value="{DynamicResource MacGlassSelectionBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource MacAccentForeground}"/>
+            <Setter Property="CornerRadius" Value="10"/>
+        </Style>
+        <Style Selector="Window.mac-glass ListBoxItem.nav-item:selected controls|SvgIcon">
+            <Setter Property="Foreground" Value="{DynamicResource MacAccentForeground}"/>
+        </Style>
+        <Style Selector="Window.mac-glass ListBoxItem.nav-item:selected:pointerover /template/ ContentPresenter#ContentHost">
+            <Setter Property="Background" Value="{DynamicResource MacGlassSelectionBackground}"/>
+        </Style>
     </Window.Styles>
     <Panel>
+        <!-- macOS glass: opaque window surface with the sidebar panel cut out (see UpdateMacWindowSurfaceClip). -->
+        <Border x:Name="MacWindowSurface"
+                Background="{DynamicResource MacGlassWindowBackground}"
+                IsVisible="False"
+                IsHitTestVisible="False"
+                automation:AutomationProperties.AccessibilityView="Raw"/>
+
         <!-- Solid inactive-state fallback, using the same theme resource as the #5111 Mica failure path. -->
         <Border x:Name="InactiveMicaFallback"
                 Background="{DynamicResource AppWindowBackground}"
@@ -192,6 +248,14 @@
               Margin="{Binding $parent[Window].WindowDecorationMargin}"
               Background="{DynamicResource MicaPageBackground}"
               ColumnDefinitions="Auto,*">
+
+            <!-- macOS glass: floating panel behind the rail/dock, placed by ApplyMacSidebarLayout. -->
+            <Border x:Name="SidebarGlass"
+                    Grid.Column="0"
+                    Classes="mac-glass-panel"
+                    IsVisible="False"
+                    IsHitTestVisible="False"
+                    automation:AutomationProperties.AccessibilityView="Raw"/>
 
             <!-- ── Icon rail (compact mode ≥800px, or docked-but-collapsed) ── -->
             <ContentControl x:Name="NavRail"
@@ -551,7 +615,6 @@
                     HorizontalAlignment="Left"
                     VerticalAlignment="Stretch"
                     ZIndex="10"
-                    Background="{DynamicResource AppWindowBackground}"
                     IsHitTestVisible="{Binding Sidebar.OverlayActive}"
                     Classes.open="{Binding Sidebar.OverlayActive}">
                 <Border.Transitions>
@@ -649,7 +712,8 @@
                           automation:AutomationProperties.AccessibilityView="Raw"
                           Data="M0,1 H16 M0,7 H16 M0,13 H16"/>
                 </Button>
-                <TextBlock Text="{Binding TitleBarText}"
+                <TextBlock x:Name="TitleBarTextBlock"
+                           Text="{Binding TitleBarText}"
                            FontSize="13"
                            FontWeight="SemiBold"
                            VerticalAlignment="Center"/>
@@ -663,12 +727,11 @@
                     VerticalAlignment="Center"
                     Margin="0,0,40,0"
                     Height="32"
-                    CornerRadius="5"
                     BorderThickness="1"
                     ClipToBounds="True"
                     automation:AutomationProperties.AccessibilityView="Control">
                 <Panel>
-                    <Grid ColumnDefinitions="320,38">
+                    <Grid x:Name="GlobalSearchGrid" ColumnDefinitions="320,38">
                         <TextBox x:Name="GlobalSearchBox"
                                  Grid.Column="0"
                                  MinHeight="20"
@@ -845,7 +908,8 @@
                         </Panel>
                     </Button>
                     <!-- Close: X -->
-                    <Button Width="46" Height="44"
+                    <Button x:Name="CaptionCloseButton"
+                            Width="46" Height="44"
                             Classes="caption caption-close"
                                                         automation:AutomationProperties.Name="{t:Translate Close}"
                             ToolTip.Tip="{t:Translate Close}"
@@ -871,6 +935,9 @@
               Background="{DynamicResource SmokeFillColorDefaultBrush}"
               Margin="{Binding $parent[Window].WindowDecorationMargin}"
               ZIndex="2000"
+              PointerPressed="ModalLayer_PointerPressed"
+              PointerReleased="ModalLayer_PointerReleased"
+              PointerCaptureLost="ModalLayer_PointerCaptureLost"
               automation:AutomationProperties.AccessibilityView="Control">
             <Border x:Name="ModalSurface"
                     Margin="48"
@@ -914,7 +981,8 @@
                                     VerticalContentAlignment="Stretch"/>
                     <!-- Draw the outline above dialog content so opaque footer surfaces cannot
                          cover the antialiased inner edge of the rounded border. -->
-                    <Border Grid.RowSpan="2"
+                    <Border x:Name="ModalOutline"
+                            Grid.RowSpan="2"
                             BorderBrush="{DynamicResource AppBorderBrush}"
                             BorderThickness="1"
                             CornerRadius="8"

@@ -1,6 +1,7 @@
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using Microsoft.Management.Deployment;
+using Microsoft.Win32;
 using UniGetUI.Core.Classes;
 using UniGetUI.Core.Logging;
 using UniGetUI.Core.Tools;
@@ -24,6 +25,9 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
     private readonly Func<WinGet, IWinGetManagerHelper> _systemCliHelperFactory;
     private readonly Func<IReadOnlyList<CatalogPackage>>? _localPackagesProvider;
     private readonly IPingetPackageDetailsProvider _pingetPackageDetailsProvider;
+    private const string UserUninstallKeyPath =
+        @"Software\Microsoft\Windows\CurrentVersion\Uninstall";
+    private const string InstalledIndexInvalidationValueName = "UniGetUI.InstalledIndexInvalidation";
     private int _activeLocalPackageQueries;
     private ExceptionDispatchInfo? _lastActivationException;
 
@@ -184,7 +188,7 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
         List<Package> packages = [];
         INativeTaskLogger logger = Manager.TaskLogger.CreateNew(LoggableTaskType.FindPackages);
         Dictionary<
-            (PackageCatalogReference, PackageMatchField),
+            (PackageCatalogReference, PackageMatchField?),
             Task<FindPackagesResult>
         > FindPackageTasks = [];
 
@@ -203,24 +207,27 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
             ConnectResult result = CatalogReference.Connect();
             if (result.Status == ConnectResultStatus.Ok)
             {
-                foreach (
-                    var filter_type in new[]
-                    {
-                        PackageMatchField.Name,
-                        PackageMatchField.Id,
-                        PackageMatchField.Moniker,
-                    }
-                )
+                PackageMatchField?[] filterTypes = query.Length == 0
+                    ? [null]
+                    : [PackageMatchField.Name, PackageMatchField.Id, PackageMatchField.Moniker];
+                foreach (PackageMatchField? filter_type in filterTypes)
                 {
                     FindPackagesOptions PackageFilters = Factory.CreateFindPackagesOptions();
 
-                    logger.Log("Generating filters...");
-                    // Name filter
-                    PackageMatchFilter FilterName = Factory.CreatePackageMatchFilter();
-                    FilterName.Field = filter_type;
-                    FilterName.Value = query;
-                    FilterName.Option = PackageFieldMatchOption.ContainsCaseInsensitive;
-                    PackageFilters.Filters.Add(FilterName);
+                    if (filter_type is { } field)
+                    {
+                        logger.Log("Generating filters...");
+                        // Name filter
+                        PackageMatchFilter FilterName = Factory.CreatePackageMatchFilter();
+                        FilterName.Field = field;
+                        FilterName.Value = query;
+                        FilterName.Option = PackageFieldMatchOption.ContainsCaseInsensitive;
+                        PackageFilters.Filters.Add(FilterName);
+                    }
+                    else
+                    {
+                        PackageFilters.ResultLimit = (uint)SearchLimits.MaxEmptyQueryResultsPerSource;
+                    }
 
                     try
                     {
@@ -468,21 +475,24 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
 
     private IReadOnlyList<CatalogPackage> GetCachedLocalWinGetPackages(int? cacheSeconds = null)
     {
-        long sourceIndexGeneration = WinGet.SourceIndexGeneration;
+        (long, long) generations = (
+            WinGet.SourceIndexGeneration,
+            Manager.InstalledPackagesGeneration
+        );
 
         return cacheSeconds is null
             ? TaskRecycler<IReadOnlyList<CatalogPackage>>.RunOrAttach(
                 EnumerateLocalWinGetPackages,
-                sourceIndexGeneration
+                generations
             )
             : TaskRecycler<IReadOnlyList<CatalogPackage>>.RunOrAttach(
                 EnumerateLocalWinGetPackages,
-                sourceIndexGeneration,
+                generations,
                 cacheSeconds.Value
             );
     }
 
-    private IReadOnlyList<CatalogPackage> EnumerateLocalWinGetPackages(long sourceIndexGeneration)
+    private IReadOnlyList<CatalogPackage> EnumerateLocalWinGetPackages((long, long) generations)
     {
         return _localPackagesProvider is not null
             ? _localPackagesProvider()
@@ -587,6 +597,7 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
         try
         {
             logger.Log("OtherTask: GetWinGetLocalPackages");
+            InvalidateInstalledIndexCache(logger);
             var availableCatalogs = GetReachableLocalCatalogReferences(logger);
             PackageCatalogReference installedSearchCatalogRef = CreateLocalCompositeCatalog(
                 availableCatalogs,
@@ -632,6 +643,30 @@ internal sealed class NativeWinGetHelper : IWinGetManagerHelper
         finally
         {
             Interlocked.Decrement(ref _activeLocalPackageQueries);
+        }
+    }
+
+    private static void InvalidateInstalledIndexCache(INativeTaskLogger logger)
+    {
+        try
+        {
+            using RegistryKey? uninstallKey = Registry.CurrentUser.OpenSubKey(
+                UserUninstallKeyPath,
+                writable: true
+            );
+            if (uninstallKey is null)
+            {
+                logger.Log("No per-user uninstall key found; skipping WinGet installed index invalidation");
+                return;
+            }
+
+            uninstallKey.SetValue(InstalledIndexInvalidationValueName, Environment.ProcessId);
+            uninstallKey.DeleteValue(InstalledIndexInvalidationValueName, throwOnMissingValue: false);
+        }
+        catch (Exception ex)
+        {
+            logger.Error($"Could not invalidate the WinGet installed index: {ex.Message}");
+            Logger.Warn($"Could not invalidate the WinGet installed index: {ex.Message}");
         }
     }
 

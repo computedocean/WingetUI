@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using UniGetUI.PackageEngine.Classes.Packages.Classes;
+using UniGetUI.PackageEngine.Operations;
 using UniGetUI.PackageEngine.Operations.History;
 using UniGetUI.PackageEngine.PackageLoader;
 using UniGetUI.Tui.Infrastructure;
@@ -71,6 +72,20 @@ internal sealed class PackagePagesE2ETests : TuiE2ETestBase
         await WaitUntilAsync(() => InstalledPackagesLoader.Instance.Packages.Any(p => p.Id == "Contoso.PhotoStudio"), "the package to appear as installed");
         await OnUi(() => Window.NavigateTo(TuiPageIds.Installed));
         await WaitForTextAsync("Contoso Photo Studio", "17 packages  ·");
+    }
+
+    [Test]
+    public async Task DiscoverPage_EmptySearchListsOnlyManagersThatSupportIt()
+    {
+        await ResetAsync(TuiPageIds.Discover);
+        await EnterPage();
+        await Key(K.Enter);
+        await WaitUntilAsync(
+            () => DiscoverablePackagesLoader.Instance.IsLoaded && !DiscoverablePackagesLoader.Instance.IsLoading,
+            "the empty search to finish");
+
+        NAssert.That(DiscoverablePackagesLoader.Instance.Packages, Is.Not.Empty);
+        NAssert.That(DiscoverablePackagesLoader.Instance.Packages.Select(p => p.Manager.Name).Distinct(), Is.EquivalentTo(new[] { "Winget" }));
     }
 
     [Test]
@@ -151,10 +166,73 @@ internal sealed class PackagePagesE2ETests : TuiE2ETestBase
         await WaitForDialogAsync("Manage ignored updates");
         await WaitForTextAsync("Fabrikam.Browser", "All versions");
         await ChooseAsync("Fabrikam");
+        await ChooseAsync("Stop ignoring updates");
         await WaitUntilAsync(() => UpgradablePackagesLoader.Instance.Packages.Any(p => p.Id == "Fabrikam.Browser"), "the update to come back");
         NAssert.That(IgnoredUpdatesDatabase.GetDatabase().Keys, Has.None.Contains("Fabrikam.Browser"));
         await Key(K.Escape);
         await WaitForNoDialogAsync();
+    }
+
+    [Test]
+    public async Task ManageIgnoredUpdates_UpdateOnce_KeepsThePackageIgnored()
+    {
+        await ResetAsync(TuiPageIds.Updates);
+        await EnterPage();
+        await FilterPackagesAsync("Fabrikam Browser");
+        await Type("g");
+        await WaitUntilAsync(() => UpgradablePackagesLoader.Instance.Packages.All(p => p.Id != "Fabrikam.Browser"), "the update to be ignored");
+
+        await Type("m");
+        await ChooseAsync("Manage ignored updates");
+        await WaitForDialogAsync("Manage ignored updates");
+        await WaitForTextAsync("Fabrikam.Browser", "119.0.0");
+        await ChooseAsync("Fabrikam");
+        await UpdateOnceAndWaitAsync("Fabrikam.Browser");
+
+        NAssert.That(InstalledVersion("Winget", "Fabrikam.Browser"), Is.EqualTo("119.0.0"));
+        NAssert.That(UpgradablePackagesLoader.Instance.IgnoredPackages.ContainsKey("Fabrikam.Browser"), Is.False);
+        NAssert.That(IgnoredUpdatesDatabase.GetDatabase().Single(kv => kv.Key.Contains("Fabrikam.Browser")).Value, Is.EqualTo("*"));
+        NAssert.That(UpgradablePackagesLoader.Instance.Packages.Any(p => p.Id == "Fabrikam.Browser"), Is.False);
+        await Key(K.Escape);
+        await WaitForNoDialogAsync();
+    }
+
+    [Test]
+    public async Task ManageIgnoredUpdates_UpdateOnce_KeepsUpdatesPaused()
+    {
+        await ResetAsync(TuiPageIds.Updates);
+        await EnterPage();
+        await FilterPackagesAsync("Northwind Terminal");
+        await Type("m");
+        await ChooseAsync("Pause updates for");
+        await ChooseAsync("1 week");
+        await WaitUntilAsync(() => UpgradablePackagesLoader.Instance.Packages.All(p => p.Id != "Northwind.Terminal"), "updates to be paused");
+
+        await FilterPackagesAsync("Contoso Editor");
+        await Type("m");
+        await ChooseAsync("Manage ignored updates");
+        await WaitForDialogAsync("Manage ignored updates");
+        await WaitForTextAsync("Northwind.Terminal", "1.20.1");
+        await ChooseAsync("Northwind");
+        await UpdateOnceAndWaitAsync("Northwind.Terminal");
+
+        NAssert.That(InstalledVersion("Winget", "Northwind.Terminal"), Is.EqualTo("1.20.1"));
+        NAssert.That(UpgradablePackagesLoader.Instance.IgnoredPackages.ContainsKey("Northwind.Terminal"), Is.False);
+        NAssert.That(IgnoredUpdatesDatabase.GetDatabase().Single(kv => kv.Key.Contains("Northwind.Terminal")).Value, Does.StartWith("<"));
+        await Key(K.Escape);
+        await WaitForNoDialogAsync();
+    }
+
+    private async Task UpdateOnceAndWaitAsync(string packageId)
+    {
+        await ChooseAsync("Update once");
+        UpdatePackageOperation? operation = null;
+        await WaitUntilAsync(
+            () => (operation = TuiOperationRegistry.Snapshot().OfType<UpdatePackageOperation>()
+                .FirstOrDefault(o => o.Package.Id == packageId)) is not null,
+            "the update to start");
+        await WaitForOperationsToFinishAsync();
+        await operation!.SuccessHandled;
     }
 
     [Test]
@@ -201,6 +279,34 @@ internal sealed class PackagePagesE2ETests : TuiE2ETestBase
         await Type("i");
         await WaitForOperationsToFinishAsync();
         NAssert.That(InstalledVersion("Winget", "Litware.MediaPlayer"), Is.EqualTo("3.0.20"));
+    }
+
+    [Test]
+    public async Task InstallOptions_TypeAVersion_ThenInstallUsesIt()
+    {
+        await ResetAsync(TuiPageIds.Discover);
+        await EnterPage();
+        await Type("tailspin-jq");
+        await Key(K.Enter);
+        await WaitForTextAsync("tailspin-jq");
+        await Key(K.Down);
+        await Type("o");
+        await WaitUntilAsync(() => TuiModal.Top is InstallOptionsDialog { StateLoaded: true }, "the options to load");
+        await WaitForDialogAsync("installation options");
+        await FocusFieldAsync("Follow the default options");
+        await Key(K.Space);
+        await FocusFieldAsync("Ignore future updates");
+        await Key(K.Down);
+        NAssert.That(await FocusedTextAsync(), Is.EqualTo("textbox:"));
+        await Type("1.6");
+        await Key(K.Enter);
+        NAssert.That(await FocusedTextAsync(), Is.EqualTo("textbox:1.6"));
+        await PressButtonAsync("Save and close");
+        await WaitForNoDialogAsync();
+
+        await Type("i");
+        await WaitForOperationsToFinishAsync();
+        NAssert.That(InstalledVersion("Scoop", "tailspin-jq"), Is.EqualTo("1.6"));
     }
 
     [Test]

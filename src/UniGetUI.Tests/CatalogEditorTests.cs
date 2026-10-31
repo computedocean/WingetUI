@@ -141,6 +141,31 @@ public class CatalogEditorTests : IDisposable
         Assert.Equal(2, vm.Catalogs.Count);
     }
 
+    [Fact]
+    public async Task DiscoverAddsSelectionToSeveralCatalogsAndReportsDuplicatesPerCatalog()
+    {
+        var vm = await LoadEditorAsync();
+        var manager = new SearchManager();
+        var source = new ManagerSource(manager, "private", new Uri("https://example.test/feed"));
+        var tool = new Package("Tool", "Company.Tool", "2.0", source, manager);
+        var other = new Package("Other", "Company.Other", "1.0", source, manager);
+        vm.Catalogs[1].Packages.Add(CatalogEntry.FromPackage(tool));
+
+        var results = vm.AddPackages([tool, other], [vm.Catalogs[0], vm.Catalogs[1]]);
+
+        Assert.Equal([vm.Catalogs[0], vm.Catalogs[1]], results.Select(r => r.Catalog));
+        Assert.Equal((2, 0), (results[0].Added, results[0].AlreadyPresent));
+        Assert.Equal((1, 1), (results[1].Added, results[1].AlreadyPresent));
+        Assert.Equal(3, vm.Catalogs[0].Packages.Count);
+        Assert.Equal(2, vm.Catalogs[1].Packages.Count);
+        Assert.True(vm.IsDirty);
+
+        var removed = vm.Catalogs[1];
+        vm.RemoveCatalog(removed);
+        Assert.Throws<InvalidOperationException>(() => vm.AddPackages([tool], [removed]));
+        Assert.Throws<InvalidOperationException>(() => vm.AddPackages([tool], []));
+    }
+
     [Theory]
     [InlineData("catalog-test")]
     [InlineData("CatalogTest")]
@@ -197,6 +222,34 @@ public class CatalogEditorTests : IDisposable
     }
 
     [Fact]
+    public async Task TheEditorStartsOnAnUntitledDocumentInsteadOfTheDeployedCatalog()
+    {
+        var vm = new CatalogEditorViewModel();
+        Assert.True(await vm.EnsureLoadedAsync());
+        Assert.True(vm.CanEdit);
+        Assert.Empty(vm.Catalogs);
+        Assert.Null(vm.SelectedCatalog);
+        Assert.False(vm.IsDirty);
+        Assert.Equal("", vm.FilePath);
+    }
+
+    [Fact]
+    public async Task MissingCatalogFileStartsAnEmptyEditableDocumentThatSavesThere()
+    {
+        string missing = Path.Combine(_directory, "not-deployed-yet.json");
+        var vm = new CatalogEditorViewModel { FilePath = missing };
+        Assert.True(await vm.EnsureLoadedAsync());
+        Assert.True(vm.CanEdit);
+        Assert.Empty(vm.Catalogs);
+        Assert.False(vm.IsDirty);
+        Assert.Equal(missing, vm.FilePath);
+
+        vm.NewCatalog();
+        Assert.True(await vm.SaveAsync(vm.FilePath));
+        Assert.Equal("catalog", Assert.Single(await SoftwareCatalog.LoadAsync(missing)).Id);
+    }
+
+    [Fact]
     public void CatalogPackageListPreservesUnavailableIdentitiesAndDoesNotTouchBundles()
     {
         var loader = new CatalogPackagesLoader();
@@ -219,7 +272,9 @@ public class CatalogEditorTests : IDisposable
         var entry = new CatalogEntry { Id = "tool", Name = "Tool", ManagerName = "missing", Source = "private" };
         loader.Replace([entry]);
         var original = Assert.Single(loader.Packages);
-        var equivalent = new InvalidImportedPackage(entry.AsSerializable().GetInvalidEquivalent(), original.Source,
+        var raw = entry.AsSerializable();
+        raw.Version = original.VersionString;
+        var equivalent = new InvalidImportedPackage(raw.GetInvalidEquivalent(), original.Source,
             $"{entry.ManagerName}\0{entry.Source}\0{entry.Id}");
         Assert.NotSame(original, equivalent);
         Assert.Equal(original.GetVersionedHash(), equivalent.GetVersionedHash());
@@ -247,6 +302,29 @@ public class CatalogEditorTests : IDisposable
         vm.SelectedCatalog.Name = "Changed again";
         vm.DiscardChanges();
         Assert.Equal("Devolutions", vm.SelectedCatalog!.Name);
+    }
+
+    [Fact]
+    public async Task RemovingACatalogKeepsTheOthersAndSelectsANeighbour()
+    {
+        var vm = await LoadEditorAsync();
+        vm.NewCatalog();
+        var added = vm.SelectedCatalog!;
+        vm.RemoveCatalog(added);
+        Assert.True(vm.IsDirty);
+        Assert.Equal(["devolutions", "tools"], vm.Catalogs.Select(c => c.Id));
+        Assert.Equal("tools", vm.SelectedCatalog!.Id);
+
+        vm.RemoveCatalog(vm.Catalogs[0]);
+        Assert.Equal("tools", Assert.Single(vm.Catalogs).Id);
+        Assert.Equal("tools", vm.SelectedCatalog!.Id);
+        vm.RemoveCatalog(vm.Catalogs[0]);
+        Assert.Empty(vm.Catalogs);
+        Assert.Null(vm.SelectedCatalog);
+
+        vm.DiscardChanges();
+        Assert.Equal(["devolutions", "tools"], vm.Catalogs.Select(c => c.Id));
+        Assert.False(vm.IsDirty);
     }
 
     [Fact]
@@ -599,6 +677,8 @@ public class CatalogEditorTests : IDisposable
         public bool IdentifiersAreQuotedOnCommandLine => true;
         public bool LastUpdatesListingFailed => false;
         public bool LastInstalledListingFailed => false;
+        public long InstalledPackagesGeneration => 0;
+        public void InvalidateInstalledPackages() { }
         public int? CompareVersions(string versionA, string versionB) => throw new NotSupportedException();
         public void Initialize() => throw new NotSupportedException();
         public bool IsEnabled() => true;
@@ -620,5 +700,70 @@ public class CatalogEditorTests : IDisposable
         public Tuple<bool, string> GetExecutableFile() => Tuple.Create(false, "");
     }
 
+    [Fact]
+    public async Task OnlyAMissingCatalogCountsAsMissing()
+    {
+        Assert.True(CatalogEditorViewModel.IsMissing(FilePath));
+        Assert.True(CatalogEditorViewModel.IsMissing(Path.Combine(_directory, "absent", "catalog.json")));
+        await File.WriteAllTextAsync(FilePath, "{}");
+        Assert.False(CatalogEditorViewModel.IsMissing(FilePath));
+    }
+
+    [Fact]
+    public void ACatalogPathThatExistsButCannotBeOpenedIsNotMissing()
+    {
+        Directory.CreateDirectory(FilePath);
+        Assert.False(File.Exists(FilePath));
+        Assert.False(CatalogEditorViewModel.IsMissing(FilePath));
+    }
+
     public void Dispose() => Directory.Delete(_directory, true);
+
+    [Fact]
+    public async Task SavingKeepsACatalogsPkgFeed()
+    {
+        await SoftwareCatalog.SaveAsync(FilePath,
+        [
+            new() { Id = "mac", Name = "Mac apps", Packages = [], PkgFeed = "https://software.example.com/mac/" },
+            new() { Id = "tools", Name = "Tools", Packages = [Entry()] },
+        ]);
+        var vm = new CatalogEditorViewModel();
+        Assert.True(await vm.LoadAsync(FilePath));
+        vm.SelectedCatalog = vm.Catalogs.Single(c => c.Id == "mac");
+        vm.SelectedCatalog.Name = "Mac software";
+        Assert.True(await vm.SaveAsync(FilePath));
+
+        var saved = await SoftwareCatalog.LoadAsync(FilePath);
+        Assert.Equal(("Mac software", "https://software.example.com/mac/"), (saved[0].Name, saved[0].PkgFeed));
+        Assert.Null(saved[1].PkgFeed);
+    }
+
+    [Fact]
+    public async Task EditingAPackageFeedMarksTheCatalogChangedAndSavesIt()
+    {
+        await SoftwareCatalog.SaveAsync(FilePath, [new() { Id = "mac", Name = "Mac apps", Packages = [] }]);
+        var vm = new CatalogEditorViewModel();
+        Assert.True(await vm.LoadAsync(FilePath));
+        var catalog = Assert.Single(vm.Catalogs);
+        Assert.False(vm.IsDirty);
+        catalog.PkgFeed = "/Volumes/Software/mac";
+        catalog.AllowUnsignedPackages = true;
+        Assert.True(vm.IsDirty);
+        Assert.True(await vm.SaveAsync(FilePath));
+
+        var saved = Assert.Single(await SoftwareCatalog.LoadAsync(FilePath));
+        Assert.Equal(("/Volumes/Software/mac", (bool?)true), (saved.PkgFeed, saved.AllowUnsignedPackages));
+    }
+
+    [Theory]
+    [InlineData("", true)]
+    [InlineData("https://software.example.com/mac/", true)]
+    [InlineData("ftp://software.example.com/mac/", false)]
+    [InlineData("relative/folder", false)]
+    public void ThePackageFeedDialogAcceptsOnlyUsableLocations(string location, bool valid)
+    {
+        var editor = new PkgFeedEditorViewModel(location, false, () => Task.FromResult<string?>(null));
+        Assert.Equal(valid, editor.IsValid);
+        Assert.Equal(valid, editor.ValidationMessage.Length == 0);
+    }
 }
