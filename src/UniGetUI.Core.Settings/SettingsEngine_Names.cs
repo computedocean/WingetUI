@@ -77,6 +77,7 @@ public static partial class Settings
         RelocatedStartMenuShortcuts,
         WinGetAlreadyUpgradedPackages,
         WinGetUpgradeAttempts,
+        WinGetTrustedInstallerHosts,
         WinGetStuckUpgradeThreshold,
         DependencyManagement,
         DisabledPackageManagerNotifications,
@@ -141,6 +142,7 @@ public static partial class Settings
         MaintenanceTaskLastFailure,
         NavigationPageOrder,
         QuitAfterAutomaticUpdates,
+        InstallUniGetUIUpdatesWhenIdle,
         // NOTE: Set this to true to delegate package operations to Devolutions Agent broker
         // instead of using local UAC elevation. Change default here when ready for production.
         UseAgentBroker,
@@ -232,6 +234,7 @@ public static partial class Settings
             K.RelocatedStartMenuShortcuts => "RelocatedStartMenuShortcuts",
             K.WinGetAlreadyUpgradedPackages => "WinGetAlreadyUpgradedPackages",
             K.WinGetUpgradeAttempts => "WinGetUpgradeAttempts",
+            K.WinGetTrustedInstallerHosts => "WinGetTrustedInstallerHosts",
             K.WinGetStuckUpgradeThreshold => "WinGetStuckUpgradeThreshold",
             K.DependencyManagement => "DependencyManagement",
             K.DisabledPackageManagerNotifications => "DisabledPackageManagerNotifications",
@@ -296,6 +299,7 @@ public static partial class Settings
             K.MaintenanceTaskLastFailure => "MaintenanceTaskLastFailure",
             K.NavigationPageOrder => "NavigationPageOrder",
             K.QuitAfterAutomaticUpdates => "QuitAfterAutomaticUpdates",
+            K.InstallUniGetUIUpdatesWhenIdle => "InstallUniGetUIUpdatesWhenIdle",
             K.UseAgentBroker => "UseAgentBroker",
 
             K.Test1 => "TestSetting1",
