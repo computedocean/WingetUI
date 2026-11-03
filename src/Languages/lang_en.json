@@ -171,6 +171,10 @@
   "Checked at {0}": "Checked at {0}",
   "1 worktree": "1 worktree",
   "{0} worktrees": "{0} worktrees",
+  "Total size": "Total size",
+  "Actions": "Actions",
+  "{0} on disk": "{0} on disk",
+  "{0} on disk, {1} in worktrees": "{0} on disk, {1} in worktrees",
   "detached at {0}": "detached at {0}",
   "Last commit {0}": "Last commit {0}",
   "1 commit not on the default branch": "1 commit not on the default branch",
@@ -2202,5 +2206,10 @@
   "The packages listed here won't be taken in account when checking for updates. Click the update button on their right to update them once, or the delete button to stop ignoring their updates.": "The packages listed here won't be taken in account when checking for updates. Click the update button on their right to update them once, or the delete button to stop ignoring their updates.",
   "Updating {0} once. Its updates will stay ignored.": "Updating {0} once. Its updates will stay ignored.",
   "{0} is already being updated": "{0} is already being updated",
-  "{0} is already up to date": "{0} is already up to date"
+  "{0} is already up to date": "{0} is already up to date",
+  "Select a package to see its details": "Select a package to see its details",
+  "Make the window wider to show package details here": "Make the window wider to show package details here",
+  "Details panel": "Details panel",
+  "Show details panel": "Show details panel",
+  "Hide details panel": "Hide details panel"
 }
