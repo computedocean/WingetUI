@@ -179,6 +179,203 @@ public sealed class WinGetManagerTests : IDisposable
     }
 
     [Fact]
+    public void SelectUniqueSearchMatchesKeepsTheFirstMatchOfEachPackageInOrder()
+    {
+        NativeWinGetHelper.NativeSearchMatchId[] matches =
+        [
+            new("winget", "Mozilla.Firefox"),
+            new("winget", "Contoso.Tool"),
+            new("winget", "Mozilla.Firefox"),
+            new("msstore", "Mozilla.Firefox"),
+            new("winget", "Contoso.Tool"),
+        ];
+
+        Assert.Equal([0, 1, 3], NativeWinGetHelper.SelectUniqueSearchMatches(matches));
+    }
+
+    [Fact]
+    public void SelectUniqueSearchMatchesSkipsUnreadableMatches()
+    {
+        NativeWinGetHelper.NativeSearchMatchId[] matches =
+        [
+            new("winget", null),
+            new("winget", "Contoso.Tool"),
+            new("winget", null),
+            new("winget", "Contoso.Other"),
+        ];
+
+        Assert.Equal([1, 3], NativeWinGetHelper.SelectUniqueSearchMatches(matches));
+    }
+
+    [Fact]
+    public void SelectUniqueSearchMatchesTreatsIdsWithDifferentCaseAsDifferentPackages()
+    {
+        NativeWinGetHelper.NativeSearchMatchId[] matches =
+        [
+            new("winget", "Contoso.Tool"),
+            new("winget", "contoso.tool"),
+        ];
+
+        Assert.Equal([0, 1], NativeWinGetHelper.SelectUniqueSearchMatches(matches));
+    }
+
+    private sealed class FakeSearchMatch(string id, string name, string version)
+    {
+        public string Id { get; } = id;
+        public string Name { get; } = name;
+        public string Version { get; } = version;
+        public Func<string>? ReadId { get; init; }
+        public Func<NativeWinGetHelper.NativeSearchResult>? ReadResult { get; init; }
+    }
+
+    private static NativeWinGetHelper.SearchMatchResolution<FakeSearchMatch> Resolve(
+        IReadOnlyList<(string CatalogName, FakeSearchMatch Package)> matches,
+        ConcurrentDictionary<FakeSearchMatch, int>? resultReads = null,
+        int parallelism = 8,
+        CancellationToken cancellationToken = default
+    ) =>
+        NativeWinGetHelper.ResolveSearchMatches(
+            matches,
+            match => match.ReadId?.Invoke() ?? match.Id,
+            match =>
+            {
+                resultReads?.AddOrUpdate(match, 1, (_, count) => count + 1);
+                return match.ReadResult?.Invoke() ?? new(match.Name, match.Version);
+            },
+            parallelism,
+            cancellationToken
+        );
+
+    [Fact]
+    public void ResolveSearchMatchesReadsMetadataOncePerPackageInFirstOccurrenceOrder()
+    {
+        var firefox = new FakeSearchMatch("Mozilla.Firefox", "Mozilla Firefox", "150.0");
+        var tool = new FakeSearchMatch("Contoso.Tool", "Contoso Tool", "1.0");
+        var firefoxById = new FakeSearchMatch("Mozilla.Firefox", "Mozilla Firefox", "150.0");
+        var storeFirefox = new FakeSearchMatch("Mozilla.Firefox", "Mozilla Firefox", "Unknown");
+        var toolByMoniker = new FakeSearchMatch("Contoso.Tool", "Contoso Tool", "1.0");
+        ConcurrentDictionary<FakeSearchMatch, int> reads = new();
+
+        var resolution = Resolve(
+            [
+                ("winget", firefox),
+                ("winget", tool),
+                ("winget", firefoxById),
+                ("msstore", storeFirefox),
+                ("winget", toolByMoniker),
+            ],
+            reads
+        );
+
+        Assert.Equal([0, 1, 3], resolution.Matches.Select(match => match.FirstIndex));
+        Assert.Equal(
+            ["Mozilla.Firefox", "Contoso.Tool", "Mozilla.Firefox"],
+            resolution.Matches.Select(match => match.Id)
+        );
+        Assert.Equal(["150.0", "1.0", "Unknown"], resolution.Matches.Select(match => match.Result.Version));
+        Assert.Equal(3, reads.Values.Sum());
+        Assert.All(reads.Values, count => Assert.Equal(1, count));
+        Assert.Equal(1, reads.Keys.Count(match => match == firefox || match == firefoxById));
+        Assert.Equal(1, reads.Keys.Count(match => match == tool || match == toolByMoniker));
+        Assert.Empty(resolution.Errors);
+        Assert.Equal(3, resolution.ResultCount);
+    }
+
+    [Fact]
+    public void ResolveSearchMatchesKeepsTheResolvingDuplicateAtTheFirstPosition()
+    {
+        using var laterDuplicateResolved = new ManualResetEventSlim();
+        var first = new FakeSearchMatch("Contoso.Tool", "Contoso Tool", "1.0")
+        {
+            ReadId = () =>
+            {
+                Assert.True(laterDuplicateResolved.Wait(TimeSpan.FromSeconds(10)));
+                return "Contoso.Tool";
+            },
+        };
+        var other = new FakeSearchMatch("Contoso.Other", "Contoso Other", "2.0");
+        var laterDuplicate = new FakeSearchMatch("Contoso.Tool", "Contoso Tool", "1.0")
+        {
+            ReadResult = () =>
+            {
+                laterDuplicateResolved.Set();
+                return new("Contoso Tool", "1.0");
+            },
+        };
+        ConcurrentDictionary<FakeSearchMatch, int> reads = new();
+
+        var resolution = Resolve(
+            [("winget", first), ("winget", other), ("winget", laterDuplicate)],
+            reads
+        );
+
+        Assert.Equal([0, 1], resolution.Matches.Select(match => match.FirstIndex));
+        Assert.Same(laterDuplicate, resolution.Matches[0].Package);
+        Assert.False(reads.ContainsKey(first));
+        Assert.Empty(resolution.Errors);
+    }
+
+    [Fact]
+    public void ResolveSearchMatchesStopsResolvingWhenCancelled()
+    {
+        using var cancellation = new CancellationTokenSource();
+        int resolvedCount = 0;
+        var matches = Enumerable
+            .Range(0, 50)
+            .Select(index =>
+                (
+                    "winget",
+                    new FakeSearchMatch($"Contoso.Tool{index}", "Contoso Tool", "1.0")
+                    {
+                        ReadResult = () =>
+                        {
+                            if (Interlocked.Increment(ref resolvedCount) == 3)
+                            {
+                                cancellation.Cancel();
+                            }
+
+                            return new("Contoso Tool", "1.0");
+                        },
+                    }
+                )
+            )
+            .ToArray();
+
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+            Resolve(matches, parallelism: 1, cancellationToken: cancellation.Token)
+        );
+        Assert.Equal(3, resolvedCount);
+    }
+
+    [Fact]
+    public void ResolveSearchMatchesReportsUnreadablePackagesInOrderAndKeepsTheRest()
+    {
+        var unreadableId = new FakeSearchMatch("Contoso.Broken", "Broken", "1.0")
+        {
+            ReadId = () => throw new InvalidOperationException("id"),
+        };
+        var unreadableVersion = new FakeSearchMatch("Contoso.NoVersion", "No Version", "1.0")
+        {
+            ReadResult = () => throw new InvalidOperationException("version"),
+        };
+        var readable = new FakeSearchMatch("Contoso.Tool", "Contoso Tool", "1.0");
+
+        var resolution = Resolve(
+            [("winget", unreadableId), ("winget", unreadableVersion), ("winget", readable)]
+        );
+
+        Assert.Equal(["Contoso.Tool"], resolution.Matches.Select(match => match.Id));
+        Assert.Equal(["id", "version"], resolution.Errors.Select(error => error.Message));
+        Assert.Equal(3, resolution.ResultCount);
+    }
+
+    [Fact]
+    public void SelectUniqueSearchMatchesReturnsNothingForNoMatches()
+    {
+        Assert.Empty(NativeWinGetHelper.SelectUniqueSearchMatches([]));
+    }
+
+    [Fact]
     public void NativeWinGetCollectionCopiesWithoutEnumeratingWinRtCollections()
     {
         IReadOnlyList<string> nativeCollection = new EnumeratorThrowingReadOnlyList<string>(
@@ -3313,6 +3510,261 @@ public sealed class WinGetManagerTests : IDisposable
                 unchecked((int)0x8A150102)
             )
         );
+    }
+
+    private static readonly WinGetPkgOperationHelper.PortableArpEntry FfmpegPortableEntry = new(
+        @"C:\Users\test\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg",
+        MachineScope: false
+    );
+
+    private const string FfmpegLinksDirectory = @"C:\Users\test\AppData\Local\Microsoft\WinGet\Links";
+
+    [Theory]
+    [InlineData(true, true, false, true)]
+    [InlineData(true, true, true, false)]
+    [InlineData(true, false, false, false)]
+    [InlineData(false, true, false, false)]
+    public void WinGetElevatesPortablesOnlyWhenTheirLinksCannotBeRecreatedByTheSameAccount(
+        bool canElevateAsCurrentAccount,
+        bool hasLinks,
+        bool canCreateSymlinks,
+        bool expected
+    )
+    {
+        Assert.Equal(
+            expected,
+            WinGetPkgOperationHelper.PortableUpdateNeedsElevation(
+                FfmpegPortableEntry,
+                _ => hasLinks ? FfmpegLinksDirectory : null,
+                directory =>
+                {
+                    Assert.Equal(FfmpegLinksDirectory, directory);
+                    return canCreateSymlinks;
+                },
+                () => canElevateAsCurrentAccount
+            )
+        );
+    }
+
+    [Fact]
+    public void WinGetDoesNotProbeAnythingForPackagesThatAreNotPortable()
+    {
+        Assert.False(
+            WinGetPkgOperationHelper.PortableUpdateNeedsElevation(
+                null,
+                _ => throw new InvalidOperationException("The links folder must not be scanned"),
+                _ => throw new InvalidOperationException("The symlink probe must not run"),
+                () => throw new InvalidOperationException("The token must not be read")
+            )
+        );
+    }
+
+    [Theory]
+    [InlineData(OperationType.Update, true)]
+    [InlineData(OperationType.Install, true)]
+    [InlineData(OperationType.Uninstall, null)]
+    public void WinGetElevationRequirementsKeepPortableLinksEvenWithoutTheComApi(
+        OperationType operation,
+        bool? expected
+    )
+    {
+        var manager = new WinGet();
+        var package = CreatePortablePackage(manager);
+
+        WithPortableLinkSeams(
+            canElevate: true,
+            canCreateSymlinks: false,
+            () => manager.OperationHelper.ApplyElevationRequirements(package, new InstallOptions(), operation)
+        );
+
+        Assert.Equal(expected, package.OverridenOptions.RunAsAdministrator);
+    }
+
+    [Theory]
+    [InlineData(OperationType.Update, false, true)]
+    [InlineData(OperationType.Update, true, null)]
+    [InlineData(OperationType.Install, false, true)]
+    [InlineData(OperationType.Install, true, null)]
+    public void WinGetCommandPreviewsDoNotDecidePortableLinkElevation(
+        OperationType operation,
+        bool standalone,
+        bool? expected
+    )
+    {
+        var manager = new WinGet();
+        var package = CreatePortablePackage(manager);
+        var options = new InstallOptions();
+
+        WithPortableLinkSeams(
+            canElevate: true,
+            canCreateSymlinks: false,
+            () =>
+            {
+                if (standalone)
+                    manager.OperationHelper.GetStandaloneParameters(package, options, operation);
+                else
+                    manager.OperationHelper.GetParameters(package, options, operation);
+            }
+        );
+
+        Assert.Equal(expected, package.OverridenOptions.RunAsAdministrator);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WinGetPortableLinkElevationNeverOverridesAnEarlierDecision(bool earlierDecision)
+    {
+        var package = CreatePortablePackage(new WinGet());
+        package.OverridenOptions.RunAsAdministrator = earlierDecision;
+
+        WithPortableLinkSeams(
+            canElevate: true,
+            canCreateSymlinks: false,
+            () => WinGetPkgOperationHelper.ApplyPortableLinkElevation(
+                package,
+                OperationType.Update,
+                FfmpegPortableEntry
+            )
+        );
+
+        Assert.Equal(earlierDecision, package.OverridenOptions.RunAsAdministrator);
+    }
+
+    [Fact]
+    public void WinGetPortableLinkElevationIsNotAppliedToBrokeredOperations()
+    {
+        var package = CreatePortablePackage(new WinGet());
+        Settings.Set(Settings.K.UseAgentBroker, true);
+
+        WithPortableLinkSeams(
+            canElevate: true,
+            canCreateSymlinks: false,
+            () => WinGetPkgOperationHelper.ApplyPortableLinkElevation(
+                package,
+                OperationType.Update,
+                FfmpegPortableEntry
+            )
+        );
+
+        Assert.Null(package.OverridenOptions.RunAsAdministrator);
+    }
+
+    [Fact]
+    public void WinGetPortableLinkElevationSurvivesAFailingLinksScan()
+    {
+        var package = CreatePortablePackage(new WinGet());
+        var originalFind = WinGetPkgOperationHelper.FindPortableLinksDirectory;
+        WinGetPkgOperationHelper.FindPortableLinksDirectory = _ => throw new IOException("Access denied");
+        try
+        {
+            WithPortableLinkSeams(
+                canElevate: true,
+                canCreateSymlinks: false,
+                () => WinGetPkgOperationHelper.ApplyPortableLinkElevation(
+                    package,
+                    OperationType.Update,
+                    FfmpegPortableEntry
+                ),
+                replaceLinksScan: false
+            );
+        }
+        finally
+        {
+            WinGetPkgOperationHelper.FindPortableLinksDirectory = originalFind;
+        }
+
+        Assert.Null(package.OverridenOptions.RunAsAdministrator);
+    }
+
+    [Fact]
+    public void WinGetFindsTheLinksFolderOnlyWhenALinkPointsIntoTheInstallLocation()
+    {
+        string installLocation = Path.Combine(_testRoot, "Packages", "Gyan.FFmpeg");
+        string otherLocation = Path.Combine(_testRoot, "Packages", "Gyan.FFmpegPlus");
+        string linksDirectory = Path.Combine(_testRoot, "Links");
+        Directory.CreateDirectory(Path.Combine(installLocation, "bin"));
+        Directory.CreateDirectory(otherLocation);
+        Directory.CreateDirectory(linksDirectory);
+        File.WriteAllText(Path.Combine(installLocation, "bin", "ffmpeg.exe"), "");
+        File.WriteAllText(Path.Combine(otherLocation, "ffmpeg.exe"), "");
+        File.WriteAllText(Path.Combine(linksDirectory, "notalink.exe"), "");
+        var entry = new WinGetPkgOperationHelper.PortableArpEntry(installLocation, MachineScope: false);
+
+        Assert.Null(WinGetPkgOperationHelper.FindLinksDirectoryPointingInto(entry, [linksDirectory]));
+        Assert.Null(
+            WinGetPkgOperationHelper.FindLinksDirectoryPointingInto(
+                entry,
+                [Path.Combine(_testRoot, "Missing")]
+            )
+        );
+
+        if (!WinGetPkgOperationHelper.ProbeSymlinkCreation(linksDirectory))
+            return;
+
+        File.CreateSymbolicLink(
+            Path.Combine(linksDirectory, "ffmpegplus.exe"),
+            Path.Combine(otherLocation, "ffmpeg.exe")
+        );
+        Assert.Null(WinGetPkgOperationHelper.FindLinksDirectoryPointingInto(entry, [linksDirectory]));
+
+        File.CreateSymbolicLink(
+            Path.Combine(linksDirectory, "ffmpeg.exe"),
+            Path.Combine(installLocation, "bin", "ffmpeg.exe")
+        );
+        Assert.Equal(
+            linksDirectory,
+            WinGetPkgOperationHelper.FindLinksDirectoryPointingInto(entry, [linksDirectory])
+        );
+    }
+
+    [Fact]
+    public void WinGetSymlinkProbeLeavesNothingBehind()
+    {
+        string linksDirectory = Path.Combine(_testRoot, "ProbeRoot", "Links");
+        Directory.CreateDirectory(linksDirectory);
+
+        WinGetPkgOperationHelper.ProbeSymlinkCreation(linksDirectory);
+
+        Assert.Equal([linksDirectory], Directory.GetDirectories(Path.Combine(_testRoot, "ProbeRoot")));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(linksDirectory));
+    }
+
+    private static Package CreatePortablePackage(WinGet manager) =>
+        new PackageBuilder()
+            .WithManager(manager)
+            .WithName("FFmpeg")
+            .WithId("Gyan.FFmpeg")
+            .WithVersion("8.0")
+            .Build();
+
+    private static void WithPortableLinkSeams(
+        bool canElevate,
+        bool canCreateSymlinks,
+        Action run,
+        bool replaceLinksScan = true
+    )
+    {
+        var originalRead = WinGetPkgOperationHelper.ReadPortableArpEntry;
+        var originalFind = WinGetPkgOperationHelper.FindPortableLinksDirectory;
+        var originalProbe = WinGetPkgOperationHelper.CanCreateSymlinksIn;
+        var originalElevate = WinGetPkgOperationHelper.CanElevateAsCurrentAccount;
+        WinGetPkgOperationHelper.ReadPortableArpEntry = _ => FfmpegPortableEntry;
+        if (replaceLinksScan)
+            WinGetPkgOperationHelper.FindPortableLinksDirectory = _ => FfmpegLinksDirectory;
+        WinGetPkgOperationHelper.CanCreateSymlinksIn = _ => canCreateSymlinks;
+        WinGetPkgOperationHelper.CanElevateAsCurrentAccount = () => canElevate;
+        try
+        {
+            run();
+        }
+        finally
+        {
+            WinGetPkgOperationHelper.ReadPortableArpEntry = originalRead;
+            WinGetPkgOperationHelper.FindPortableLinksDirectory = originalFind;
+            WinGetPkgOperationHelper.CanCreateSymlinksIn = originalProbe;
+            WinGetPkgOperationHelper.CanElevateAsCurrentAccount = originalElevate;
+        }
     }
 
     [Fact]
