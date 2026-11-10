@@ -135,7 +135,7 @@
   "Close apps": "აპების დახურვა",
   "Pre/Post install": "ინსტალაციამდე/შემდეგ",
   "Select the processes that should be closed before this package is installed, updated or uninstalled.": "შეარჩიეთ პროცესები, რომლებიც უნდა დაიხუროს მანამ სანამ ეს პაკეტი დაინსტალირდება, განახლდება ან დეინსტალირდება.",
-  "Write here the process names here, separated by commas (,)": "აქ შეიყვანეთ პროცესების სახელები, გამოყავით მძიმეებით (,)",
+  "Enter the process names here, separated by commas (,)": "აქ შეიყვანეთ პროცესების სახელები, გამოყავით მძიმეებით (,)",
   "Try to kill the processes that refuse to close when requested to": "პროცესების ძალისმიერად გათიშვის ცდა, რომლებიც არ ითიშება მოთხოვნისას",
   "Run as admin": "ადმინისტრატორით გაშვება",
   "Interactive installation": "ინტერაქტიული ინსტალაცია",
@@ -2623,5 +2623,10 @@
   "Codex returned a plugin for the wrong marketplace.": "Codex-მა არასწორი მარკეტპლეისის პლაგინი დააბრუნა.",
   "Provided by the Codex app, which restores it if removed. You can still turn it on or off.": "მოწოდებულია Codex-ის აპის მიერ, რომელიც წაშლის შემთხვევაში აღადგენს მას. მისი ჩართვა ან გამორთვა მაინც შეგიძლიათ.",
   "Unsupported Codex marketplace inventory. Update the Codex CLI and try again.": "Codex-ის მარკეტპლეისების სია მხარდაჭერილი არ არის. განაახლეთ Codex CLI და სცადეთ ხელახლა.",
-  "Open a marketplace or plugin confirmation form in the Copilot app. Manage the local installed inventory in GitHub Copilot.": "Copilot-ის აპში გახსენით მარკეტპლეისის ან პლაგინის დადასტურების ფორმა. ადგილობრივი დაინსტალირებული სია მართეთ GitHub Copilot-ში."
+  "Open a marketplace or plugin confirmation form in the Copilot app. Manage the local installed inventory in GitHub Copilot.": "Copilot-ის აპში გახსენით მარკეტპლეისის ან პლაგინის დადასტურების ფორმა. ადგილობრივი დაინსტალირებული სია მართეთ GitHub Copilot-ში.",
+  "[... {0} characters omitted ...]": "[... გამოტოვებულია {0} სიმბოლო ...]",
+  "The new version of {package} is installed differently from the one you have. Turn on \"Uninstall, then reinstall when updated\" for it in its installation options, then update it again": "{package}-ის ახალი ვერსია თქვენ მიერ დაყენებულისგან განსხვავებული მეთოდით არის დაინსტალირებული. მის ინსტალაციის პარამეტრებში ჩართეთ „განახლებისას ჯერ წაშალე, შემდეგ ხელახლა დააინსტალირე“ და შემდეგ კვლავ განაახლეთ.",
+  "This version is installed differently from the one you have, so updating it uninstalls the current version first. Automatic updates and Update all leave it out unless \"Uninstall, then reinstall when updated\" is turned on for this package.": "ეს ვერსია თქვენ მიერ დაყენებულისგან განსხვავებული მეთოდით არის დაინსტალირებული, ამიტომ მისი განახლებისას მიმდინარე ვერსია ჯერ წაიშლება. ავტომატური განახლებები და „ყველას განახლება“ ამ პაკეტს გამოტოვებს, თუ მისთვის „განახლებისას ჯერ წაშალე, შემდეგ ხელახლა დააინსტალირე“ ჩართული არ არის.",
+  "Chocolatey did not update {0}: version {1} is the newest one its sources offer": "Chocolatey-მა {0} არ განაახლა: მისი წყაროები უახლეს ვერსიად {1} ვერსიას გვთავაზობენ",
+  "Chocolatey did not update {0}. The package may be pinned, or its sources may offer no newer version": "Chocolatey-მა {0} არ განაახლა. შესაძლოა პაკეტის ვერსია დაფიქსირებულია, ან მის წყაროებში უფრო ახალი ვერსია არ არის."
 }
