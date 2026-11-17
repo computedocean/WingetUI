@@ -212,8 +212,10 @@ Local, non-elevated installations first attempt a publisher-provided binary for 
 selected version and Cargo host target. The C# installer supports ZIP, TAR, TAR.GZ/TGZ, and
 explicitly configured raw executables. It reads supported publisher manifest metadata or
 unambiguous version-specific GitHub release assets. It requires a supported SHA-256/SHA-512
-checksum (including GitHub's published asset digest); unsupported signature-only metadata
-uses source compilation. No cargo-quickinstall or other third-party build host is used.
+checksum (including GitHub's published asset digest) or, when the publisher declares a
+minisign key in `[package.metadata.binstall.signing]`, a valid `<binary URL>.sig` minisign
+signature from that key; a declared key with no published signature, or another signing
+scheme, uses source compilation. No cargo-quickinstall or other third-party build host is used.
 Checksums of crates.io source archives are never reused as binary checksums.
 
 When a compatible verified binary is unavailable, the operation log explains the fallback
@@ -258,7 +260,7 @@ other hosts; this does not substitute for their native lock-contention tests.
 | --- | --- | --- | --- |
 | `app status` | None | None | Returns app/session state such as headless mode, page, and supported UI actions. |
 | `app show` | None | None | Shows and focuses the window when a GUI session exists. |
-| `app navigate` | `--page <page>` | `--manager <id>`, `--help-attachment <path>` | Valid pages include `discover`, `updates`, `installed`, `bundles`, `catalog`, `catalog-editor`, `git-repositories`, `agent-skills`, `xcode` (macOS builds only), `settings`, `managers`, `own-log`, `manager-log`, `operation-history`, `help`, `release-notes`, and `about`. `catalog` and `catalog-editor` require Enable Software Catalog in Experimental settings and developer options, followed by an application restart. `git-repositories` and `agent-skills` require their respective extensions to be turned on in Settings, under Extensions; no restart is needed. `xcode` is included only in macOS builds and requires macOS 13 or later with the Xcode extension turned on the same way. |
+| `app navigate` | `--page <page>` | `--manager <id>`, `--help-attachment <path>` | Valid pages include `discover`, `updates`, `installed`, `bundles`, `catalog`, `catalog-editor`, `git-repositories`, `agent-skills`, `drivers` (Windows only), `xcode` (macOS builds only), `settings`, `managers`, `own-log`, `manager-log`, `operation-history`, `help`, `release-notes`, and `about`. `catalog` and `catalog-editor` require Enable Software Catalog in Experimental settings and developer options, followed by an application restart. `git-repositories` and `agent-skills` require their respective extensions to be turned on in Settings, under Extensions; no restart is needed. `drivers` is accepted only on Windows and requires the Drivers extension to be turned on the same way. `xcode` is included only in macOS builds and requires macOS 13 or later with the Xcode extension turned on the same way. |
 | `app quit` | None | None | Gracefully shuts down the selected session, including headless daemons. |
 
 The **Git Repositories** page fetches the remote even when the main clone is on a feature
