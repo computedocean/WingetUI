@@ -1286,6 +1286,7 @@
   "Click here for more details": "Click here for more details",
   "Operation canceled by user": "Operation canceled by user",
   "Running PreOperation ({0}/{1})...": "Running PreOperation ({0}/{1})...",
+  "PreOperation {0} out of {1} already succeeded, skipping it": "PreOperation {0} out of {1} already succeeded, skipping it",
   "PreOperation {0} out of {1} failed, and was tagged as necessary. Aborting...": "PreOperation {0} out of {1} failed, and was tagged as necessary. Aborting...",
   "PreOperation {0} out of {1} finished with result {2}": "PreOperation {0} out of {1} finished with result {2}",
   "Starting operation...": "Starting operation...",
@@ -3102,5 +3103,7 @@
   "Hardware ID": "Hardware ID",
   "Windows Update ID": "Windows Update ID",
   "{0} (revision {1})": "{0} (revision {1})",
-  "More information": "More information"
+  "More information": "More information",
+  "Graphical interface for your package managers": "Graphical interface for your package managers",
+  "Show UniGetUI in the applications menu": "Show UniGetUI in the applications menu"
 }

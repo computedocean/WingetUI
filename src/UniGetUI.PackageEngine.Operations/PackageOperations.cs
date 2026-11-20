@@ -1562,25 +1562,57 @@ namespace UniGetUI.PackageEngine.Operations
                         .ToArray()
                 );
 
+                // Never adopt a copy installed in a different scope than the one this operation targets,
+                // resolved with the same precedence the manager helpers use
+                string? effectiveScope = Package.OverridenOptions.Scope ?? Options.InstallationScope;
+                string? targetScope = string.IsNullOrWhiteSpace(effectiveScope)
+                    ? null
+                    : effectiveScope.ToLowerInvariant();
+
+                // IsSamePackageAs keys on the display name, which can alias distinct canonical sources
+                if (Package.Manager.Capabilities.InstalledPackagesKeepTheirSource)
+                {
+                    installedMatches = installedMatches
+                        .Where(candidate => candidate.Source.Name == Package.Source.Name)
+                        .ToArray();
+                }
+                if (targetScope is not null && Package.Manager.Capabilities.ReportsReliableInstalledScope)
+                {
+                    installedMatches = installedMatches
+                        .Where(candidate =>
+                            candidate.NormalizedReportedScope is null
+                            || candidate.NormalizedReportedScope == targetScope)
+                        .ToArray();
+                }
+
                 if (installedMatches.Length > 0)
                 {
                     if (!string.IsNullOrWhiteSpace(fallbackVersion))
                     {
-                        var exactMatch = installedMatches.FirstOrDefault(candidate =>
-                            candidate.VersionString.Equals(
-                                fallbackVersion,
-                                StringComparison.OrdinalIgnoreCase
-                            )
-                        );
-                        if (exactMatch is not null)
+                        var exactMatches = installedMatches
+                            .Where(candidate =>
+                                candidate.VersionString.Equals(
+                                    fallbackVersion,
+                                    StringComparison.OrdinalIgnoreCase
+                                ))
+                            .ToArray();
+                        if (exactMatches.Length > 0)
                         {
-                            return exactMatch;
+                            return SpansSeveralScopes(exactMatches)
+                                ? CreateSyntheticInstalledPackage(fallbackVersion)
+                                : exactMatches[0];
                         }
 
                         if (preferFallbackVersionWhenMissing)
                         {
                             return CreateSyntheticInstalledPackage(fallbackVersion);
                         }
+                    }
+
+                    // Without a known target scope, copies in several scopes cannot be told apart
+                    if (SpansSeveralScopes(installedMatches))
+                    {
+                        return CreateSyntheticInstalledPackage(fallbackVersion);
                     }
 
                     return installedMatches
@@ -1598,6 +1630,9 @@ namespace UniGetUI.PackageEngine.Operations
 
             return CreateSyntheticInstalledPackage(fallbackVersion);
         }
+
+        private static bool SpansSeveralScopes(IEnumerable<IPackage> packages) =>
+            packages.Select(p => p.NormalizedReportedScope).Distinct().Count() > 1;
 
         private IPackage CreateSyntheticInstalledPackage(string version)
         {
@@ -1625,7 +1660,14 @@ namespace UniGetUI.PackageEngine.Operations
         {
             List<InnerOperation> l = new();
             if (preReq is not null)
-                l.Add(new(preReq, true));
+                l.Add(
+                    new(
+                        preReq,
+                        mustSucceed: true,
+                        skipOnceSucceeded: role is OperationType.Install
+                            && preReq is UninstallPackageOperation
+                    )
+                );
 
             // For brokered operations the kill/pre/post actions are owned by the broker:
             // they are carried in the broker request so that policy is evaluated before
@@ -1695,7 +1737,7 @@ namespace UniGetUI.PackageEngine.Operations
             bool uninstallIsScheduled = Role is OperationType.Update
                 ? _uninstallBeforeReinstall is { Status: not OperationStatus.Succeeded }
                     && !IsKnownToBeUninstalled(Package)
-                : _uninstallPrerequisite is not null;
+                : _uninstallPrerequisite is { Status: not OperationStatus.Succeeded };
             if (!uninstallIsScheduled || IsBrokerEligible(Package))
                 return null;
 

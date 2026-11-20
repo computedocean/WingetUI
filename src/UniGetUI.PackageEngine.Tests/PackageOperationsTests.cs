@@ -1124,7 +1124,7 @@ public sealed class PackageOperationsTests
     }
 
     [Fact]
-    public async Task ARetriedUninstallThenInstallIsCheckedAgainBeforeItsUninstallRunsAgain()
+    public async Task ARetriedUninstallThenInstallIsCheckedAgainBeforeItsFailedUninstallRunsAgain()
     {
         if (!OperatingSystem.IsWindows())
             return;
@@ -1133,7 +1133,46 @@ public sealed class PackageOperationsTests
         string? refusal = null;
         var manager = CreateRecordingProcessManager(
             executed,
-            operation => operation is not OperationType.Install,
+            operation => operation is not OperationType.Uninstall,
+            (_, _) => refusal
+        );
+        var package = new PackageBuilder()
+            .WithManager(manager)
+            .WithName("Contoso Tool")
+            .WithId("Contoso.Tool")
+            .WithVersion("1.0.0")
+            .Build();
+        InitializeLoaders();
+        var uninstall = new UninstallPackageOperation(package, new InstallOptions(), IgnoreParallelInstalls: true);
+        using var install = new InstallPackageOperation(
+            package,
+            new InstallOptions(),
+            IgnoreParallelInstalls: true,
+            req: uninstall
+        );
+
+        await install.MainThread().WaitAsync(TimeSpan.FromSeconds(60));
+        Assert.Equal(OperationStatus.Failed, install.Status);
+
+        refusal = "REFUSED";
+        install.Retry(AbstractOperation.RetryMode.Retry);
+        await WaitForConditionAsync(() => install.Status is OperationStatus.Failed && install.Metadata.FailureMessage == "REFUSED");
+
+        Assert.Equal(["Uninstall|RAN-Uninstall-Contoso.Tool-"], executed);
+    }
+
+    [Fact]
+    public async Task ARetriedUninstallThenInstallDoesNotUninstallAgainOnceTheUninstallSucceeded()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var executed = new List<string>();
+        bool installSucceeds = false;
+        string? refusal = null;
+        var manager = CreateRecordingProcessManager(
+            executed,
+            operation => operation is not OperationType.Install || installSucceeds,
             (_, _) => refusal
         );
         var package = new PackageBuilder()
@@ -1159,10 +1198,18 @@ public sealed class PackageOperationsTests
         );
 
         refusal = "REFUSED";
+        installSucceeds = true;
         install.Retry(AbstractOperation.RetryMode.Retry);
-        await WaitForConditionAsync(() => install.Status is OperationStatus.Failed && install.Metadata.FailureMessage == "REFUSED");
+        await WaitForConditionAsync(() => install.Status is OperationStatus.Succeeded);
 
-        Assert.Equal(["Uninstall|RAN-Uninstall-Contoso.Tool-", "Install|RAN-Install-Contoso.Tool-"], executed);
+        Assert.Equal(
+            [
+                "Uninstall|RAN-Uninstall-Contoso.Tool-",
+                "Install|RAN-Install-Contoso.Tool-",
+                "Install|RAN-Install-Contoso.Tool-",
+            ],
+            executed
+        );
     }
 
     [Fact]
@@ -2760,6 +2807,164 @@ public sealed class PackageOperationsTests
         );
     }
 
+    private static async Task<IReadOnlyList<IPackage>> InstallAndListEquivalents(
+        string? requestedScope,
+        string?[] listedScopes,
+        string? installOptionScope = null
+    )
+    {
+        TestPackageManager? manager = null;
+        manager = new PackageManagerBuilder()
+            .WithInstalledPackages(_ => listedScopes
+                .Select(scope => new PackageBuilder()
+                    .WithManager(manager!)
+                    .WithId("dotnetsay")
+                    .WithVersion("2.1.4")
+                    .WithOptions(new OverridenInstallationOptions(scope))
+                    .Build())
+                .ToArray())
+            .Build();
+        var searchResult = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("dotnetsay")
+            .WithVersion("3.0.3")
+            .WithOptions(new OverridenInstallationOptions(requestedScope))
+            .Build();
+        InitializeLoaders();
+        using var operation = new SimulatedInstallPackageOperation(
+            searchResult,
+            new InstallOptions { Version = "2.1.4", InstallationScope = installOptionScope ?? "" },
+            OperationVeredict.Success
+        );
+
+        await operation.MainThread();
+        await WaitForAsync(() => InstalledPackagesLoader.Instance.GetEquivalentPackages(searchResult).Count > 0);
+        return InstalledPackagesLoader.Instance.GetEquivalentPackages(searchResult);
+    }
+
+    [Fact]
+    public async Task InstallSnapshotDoesNotAdoptACopyFromADifferentCanonicalSource()
+    {
+        TestPackageManager? manager = null;
+        ManagerSource? listedFrom = null;
+        manager = new PackageManagerBuilder()
+            .ConfigureCapabilities(capabilities =>
+            {
+                capabilities.SupportsCustomSources = false;
+                capabilities.InstalledPackagesKeepTheirSource = true;
+                return capabilities;
+            })
+            .WithInstalledPackages(_ => [new PackageBuilder()
+                .WithManager(manager!)
+                .WithId("dotnetsay")
+                .WithVersion("2.1.4")
+                .WithSource(listedFrom!)
+                .Build()])
+            .Build();
+        listedFrom = new ManagerSource(manager, "registry:a", new Uri("https://a.example.test/"));
+        var requestedFrom = new ManagerSource(manager, "registry\\b", new Uri("https://b.example.test/"));
+        Assert.Equal(listedFrom.AsString_DisplayName, requestedFrom.AsString_DisplayName);
+        Assert.True(manager.Capabilities.InstalledPackagesKeepTheirSource);
+        var searchResult = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("dotnetsay")
+            .WithVersion("3.0.3")
+            .WithSource(requestedFrom)
+            .Build();
+        InitializeLoaders();
+        using var operation = new SimulatedInstallPackageOperation(
+            searchResult,
+            new InstallOptions { Version = "2.1.4" },
+            OperationVeredict.Success
+        );
+
+        await operation.MainThread();
+        await WaitForAsync(() => InstalledPackagesLoader.Instance.Count() > 0);
+
+        Assert.Equal("registry\\b", Assert.Single(InstalledPackagesLoader.Instance.Packages).Source.Name);
+    }
+
+    [Fact]
+    public async Task InstallSnapshotChoosesTheTargetedScopeNotAnotherCopy()
+    {
+        var installed = await InstallAndListEquivalents(
+            PackageScope.Machine, [PackageScope.User, PackageScope.Machine]);
+
+        Assert.Equal(PackageScope.Machine, Assert.Single(installed).ReportedScope);
+    }
+
+    [Fact]
+    public async Task InstallSnapshotUsesTheScopeRequestedInTheInstallOptions()
+    {
+        var installed = await InstallAndListEquivalents(
+            null, [PackageScope.User, PackageScope.Machine], installOptionScope: PackageScope.Machine);
+
+        Assert.Equal(PackageScope.Machine, Assert.Single(installed).ReportedScope);
+    }
+
+    [Fact]
+    public async Task InstallSnapshotDoesNotAdoptACopyFromADifferentScope()
+    {
+        var installed = await InstallAndListEquivalents(PackageScope.Machine, [PackageScope.User]);
+
+        var entry = Assert.Single(installed);
+        Assert.Equal(PackageScope.Machine, entry.ReportedScope);
+        Assert.Equal("2.1.4", entry.VersionString);
+    }
+
+    [Fact]
+    public async Task InstallSnapshotWithUnknownTargetScopeDoesNotGuessBetweenScopes()
+    {
+        var installed = await InstallAndListEquivalents(null, [PackageScope.User, PackageScope.Machine]);
+
+        Assert.Null(Assert.Single(installed).ReportedScope);
+    }
+
+    [Fact]
+    public async Task InstallSnapshotWithUnknownTargetScopeKeepsTheUniqueCopy()
+    {
+        var installed = await InstallAndListEquivalents(null, [PackageScope.User]);
+
+        Assert.Equal(PackageScope.User, Assert.Single(installed).ReportedScope);
+    }
+
+    [Fact]
+    public async Task InstallSnapshotKeepsTheListedRowWhenTheManagerScopeLabelIsAPlaceholder()
+    {
+        TestPackageManager? manager = null;
+        manager = new PackageManagerBuilder()
+            .ConfigureCapabilities(capabilities =>
+            {
+                capabilities.ReportsReliableInstalledScope = false;
+                return capabilities;
+            })
+            .WithInstalledPackages(_ => [new PackageBuilder()
+                .WithManager(manager!)
+                .WithId("dotnetsay")
+                .WithVersion("2.1.4")
+                .WithOptions(new OverridenInstallationOptions(PackageScope.Machine))
+                .Build()])
+            .Build();
+        var searchResult = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("dotnetsay")
+            .WithVersion("3.0.3")
+            .WithOptions(new OverridenInstallationOptions(PackageScope.User))
+            .Build();
+        InitializeLoaders();
+        using var operation = new SimulatedInstallPackageOperation(
+            searchResult,
+            new InstallOptions { Version = "2.1.4" },
+            OperationVeredict.Success
+        );
+
+        await operation.MainThread();
+        await WaitForAsync(() => InstalledPackagesLoader.Instance.GetEquivalentPackages(searchResult).Count > 0);
+
+        // The listed row is what the manager reported, not a synthetic row carrying the requested scope
+        Assert.Equal(PackageScope.Machine, Assert.Single(InstalledPackagesLoader.Instance.GetEquivalentPackages(searchResult)).ReportedScope);
+    }
+
     [Fact]
     public async Task UpdateOperationSuccessfulRunPrefersAuthoritativeInstalledVersion()
     {
@@ -2997,6 +3202,32 @@ public sealed class PackageOperationsTests
 
         Assert.True(AbstractOperation.TryHoldNewOperations());
         AbstractOperation.HoldNewOperations = false;
+    }
+
+    [Fact]
+    public void EndingTheLastAdmittedWorkReportsTheEngineIdle()
+    {
+        int raised = 0;
+        EventHandler<EventArgs> handler = (_, _) => raised++;
+        AbstractOperation.BecameIdle += handler;
+        try
+        {
+            Assert.True(AbstractOperation.TryBeginWork());
+            Assert.True(AbstractOperation.TryBeginWork());
+            Assert.False(AbstractOperation.IsIdle());
+
+            AbstractOperation.EndWork();
+            Assert.Equal(0, raised);
+            Assert.False(AbstractOperation.IsIdle());
+
+            AbstractOperation.EndWork();
+            Assert.Equal(1, raised);
+            Assert.True(AbstractOperation.IsIdle());
+        }
+        finally
+        {
+            AbstractOperation.BecameIdle -= handler;
+        }
     }
 
     [Fact]
