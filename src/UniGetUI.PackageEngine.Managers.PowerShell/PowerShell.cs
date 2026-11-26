@@ -135,9 +135,13 @@ namespace UniGetUI.PackageEngine.Managers.PowerShellManager
             return ParseInstalledPackages(outputLines, this);
         }
 
+        // Resolve the command before clearing errors so handled PowerShellGet startup errors
+        // do not count as package listing failures.
         internal const string InstalledListingCommand =
-            "$Error.Clear(); Get-InstalledModule | ForEach-Object { $_.Name + [char]9 + $_.Version + [char]9 + $_.Repository };"
-            + " if ($Error.Count -gt 0) { exit 1 }";
+            "$null = Get-Command Get-InstalledModule -ErrorAction Stop;"
+            + " $Error.Clear(); Get-InstalledModule | ForEach-Object { $_.Name + [char]9 + $_.Version + [char]9 + $_.Repository };"
+            + " if (@($Error | Where-Object { -not ($_.Exception -is [Management.Automation.ArgumentTransformationMetadataException]"
+            + " -and $_.InvocationInfo.Line -match '^\\s*\\$(Installed|Updated)Date\\s*=\\s*\\$null\\s*$') }).Count -gt 0) { exit 1 }";
 
         protected override bool UseSubstringSearch => true;
 
