@@ -202,6 +202,181 @@ public sealed class WinGetManagerTests : IDisposable
         );
     }
 
+    private const string StandaloneBatteryHubCode = "{7E0B5C2A-3F4D-4C8E-9B61-2D5A8F1C4E93}_is1";
+    private const string DoronBatteryHubCode = "3dbe5c54-f0bc-5ecd-8ed5-c18e28514bdd";
+
+    [Fact]
+    public void ReinstallOnlyUpdateIsNotListedWhenNoVersionOfThePackageDeclaresTheInstalledProduct()
+    {
+        Assert.False(
+            NativeWinGetHelper.AnyVersionDeclaresInstalledProduct(
+                [StandaloneBatteryHubCode],
+                [[DoronBatteryHubCode], [], [DoronBatteryHubCode]]
+            )
+        );
+    }
+
+    [Fact]
+    public void ReinstallOnlyUpdateIsListedWhenAnOlderVersionDeclaresTheInstalledProduct()
+    {
+        Assert.True(
+            NativeWinGetHelper.AnyVersionDeclaresInstalledProduct(
+                ["audacity_is1"],
+                [[OtherProductCode, "{1991CCF7-A663-43C6-B471-FC22CEB19EC8}"], ["Audacity_is1"]]
+            )
+        );
+    }
+
+    [Fact]
+    public void ReinstallOnlyUpdateIsListedWhenTheNewestVersionDeclaresTheInstalledProduct()
+    {
+        Assert.True(
+            NativeWinGetHelper.AnyVersionDeclaresInstalledProduct(
+                [QuickenProductCode],
+                [[QuickenProductCode.ToLowerInvariant()]]
+            )
+        );
+    }
+
+    [Fact]
+    public void ReinstallOnlyUpdateIsNotListedWhenTheInstalledProductHasNoCode()
+    {
+        Assert.False(NativeWinGetHelper.AnyVersionDeclaresInstalledProduct([], [["", " ", OtherProductCode]]));
+        Assert.False(
+            NativeWinGetHelper.AnyVersionDeclaresInstalledProduct(["", " "], [["", " ", OtherProductCode]])
+        );
+    }
+
+    [Fact]
+    public void ReinstallOnlyUpdateIdentityCheckStopsReadingVersionsOnceOneMatches()
+    {
+        int read = 0;
+        IEnumerable<IReadOnlyList<string>> Versions()
+        {
+            read++;
+            yield return [OtherProductCode];
+            read++;
+            yield return ["Audacity_is1"];
+            read++;
+            throw new InvalidOperationException("read past the match");
+        }
+
+        Assert.True(NativeWinGetHelper.AnyVersionDeclaresInstalledProduct(["Audacity_is1"], Versions()));
+        Assert.Equal(2, read);
+    }
+
+    private static NativeWinGetHelper.CatalogVersionProduct CatalogVersion(
+        string? catalogId,
+        string packageId,
+        string version,
+        string channel,
+        string[] productCodes
+    ) => new(catalogId, packageId, version, channel, productCodes);
+
+    private static bool ReplacementDeclaresInstalledProduct(
+        string installedCode,
+        NativeWinGetHelper.CatalogVersionProduct newest,
+        params NativeWinGetHelper.CatalogVersionProduct[] versions
+    ) =>
+        NativeWinGetHelper.AnyVersionDeclaresInstalledProduct(
+            [installedCode],
+            NativeWinGetHelper.ProductCodesOfReplacement(
+                newest,
+                versions.Length,
+                i => new NativeWinGetHelper.CatalogVersionKey(
+                    versions[i].CatalogId,
+                    versions[i].Version,
+                    versions[i].Channel
+                ),
+                i => versions[i]
+            )
+        );
+
+    private static readonly NativeWinGetHelper.CatalogVersionProduct NewestBatteryHub = CatalogVersion("Microsoft.Winget.Source_8wekyb3d8bbwe",
+        "DORON177.BatteryHub",
+        "2.0.7",
+        "",
+        [DoronBatteryHubCode]
+    );
+
+    [Fact]
+    public void ReinstallOnlyUpdateIgnoresProductCodesFromACorrelatedCatalog()
+    {
+        Assert.False(
+            ReplacementDeclaresInstalledProduct(
+                StandaloneBatteryHubCode,
+                NewestBatteryHub,
+                NewestBatteryHub,
+                CatalogVersion("Winget-Repo", "krisgfx9.BatteryHub", "1.1.0", "", [StandaloneBatteryHubCode]),
+                CatalogVersion("Winget-Repo", "DORON177.BatteryHub", "1.1.0", "", [StandaloneBatteryHubCode])
+            )
+        );
+    }
+
+    [Fact]
+    public void ReinstallOnlyUpdateIgnoresProductCodesFromAnotherPackageOnTheSameCatalog()
+    {
+        Assert.False(
+            ReplacementDeclaresInstalledProduct(
+                StandaloneBatteryHubCode,
+                NewestBatteryHub,
+                CatalogVersion(NewestBatteryHub.CatalogId,
+                    "krisgfx9.BatteryHub",
+                    "1.1.0",
+                    "",
+                    [StandaloneBatteryHubCode]
+                )
+            )
+        );
+    }
+
+    [Fact]
+    public void ReinstallOnlyUpdateAcceptsAnOlderVersionOfTheReplacementOnItsCatalog()
+    {
+        Assert.True(
+            ReplacementDeclaresInstalledProduct(
+                StandaloneBatteryHubCode,
+                NewestBatteryHub,
+                CatalogVersion("Winget-Repo", "krisgfx9.BatteryHub", "1.1.0", "", [OtherProductCode]),
+                NewestBatteryHub,
+                CatalogVersion(NewestBatteryHub.CatalogId,
+                    "doron177.batteryhub",
+                    "1.2.0",
+                    "",
+                    [StandaloneBatteryHubCode]
+                )
+            )
+        );
+    }
+
+    [Fact]
+    public void ReinstallOnlyUpdateReadsNoVersionOfAnotherCatalog()
+    {
+        int read = 0;
+        NativeWinGetHelper.CatalogVersionKey[] keys =
+        [
+            new("Winget-Repo", "1.1.0", ""),
+            new("msstore", "1.0.0", ""),
+        ];
+
+        Assert.False(
+            NativeWinGetHelper.AnyVersionDeclaresInstalledProduct(
+                [StandaloneBatteryHubCode],
+                NativeWinGetHelper.ProductCodesOfReplacement(
+                    NewestBatteryHub,
+                    keys.Length,
+                    i => keys[i],
+                    _ =>
+                    {
+                        read++;
+                        return null;
+                    }
+                )
+            )
+        );
+        Assert.Equal(0, read);
+    }
+
     [Fact]
     public void ReinstallOnlyUpdateIsListedWhenTheProductChanges()
     {
@@ -1667,8 +1842,9 @@ public sealed class WinGetManagerTests : IDisposable
         List<Exception> strictFailures = [];
         using var tracking = PackageListingScope.TrackFailures(strictFailures.Add);
         using var scope = PackageListingScope.EnterListingOnly();
-        var failure = Assert.Throws<InvalidOperationException>(helper.GetAvailableUpdates_UnSafe);
+        var failure = Assert.ThrowsAny<InvalidOperationException>(helper.GetAvailableUpdates_UnSafe);
         Assert.Same(failure, Assert.Single(strictFailures));
+        Assert.Equal(skipUnavailableCatalog, failure is ListingSourceUnavailableException);
         Assert.Equal(2, snapshots);
         Assert.Equal(skipUnavailableCatalog ? 2 : 3, attempts.Count);
         Assert.Equal(0, cliFallbacks);
@@ -1709,11 +1885,12 @@ public sealed class WinGetManagerTests : IDisposable
         List<Exception> failures = [];
         using var tracking = PackageListingScope.TrackFailures(failures.Add);
         Assert.Same(expectedPackage, Assert.Single(helper.GetInstalledPackages_UnSafe()));
-        Assert.Single(failures);
+        var skipped = Assert.IsType<ListingSourceUnavailableException>(Assert.Single(failures));
+        Assert.Equal("offline", skipped.SourceName);
 
         failures.Clear();
         using var scope = PackageListingScope.EnterListingOnly();
-        var failure = Assert.Throws<InvalidOperationException>(helper.GetInstalledPackages_UnSafe);
+        var failure = Assert.Throws<ListingSourceUnavailableException>(helper.GetInstalledPackages_UnSafe);
         Assert.Same(failure, Assert.Single(failures));
         Assert.Equal(1, cliListings);
     }
@@ -4371,6 +4548,252 @@ public sealed class WinGetManagerTests : IDisposable
         );
     }
 
+    [Fact]
+    public async Task WinGetUpdateWaitsAndRetriesWhileWindowsInstallerIsBusyThenExplainsTheFailure()
+    {
+        var manager = new WinGet();
+        SetCliToolKind(manager, WinGetCliToolKind.SystemWinGet);
+        var package = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("EpicGames.EpicGamesLauncher.Busy")
+            .WithVersion("1.3.51.0")
+            .WithNewVersion("1.3.210.0")
+            .Build();
+        using var operation = new VeredictProbingUpdateOperation(package, new InstallOptions())
+        {
+            ElevationOverride = true,
+        };
+        string defaultMessage = operation.Metadata.FailureMessage;
+
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            var retry = await operation.ProbeProcessVeredict(unchecked((int)0x8A150102), []);
+            OperationAssert.HasVeredict(retry, OperationVeredict.AutoRetry);
+            Assert.True(operation.WaitsForWindowsInstallerBeforeNextAttempt);
+        }
+
+        var final = await operation.ProbeProcessVeredict(unchecked((int)0x8A150102), []);
+
+        OperationAssert.HasVeredict(final, OperationVeredict.Failure);
+        Assert.False(operation.WaitsForWindowsInstallerBeforeNextAttempt);
+        Assert.True(operation.FailedBecauseWindowsInstallerBusy);
+        Assert.NotEqual(defaultMessage, operation.Metadata.FailureMessage);
+        Assert.Contains("Another installation was still in progress", operation.Metadata.FailureMessage);
+    }
+
+    [Fact]
+    public void WinGetHelperKeepsAskingToRetryWhileWindowsInstallerIsBusy()
+    {
+        var manager = new WinGet();
+        var package = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("Contoso.BusyHelper")
+            .WithVersion("1.0.0")
+            .WithNewVersion("2.0.0")
+            .Build();
+
+        for (int attempt = 0; attempt <= PackageOperation.MaxWindowsInstallerBusyRetries; attempt++)
+            OperationAssert.HasVeredict(
+                manager.OperationHelper.GetResult(package, OperationType.Update, [], unchecked((int)0x8A150102)),
+                OperationVeredict.AutoRetry
+            );
+    }
+
+    [Fact]
+    public async Task WinGetBusyRetryBudgetResetsAfterADifferentResult()
+    {
+        var manager = new WinGet();
+        var package = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("Contoso.BusyReset")
+            .WithVersion("1.0.0")
+            .WithNewVersion("2.0.0")
+            .Build();
+        using var operation = new VeredictProbingUpdateOperation(package, new InstallOptions())
+        {
+            ElevationOverride = true,
+        };
+
+        for (int attempt = 0; attempt < PackageOperation.MaxWindowsInstallerBusyRetries; attempt++)
+            OperationAssert.HasVeredict(
+                await operation.ProbeProcessVeredict(unchecked((int)0x8A150102), []),
+                OperationVeredict.AutoRetry
+            );
+        await operation.ProbeProcessVeredict(unchecked((int)0x8A150012), []);
+
+        OperationAssert.HasVeredict(
+            await operation.ProbeProcessVeredict(unchecked((int)0x8A150102), []),
+            OperationVeredict.AutoRetry
+        );
+    }
+
+    [Fact]
+    public async Task WinGetBusyRetryBudgetResetsWhenARunEndsWithoutAnotherResult()
+    {
+        var manager = new WinGet();
+        var package = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("Contoso.BusyCanceled")
+            .WithVersion("1.0.0")
+            .WithNewVersion("2.0.0")
+            .Build();
+        using var operation = new VeredictProbingUpdateOperation(package, new InstallOptions())
+        {
+            ElevationOverride = true,
+        };
+
+        for (int attempt = 0; attempt < PackageOperation.MaxWindowsInstallerBusyRetries; attempt++)
+            OperationAssert.HasVeredict(
+                await operation.ProbeProcessVeredict(unchecked((int)0x8A150102), []),
+                OperationVeredict.AutoRetry
+            );
+        Assert.True(operation.WaitsForWindowsInstallerBeforeNextAttempt);
+
+        operation.CompleteRun();
+
+        Assert.False(operation.WaitsForWindowsInstallerBeforeNextAttempt);
+        OperationAssert.HasVeredict(
+            await operation.ProbeProcessVeredict(unchecked((int)0x8A150102), []),
+            OperationVeredict.AutoRetry
+        );
+        Assert.True(operation.WaitsForWindowsInstallerBeforeNextAttempt);
+    }
+
+    [Theory]
+    [InlineData("Uninstall failed with exit code: 1618")]
+    [InlineData("Échec du programme de désinstallation avec le code de sortie : 1618")]
+    public void WinGetUninstallBlockedByAnotherInstallationRetriesWithoutElevating(string exitCodeLine)
+    {
+        var manager = new WinGet();
+        var package = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("EpicGames.EpicOnlineServices.Busy")
+            .WithVersion("4.2.1")
+            .Build();
+
+        var veredict = manager.OperationHelper.GetResult(
+            package,
+            OperationType.Uninstall,
+            ["Starting package uninstall...", exitCodeLine],
+            unchecked((int)0x8A150030)
+        );
+
+        OperationAssert.HasVeredict(veredict, OperationVeredict.AutoRetry);
+        Assert.NotEqual(true, package.OverridenOptions.RunAsAdministrator);
+    }
+
+    [Fact]
+    public void WinGetUninstallFailureForAnotherReasonStillRetriesElevated()
+    {
+        var manager = new WinGet();
+        var package = new PackageBuilder()
+            .WithManager(manager)
+            .WithId("Contoso.UninstallNeedsAdmin")
+            .WithVersion("1.0.0")
+            .Build();
+
+        var veredict = manager.OperationHelper.GetResult(
+            package,
+            OperationType.Uninstall,
+            ["Uninstall failed with exit code: 1603", "Version 2.0.1618"],
+            unchecked((int)0x8A150030)
+        );
+
+        OperationAssert.HasVeredict(veredict, OperationVeredict.AutoRetry);
+        Assert.True(package.OverridenOptions.RunAsAdministrator);
+    }
+
+    [Fact]
+    public async Task WindowsInstallerWaitReturnsOnceTheLockStaysFree()
+    {
+        var probes = new Queue<bool?>([true, true, false, true, false, false]);
+        var delays = new List<TimeSpan>();
+
+        await RunWithWindowsInstallerLockStubs(
+            probes.Dequeue,
+            delays,
+            () => WindowsInstallerLock.WaitBeforeRetryAsync(CancellationToken.None)
+        );
+
+        Assert.Empty(probes);
+        Assert.Equal(WindowsInstallerLock.SettleDelay, delays[0]);
+        Assert.Equal(6, delays.Count);
+        Assert.All(delays.Skip(1), d => Assert.Equal(WindowsInstallerLock.PollInterval, d));
+    }
+
+    [Fact]
+    public async Task WindowsInstallerWaitGivesUpAfterTheMaximumWait()
+    {
+        var delays = new List<TimeSpan>();
+
+        await RunWithWindowsInstallerLockStubs(
+            () => true,
+            delays,
+            () => WindowsInstallerLock.WaitBeforeRetryAsync(CancellationToken.None)
+        );
+
+        TimeSpan polled = delays.Skip(1).Aggregate(TimeSpan.Zero, (sum, d) => sum + d);
+        Assert.Equal(WindowsInstallerLock.MaxWait, polled);
+    }
+
+    [Fact]
+    public async Task WindowsInstallerWaitFallsBackToAFixedDelayWhenTheLockCannotBeChecked()
+    {
+        var delays = new List<TimeSpan>();
+
+        await RunWithWindowsInstallerLockStubs(
+            () => null,
+            delays,
+            () => WindowsInstallerLock.WaitBeforeRetryAsync(CancellationToken.None)
+        );
+
+        Assert.Equal([WindowsInstallerLock.SettleDelay, WindowsInstallerLock.UnknownStateDelay], delays);
+    }
+
+    [Fact]
+    public async Task WindowsInstallerWaitStopsWhenCanceled()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        Func<bool?> originalProbe = WindowsInstallerLock.ProbeBusy;
+        try
+        {
+            WindowsInstallerLock.ProbeBusy = () => true;
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => WindowsInstallerLock.WaitBeforeRetryAsync(cancellation.Token)
+            );
+        }
+        finally
+        {
+            WindowsInstallerLock.ProbeBusy = originalProbe;
+        }
+    }
+
+    private static async Task RunWithWindowsInstallerLockStubs(
+        Func<bool?> probe,
+        List<TimeSpan> delays,
+        Func<Task> body
+    )
+    {
+        Func<bool?> originalProbe = WindowsInstallerLock.ProbeBusy;
+        Func<TimeSpan, CancellationToken, Task> originalDelay = WindowsInstallerLock.Delay;
+        try
+        {
+            WindowsInstallerLock.ProbeBusy = probe;
+            WindowsInstallerLock.Delay = (delay, _) =>
+            {
+                delays.Add(delay);
+                return Task.CompletedTask;
+            };
+            await body();
+        }
+        finally
+        {
+            WindowsInstallerLock.ProbeBusy = originalProbe;
+            WindowsInstallerLock.Delay = originalDelay;
+        }
+    }
+
     private static readonly WinGetPkgOperationHelper.PortableArpEntry FfmpegPortableEntry = new(
         @"C:\Users\test\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg",
         MachineScope: false
@@ -4942,6 +5365,8 @@ public sealed class WinGetManagerTests : IDisposable
 
         public Task<OperationVeredict> ProbeProcessVeredict(int returnCode, List<string> output)
             => GetProcessVeredict(returnCode, output);
+
+        public void CompleteRun() => OnRunCompleted();
     }
 
     private static void SetCliToolKind(WinGet manager, WinGetCliToolKind kind)

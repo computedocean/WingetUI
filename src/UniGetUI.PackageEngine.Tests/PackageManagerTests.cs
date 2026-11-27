@@ -5,12 +5,20 @@ using UniGetUI.Core.Data;
 using UniGetUI.Core.SettingsEngine;
 using UniGetUI.Core.SettingsEngine.SecureSettings;
 using UniGetUI.Core.Tools;
+using UniGetUI.PackageEngine.Classes.Manager;
+using UniGetUI.PackageEngine.Classes.Manager.BaseProviders;
+using UniGetUI.PackageEngine.Classes.Manager.Providers;
 using UniGetUI.PackageEngine.Enums;
 using UniGetUI.PackageEngine.Interfaces;
+using UniGetUI.PackageEngine.Interfaces.ManagerProviders;
 using UniGetUI.PackageEngine.ManagerClasses.Classes;
+using UniGetUI.PackageEngine.ManagerClasses.Manager;
+using UniGetUI.PackageEngine.Operations;
 using UniGetUI.PackageEngine.PackageClasses;
+using UniGetUI.PackageEngine.Serializable;
 using UniGetUI.PackageEngine.Tests.Infrastructure.Builders;
 using UniGetUI.PackageEngine.Tests.Infrastructure.Fakes;
+using UniGetUI.PackageOperations;
 
 namespace UniGetUI.PackageEngine.Tests;
 
@@ -699,6 +707,320 @@ public sealed class PackageManagerTests : IDisposable
     }
 
     [Fact]
+    public void AMultiLineFailureIsDescribedOnOneShortLine()
+    {
+        var manager = CreateReadyManager();
+        string error =
+            "PowerShell exited with code 1 while listing packages: Get-Command : The term 'Get-InstalledModule' is\r\n"
+            + "not recognized as the name of a cmdlet, function, script file, or\r\noperable program.\r\n"
+            + "At line:1 char:9\r\n+ $null = Get-Command Get-InstalledModule -ErrorAction Stop\r\n"
+            + "+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n"
+            + "    + CategoryInfo          : ObjectNotFound: (Get-InstalledModule:String) [Get-Command]";
+        manager.SetInstalledPackages(() => throw new InvalidOperationException(error));
+
+        manager.GetInstalledPackages();
+
+        var report = ManagerHealthEvaluator.Evaluate(manager);
+        string description = ManagerHealthEvaluator.Describe(report);
+        Assert.DoesNotContain('\n', description);
+        Assert.DoesNotContain("InvalidOperationException", description);
+        Assert.Contains("PowerShell exited with code 1 while listing packages", description);
+        Assert.EndsWith("…", description);
+        Assert.InRange(
+            ManagerHealthEvaluator.SummarizeReason(report.Reason).Length,
+            ManagerHealthEvaluator.MaxSummarizedReasonLength - 10,
+            ManagerHealthEvaluator.MaxSummarizedReasonLength
+        );
+        Assert.Contains("CategoryInfo", manager.GetHealthRecord().Installed.LastFailureReason);
+    }
+
+    [Theory]
+    [InlineData("TimeoutException: Task took too long", "Task took too long")]
+    [InlineData("Could not reach it: TimeoutException", "Could not reach it: TimeoutException")]
+    [InlineData("  short\r\n  reason  ", "short reason")]
+    public void ReasonSummariesDropOnlyALeadingExceptionType(string reason, string expected)
+    {
+        Assert.Equal(expected, ManagerHealthEvaluator.SummarizeReason(reason));
+    }
+
+    [Fact]
+    public void RepeatedIncompleteListingsAreAWarningThatNeverNeedsAttention()
+    {
+        var manager = CreateReadyManager();
+        var row = CreatePackage(manager, "Contoso.Partial", "Contoso Partial");
+        manager.SetAvailableUpdates(() =>
+        {
+            PackageListingScope.ReportSourceUnavailable("Contoso", "the source Contoso could not be reached");
+            return [row];
+        });
+
+        for (int i = 0; i < 3; i++)
+        {
+            Assert.Single(manager.GetAvailableUpdates(out bool failed));
+            Assert.True(failed);
+        }
+
+        var report = ManagerHealthEvaluator.Evaluate(manager);
+        Assert.Equal(ManagerHealthState.Incomplete, report.State);
+        Assert.False(report.NeedsAttention);
+        Assert.Equal(ManagerListingKind.Updates, report.FailingListing);
+        Assert.Equal("the source Contoso could not be reached", report.Reason);
+        Assert.Equal(0, report.ConsecutiveFailures);
+        Assert.Contains("could only be listed partially", ManagerHealthEvaluator.Describe(report));
+
+        var updates = manager.GetHealthRecord().Updates;
+        Assert.Equal(0, updates.ConsecutiveFailures);
+        Assert.Null(updates.LastFailureUtc);
+        Assert.Null(updates.LastSuccessUtc);
+        Assert.NotNull(updates.LastIncompleteUtc);
+    }
+
+    [Fact]
+    public void AnIncompleteListingNotCausedByAnUnreachableSourceIsStillAFailure()
+    {
+        var manager = CreateReadyManager();
+        var row = CreatePackage(manager, "Contoso.Partial", "Contoso Partial");
+        manager.SetAvailableUpdates(() =>
+        {
+            PackageListingScope.ReportIncomplete(new InvalidOperationException("exited with code 100"));
+            return [row];
+        });
+
+        manager.GetAvailableUpdates();
+        manager.GetAvailableUpdates();
+
+        var report = ManagerHealthEvaluator.Evaluate(manager);
+        Assert.Equal(ManagerHealthState.Failing, report.State);
+        Assert.True(report.NeedsAttention);
+        Assert.Equal(2, report.ConsecutiveFailures);
+        Assert.Contains("exited with code 100", report.Reason);
+        Assert.Null(manager.GetHealthRecord().Updates.LastIncompleteUtc);
+    }
+
+    [Fact]
+    public void AnUnreachableSourceDoesNotHideAnotherIncompleteFailure()
+    {
+        var manager = CreateReadyManager();
+        manager.SetAvailableUpdates(() =>
+        {
+            PackageListingScope.ReportSourceUnavailable("Contoso", "one source down");
+            PackageListingScope.ReportIncomplete(new InvalidDataException("unparseable row"));
+            return [];
+        });
+
+        manager.GetAvailableUpdates();
+
+        var updates = manager.GetHealthRecord().Updates;
+        Assert.Equal(1, updates.ConsecutiveFailures);
+        Assert.Contains("unparseable row", updates.LastFailureReason);
+        Assert.Equal(ManagerHealthState.Failing, ManagerHealthEvaluator.Evaluate(manager).State);
+    }
+
+    [Fact]
+    public void ACompleteListingClearsTheIncompleteState()
+    {
+        var manager = CreateReadyManager();
+        var row = CreatePackage(manager, "Contoso.Partial", "Contoso Partial");
+        manager.SetAvailableUpdates(() =>
+        {
+            PackageListingScope.ReportSourceUnavailable("Contoso", "one source down");
+            return [row];
+        });
+        manager.GetAvailableUpdates();
+
+        manager.SetAvailableUpdates(() => [row]);
+        manager.GetAvailableUpdates();
+
+        var updates = manager.GetHealthRecord().Updates;
+        Assert.Null(updates.LastIncompleteUtc);
+        Assert.Null(updates.LastIncompleteReason);
+        Assert.Equal(1, updates.LastPackageCount);
+        Assert.Equal(ManagerHealthState.Healthy, ManagerHealthEvaluator.Evaluate(manager).State);
+    }
+
+    [Fact]
+    public void AnIncompleteListingEndsAFailureStreak()
+    {
+        var manager = CreateReadyManager();
+        manager.SetAvailableUpdates(() => throw new InvalidOperationException("down"));
+        manager.GetAvailableUpdates();
+        Assert.Equal(1, manager.GetHealthRecord().Updates.ConsecutiveFailures);
+
+        manager.SetAvailableUpdates(() =>
+        {
+            PackageListingScope.ReportSourceUnavailable("Contoso", "one source down");
+            return [];
+        });
+        manager.GetAvailableUpdates();
+
+        var updates = manager.GetHealthRecord().Updates;
+        Assert.Equal(0, updates.ConsecutiveFailures);
+        Assert.Null(updates.FailureStreakStartUtc);
+        Assert.Equal(ManagerHealthState.Incomplete, ManagerHealthEvaluator.Evaluate(manager).State);
+    }
+
+    [Fact]
+    public void ARealFailureOutranksAnIncompleteListing()
+    {
+        var manager = CreateReadyManager();
+        manager.SetInstalledPackages(() =>
+        {
+            PackageListingScope.ReportSourceUnavailable("Contoso", "one source down");
+            return [];
+        });
+        manager.SetAvailableUpdates(() => throw new InvalidOperationException("down"));
+
+        manager.GetInstalledPackages();
+        manager.GetAvailableUpdates();
+        manager.GetAvailableUpdates();
+
+        var report = ManagerHealthEvaluator.Evaluate(manager);
+        Assert.Equal(ManagerHealthState.Failing, report.State);
+        Assert.Equal(ManagerListingKind.Updates, report.FailingListing);
+        Assert.True(report.NeedsAttention);
+    }
+
+    [Fact]
+    public void AListingOnlyScanThatStopsAtAnIncompleteSourceIsRecordedAsIncomplete()
+    {
+        var manager = CreateReadyManager();
+        manager.SetInstalledPackages(() =>
+        {
+            PackageListingScope.ReportSourceUnavailable("Contoso", "one source down");
+            return [CreatePackage(manager, "Contoso.Partial", "Contoso Partial")];
+        });
+
+        using (PackageListingScope.EnterListingOnly())
+        {
+            Assert.Empty(manager.GetInstalledPackages(out bool failed));
+            Assert.True(failed);
+        }
+
+        var installed = manager.GetHealthRecord().Installed;
+        Assert.Equal(0, installed.ConsecutiveFailures);
+        Assert.Equal("one source down", installed.LastIncompleteReason);
+        Assert.Equal(ManagerHealthState.Incomplete, ManagerHealthEvaluator.Evaluate(manager).State);
+    }
+
+    [Fact]
+    public void AListingThatThrowsIsStillAFailureEvenIfItWasIncomplete()
+    {
+        var manager = CreateReadyManager();
+        manager.SetAvailableUpdates(() =>
+        {
+            PackageListingScope.ReportSourceUnavailable("Contoso", "one source down");
+            throw new InvalidOperationException("crashed");
+        });
+
+        manager.GetAvailableUpdates();
+
+        var updates = manager.GetHealthRecord().Updates;
+        Assert.Equal(1, updates.ConsecutiveFailures);
+        Assert.Contains("crashed", updates.LastFailureReason);
+        Assert.Equal(ManagerHealthState.Failing, ManagerHealthEvaluator.Evaluate(manager).State);
+    }
+
+    [Fact]
+    public void AFailureFromAnEarlierSessionDoesNotAskForAttentionUntilItRecurs()
+    {
+        var manager = CreateReadyManager();
+        manager.SetAvailableUpdates(() => throw new InvalidOperationException("down"));
+        DateTime earlier = DateTime.UtcNow - TimeSpan.FromHours(3);
+        DateTime sessionStart = earlier + TimeSpan.FromHours(1);
+
+        using (ManagerHealthStore.UseClock(() => earlier))
+        {
+            manager.GetAvailableUpdates();
+            manager.GetAvailableUpdates();
+        }
+
+        Assert.True(ManagerHealthEvaluator.Evaluate(manager).NeedsAttention);
+        Assert.Single(ManagerHealthEvaluator.ManagersNeedingAttention([manager]));
+        Assert.Empty(ManagerHealthEvaluator.ManagersNeedingAttention([manager], sessionStart));
+
+        using (ManagerHealthStore.UseClock(() => sessionStart + TimeSpan.FromMinutes(1)))
+            manager.GetAvailableUpdates();
+
+        Assert.Single(ManagerHealthEvaluator.ManagersNeedingAttention([manager], sessionStart));
+    }
+
+    [Fact]
+    public void AnOlderLongerStreakDoesNotHideAFailureSeenThisSession()
+    {
+        var manager = CreateReadyManager();
+        manager.SetAvailableUpdates(() => throw new InvalidOperationException("updates down"));
+        manager.SetFindPackages(_ => throw new InvalidOperationException("search down"));
+        DateTime earlier = DateTime.UtcNow - TimeSpan.FromHours(3);
+        DateTime sessionStart = earlier + TimeSpan.FromHours(1);
+
+        using (ManagerHealthStore.UseClock(() => earlier))
+        {
+            for (int i = 0; i < 5; i++)
+                manager.GetAvailableUpdates();
+        }
+
+        using (ManagerHealthStore.UseClock(() => sessionStart + TimeSpan.FromMinutes(1)))
+        {
+            manager.FindPackages("tool");
+            manager.FindPackages("tool");
+        }
+
+        Assert.Equal(ManagerListingKind.Updates, ManagerHealthEvaluator.Evaluate(manager).FailingListing);
+        var report = Assert.Single(ManagerHealthEvaluator.ManagersNeedingAttention([manager], sessionStart));
+        Assert.Equal(ManagerListingKind.Search, report.FailingListing);
+        Assert.Contains("search down", report.Reason);
+    }
+
+    [Fact]
+    public void AnIncompleteInstalledListingEndsAMalfunctionUntilTheNextCompleteOne()
+    {
+        var manager = CreateReadyManager();
+        manager.ExpectsInstalled = true;
+        var row = CreatePackage(manager, "Contoso.Partial", "Contoso Partial");
+        manager.GetInstalledPackages();
+        var emptySuccess = manager.GetHealthRecord().Installed.LastSuccessUtc;
+        Assert.Equal(ManagerHealthState.Malfunctioning, ManagerHealthEvaluator.Evaluate(manager).State);
+
+        manager.SetInstalledPackages(() =>
+        {
+            PackageListingScope.ReportSourceUnavailable("Contoso", "one source down");
+            return [row];
+        });
+        manager.GetInstalledPackages();
+
+        var report = ManagerHealthEvaluator.Evaluate(manager);
+        Assert.Equal(ManagerHealthState.Incomplete, report.State);
+        Assert.False(report.NeedsAttention);
+        Assert.Empty(ManagerHealthEvaluator.ManagersNeedingAttention([manager]));
+        var installed = manager.GetHealthRecord().Installed;
+        Assert.Equal(emptySuccess, installed.LastSuccessUtc);
+        Assert.Equal(0, installed.LastPackageCount);
+
+        manager.SetInstalledPackages(() => [row]);
+        manager.GetInstalledPackages();
+        Assert.Equal(ManagerHealthState.Healthy, ManagerHealthEvaluator.Evaluate(manager).State);
+    }
+
+    [Fact]
+    public void AnEarlierSessionsMalfunctionDoesNotAskForAttentionUntilItIsSeenAgain()
+    {
+        var manager = CreateReadyManager();
+        manager.ExpectsInstalled = true;
+        DateTime earlier = DateTime.UtcNow - TimeSpan.FromHours(3);
+        DateTime sessionStart = earlier + TimeSpan.FromHours(1);
+
+        using (ManagerHealthStore.UseClock(() => earlier))
+            manager.GetInstalledPackages();
+
+        Assert.Empty(ManagerHealthEvaluator.ManagersNeedingAttention([manager], sessionStart));
+
+        using (ManagerHealthStore.UseClock(() => sessionStart + TimeSpan.FromMinutes(1)))
+            manager.GetInstalledPackages();
+
+        Assert.Single(ManagerHealthEvaluator.ManagersNeedingAttention([manager], sessionStart));
+    }
+
+    [Fact]
     public void EmptyInstalledListIsAMalfunctionOnlyWhenTheManagerExpectsPackages()
     {
         var expecting = CreateReadyManager();
@@ -1264,6 +1586,301 @@ public sealed class PackageManagerTests : IDisposable
                 )
                 .WaitAsync(TimeSpan.FromSeconds(30))
         );
+    }
+
+    [Fact]
+    public void AttemptFastRepairReloadsManagerWhenCachedExecutableMovesToNewPath()
+    {
+        var oldExe = CreateExecutable("pwsh-7.6.exe");
+        var newExe = CreateExecutable("pwsh-7.7.exe");
+        var manager = new RelocatablePackageManager($"Relocatable-{Guid.NewGuid():N}", [oldExe])
+        {
+            LoadedVersion = "PowerShell 7.6.0",
+        };
+        manager.Initialize();
+        Assert.Equal(oldExe, manager.Status.ExecutablePath);
+        Assert.Equal([oldExe], manager.Status.OperationCallArgs);
+
+        File.Delete(oldExe);
+        manager.Candidates = [newExe];
+        manager.LoadedVersion = "PowerShell 7.7.0";
+
+        var packages = manager.GetInstalledPackages(out bool failed);
+
+        Assert.False(failed);
+        Assert.Single(packages);
+        Assert.Equal(newExe, manager.Status.ExecutablePath);
+        Assert.Equal("PowerShell 7.7.0", manager.Status.Version);
+        Assert.Equal([newExe], manager.Status.OperationCallArgs);
+        Assert.Equal(ManagerHealthState.Healthy, ManagerHealthEvaluator.Evaluate(manager).State);
+    }
+
+    [Fact]
+    public void AttemptFastRepairFallsBackToCandidateWhenSavedCustomPathDisappears()
+    {
+        var oldExe = CreateExecutable("saved-old.exe");
+        var newExe = CreateExecutable("candidate-new.exe");
+        var manager = new RelocatablePackageManager($"SavedRelocatable-{Guid.NewGuid():N}", [oldExe]);
+        EnableCustomManagerPaths();
+        Settings.SetDictionaryItem<string, string>(Settings.K.ManagerPaths, manager.Name, oldExe);
+        manager.Initialize();
+        Assert.Equal(oldExe, manager.Status.ExecutablePath);
+
+        File.Delete(oldExe);
+        manager.Candidates = [newExe];
+
+        var packages = manager.GetInstalledPackages(out bool failed);
+
+        Assert.False(failed);
+        Assert.Single(packages);
+        Assert.Equal(newExe, manager.Status.ExecutablePath);
+    }
+
+    [Fact]
+    public void AttemptFastRepairMarksManagerNotFoundWhenExecutableIsRemovedWithoutReplacement()
+    {
+        var oldExe = CreateExecutable("removed.exe");
+        var manager = new RelocatablePackageManager($"Removed-{Guid.NewGuid():N}", [oldExe]);
+        manager.Initialize();
+        Assert.True(manager.IsReady());
+
+        File.Delete(oldExe);
+        manager.Candidates = [];
+
+        var packages = manager.GetInstalledPackages(out bool failed);
+
+        Assert.True(failed);
+        Assert.Empty(packages);
+        Assert.False(manager.IsReady());
+        Assert.False(manager.Status.Found);
+        Assert.Equal(ManagerHealthState.NotFound, ManagerHealthEvaluator.Evaluate(manager).State);
+    }
+
+    [Fact]
+    public void AttemptFastRepairDoesNotReloadWhenCachedExecutableStillExists()
+    {
+        var existingExe = CreateExecutable("still-here.exe");
+        var manager = new RelocatablePackageManager($"Existing-{Guid.NewGuid():N}", [existingExe])
+        {
+            AlwaysFailInstalledListing = true,
+        };
+        manager.Initialize();
+        Assert.Equal(1, manager.LoadExecutableCalls);
+
+        var packages = manager.GetInstalledPackages(out bool failed);
+
+        Assert.True(failed);
+        Assert.Empty(packages);
+        Assert.Equal(1, manager.LoadExecutableCalls);
+    }
+
+    [Fact]
+    public void SourceAndDetailsHelpersRetryAfterReloadingMissingExecutable()
+    {
+        var firstExe = CreateExecutable("helper-1.exe");
+        var secondExe = CreateExecutable("helper-2.exe");
+        var thirdExe = CreateExecutable("helper-3.exe");
+        var manager = new RelocatablePackageManager($"Helpers-{Guid.NewGuid():N}", [firstExe]);
+        manager.Initialize();
+
+        File.Delete(firstExe);
+        manager.Candidates = [secondExe];
+        var sources = ((BaseSourceHelper)manager.SourcesHelper)._getSources();
+        Assert.Single(sources);
+        Assert.Equal(secondExe, manager.Status.ExecutablePath);
+
+        File.Delete(secondExe);
+        manager.Candidates = [thirdExe];
+        var package = new Package("Contoso Module", "Contoso.Module", "1.0.0", manager.DefaultSource, manager);
+        var versions = manager.DetailsHelper.GetVersions(package);
+        Assert.Equal(["1.0.0"], versions);
+        Assert.Equal(thirdExe, manager.Status.ExecutablePath);
+    }
+
+    [Fact]
+    public async Task PackageAndSourceOperationsReloadMissingExecutableBeforeLaunching()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        string cmdExe = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+        var firstExe = CreateExecutable("op-old.exe");
+        var manager = new RelocatablePackageManager($"OpRelocatable-{Guid.NewGuid():N}", [firstExe])
+        {
+            CallArguments = "",
+            UseEmptyOperationCallArgs = true,
+            OperationParameters = ["/c", "exit", "0"],
+            SourceParameters = ["/c", "exit", "0"],
+        };
+        manager.Initialize();
+        Assert.Equal(firstExe, manager.Status.ExecutablePath);
+
+        File.Delete(firstExe);
+        manager.Candidates = [cmdExe];
+
+        var package = new Package("Contoso", "Contoso", "1.0.0", manager.DefaultSource, manager);
+        using var installOp = new InstallPackageOperation(
+            package,
+            new InstallOptions(),
+            IgnoreParallelInstalls: true
+        );
+        await installOp.MainThread();
+
+        Assert.Equal(OperationStatus.Succeeded, installOp.Status);
+        Assert.Equal(cmdExe, manager.Status.ExecutablePath);
+
+        var secondExe = CreateExecutable("source-op-old.exe");
+        manager.Candidates = [secondExe];
+        manager.Initialize();
+        Assert.Equal(secondExe, manager.Status.ExecutablePath);
+
+        File.Delete(secondExe);
+        manager.Candidates = [cmdExe];
+
+        using var sourceOp = new AddSourceOperation(manager.DefaultSource);
+        await sourceOp.MainThread();
+
+        Assert.Equal(OperationStatus.Succeeded, sourceOp.Status);
+        Assert.Equal(cmdExe, manager.Status.ExecutablePath);
+    }
+
+    private sealed class RelocatablePackageManager : PackageManager
+    {
+        public IReadOnlyList<string> Candidates { get; set; }
+        public string LoadedVersion { get; set; } = "1.0.0";
+        public string CallArguments { get; set; } = "-NoProfile";
+        public bool UseEmptyOperationCallArgs { get; set; }
+        public string[] OperationParameters { get; set; } = [];
+        public string[] SourceParameters { get; set; } = [];
+        public int LoadExecutableCalls { get; private set; }
+        public bool AlwaysFailInstalledListing { get; set; }
+
+        public RelocatablePackageManager(string name, IReadOnlyList<string> candidates)
+        {
+            ManagerHealthStore.TestPathOverride ??= Path.Combine(
+                AppContext.BaseDirectory,
+                "ManagerHealth.test.json"
+            );
+            Candidates = candidates;
+            Capabilities = new ManagerCapabilities
+            {
+                SupportsCustomVersions = true,
+                SupportsCustomSources = true,
+            };
+            Properties = new ManagerProperties
+            {
+                Name = name,
+                DisplayName = name,
+                Description = "Relocatable test manager",
+                ExecutableFriendlyName = $"{name}.exe",
+                InstallVerb = "install",
+                UpdateVerb = "update",
+                UninstallVerb = "uninstall",
+            };
+            var defaultSource = new ManagerSource(this, "default", new Uri("https://example.test/default"));
+            var properties = Properties;
+            properties.DefaultSource = defaultSource;
+            properties.KnownSources = [defaultSource];
+            Properties = properties;
+
+            SourcesHelper = new RelocatableSourceHelper(this);
+            DetailsHelper = new RelocatableDetailsHelper(this);
+            OperationHelper = new RelocatableOperationHelper(this);
+        }
+
+        public override IReadOnlyList<string> FindCandidateExecutableFiles() => Candidates;
+
+        protected override void _loadManagerExecutableFile(
+            out bool found,
+            out string path,
+            out string callArguments
+        )
+        {
+            LoadExecutableCalls++;
+            (found, path) = GetExecutableFile();
+            callArguments = CallArguments;
+        }
+
+        protected override IReadOnlyList<string> _getOperationCallArgs(
+            string executablePath,
+            string callArguments
+        ) => UseEmptyOperationCallArgs ? [] : [executablePath];
+
+        protected override void _loadManagerVersion(out string version)
+        {
+            version = LoadedVersion;
+        }
+
+        protected override IReadOnlyList<Package> FindPackages_UnSafe(string query) => [];
+
+        protected override IReadOnlyList<Package> GetAvailableUpdates_UnSafe() => [];
+
+        protected override IReadOnlyList<Package> GetInstalledPackages_UnSafe()
+        {
+            if (AlwaysFailInstalledListing)
+                throw new InvalidOperationException("transient error");
+
+            if (!File.Exists(Status.ExecutablePath))
+                throw new Win32Exception(2, "The system cannot find the file specified.");
+
+            return [new Package("Contoso", "Contoso", "1.0.0", DefaultSource, this)];
+        }
+
+        private sealed class RelocatableSourceHelper(RelocatablePackageManager manager)
+            : BaseSourceHelper(manager)
+        {
+            public override string[] GetAddSourceParameters(IManagerSource source) => manager.SourceParameters;
+            public override string[] GetRemoveSourceParameters(IManagerSource source) => manager.SourceParameters;
+            protected override OperationVeredict _getAddSourceOperationVeredict(IManagerSource source, int ReturnCode, string[] Output) => OperationVeredict.Success;
+            protected override OperationVeredict _getRemoveSourceOperationVeredict(IManagerSource source, int ReturnCode, string[] Output) => OperationVeredict.Success;
+
+            protected override IReadOnlyList<IManagerSource> GetSources_UnSafe()
+            {
+                if (!File.Exists(Manager.Status.ExecutablePath))
+                    throw new Win32Exception(2, "The system cannot find the file specified.");
+
+                return [Manager.DefaultSource];
+            }
+        }
+
+        private sealed class RelocatableDetailsHelper(RelocatablePackageManager manager)
+            : BasePkgDetailsHelper(manager)
+        {
+            protected override void GetDetails_UnSafe(IPackageDetails details)
+            {
+                if (!File.Exists(Manager.Status.ExecutablePath))
+                    throw new Win32Exception(2, "The system cannot find the file specified.");
+            }
+
+            protected override IReadOnlyList<string> GetInstallableVersions_UnSafe(IPackage package)
+            {
+                if (!File.Exists(Manager.Status.ExecutablePath))
+                    throw new Win32Exception(2, "The system cannot find the file specified.");
+
+                return ["1.0.0"];
+            }
+
+            protected override UniGetUI.Core.IconEngine.CacheableIcon? GetIcon_UnSafe(IPackage package) => null;
+            protected override IReadOnlyList<Uri> GetScreenshots_UnSafe(IPackage package) => [];
+            protected override string? GetInstallLocation_UnSafe(IPackage package) => null;
+        }
+
+        private sealed class RelocatableOperationHelper(RelocatablePackageManager manager)
+            : BasePkgOperationHelper(manager)
+        {
+            protected override IReadOnlyList<string> _getOperationParameters(
+                IPackage package,
+                InstallOptions options,
+                OperationType operation
+            ) => manager.OperationParameters;
+
+            protected override OperationVeredict _getOperationResult(
+                IPackage package,
+                OperationType operation,
+                IReadOnlyList<string> processOutput,
+                int returnCode
+            ) => returnCode == 0 ? OperationVeredict.Success : OperationVeredict.Failure;
+        }
     }
 
     private static TestPackageManager CreateManager()

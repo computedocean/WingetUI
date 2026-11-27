@@ -331,6 +331,12 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
         public bool ReportedApplicationCurrentlyRunning(int returnCode) =>
             WinGetPkgOperationHelper.ReportedApplicationCurrentlyRunning(returnCode);
 
+        public bool ReportedWindowsInstallerBusy(IReadOnlyList<string> processOutput, int returnCode) =>
+            WinGetPkgOperationHelper.ReportedWindowsInstallerBusy(processOutput, returnCode);
+
+        public Task WaitForWindowsInstallerAsync(CancellationToken cancellationToken) =>
+            WindowsInstallerLock.WaitBeforeRetryAsync(cancellationToken);
+
         public bool HonorsIntegrityCheckSkipWhenElevated =>
             SelectedCliToolKind is WinGetCliToolKind.BundledPinget;
 
@@ -1027,6 +1033,12 @@ namespace UniGetUI.PackageEngine.Managers.WingetManager
             try
             {
                 TryRepairTempFolderPermissions();
+                if (TryReloadMissingExecutable())
+                {
+                    NO_PACKAGES_HAVE_BEEN_LOADED = false;
+                    return;
+                }
+
                 if (WinGetHelper.Instance is NativeWinGetHelper)
                 {
                     if (
